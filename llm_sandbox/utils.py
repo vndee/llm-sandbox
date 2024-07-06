@@ -1,9 +1,7 @@
 import docker
 import docker.errors
 
-from typing import List
 from docker import DockerClient
-from docker.models.images import Image
 
 
 def image_exists(client: DockerClient, image: str) -> bool:
