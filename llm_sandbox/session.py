@@ -104,6 +104,11 @@ class SandboxSession:
                     self.image.remove(force=True)
                 else:
                     raise ValueError("Invalid image type")
+            else:
+                if self.verbose:
+                    print(
+                        f"Image {self.image.tags[-1]} is in use by other containers. Skipping removal."
+                    )
 
     def run(self, code: str, libraries: List = []):
         raise NotImplementedError
