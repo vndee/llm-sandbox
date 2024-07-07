@@ -12,7 +12,7 @@ from llm_sandbox.utils import (
     get_code_file_extension,
     get_code_execution_command,
 )
-from llm_sandbox.const import SupportedLanguage, SupportedLanguageValues, DefaultImage
+from llm_sandbox.const import SupportedLanguage, SupportedLanguageValues, DefaultImage, NotSupportedLibraryInstallation
 
 
 class SandboxSession:
@@ -128,6 +128,11 @@ class SandboxSession:
             )
 
         if libraries:
+            if self.lang.upper() in NotSupportedLibraryInstallation:
+                raise ValueError(
+                    f"Library installation has not been supported for {self.lang} yet!"
+                )
+
             command = get_libraries_installation_command(self.lang, libraries)
             self.execute_command(command)
 

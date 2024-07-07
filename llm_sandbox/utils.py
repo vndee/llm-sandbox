@@ -36,7 +36,7 @@ def get_libraries_installation_command(
     elif lang == SupportedLanguage.JAVA:
         return f"mvn install:install-file -Dfile={' '.join(libraries)}"
     elif lang == SupportedLanguage.JAVASCRIPT:
-        return f"npm install {' '.join(libraries)}"
+        return f"yarn add {' '.join(libraries)}"
     elif lang == SupportedLanguage.CPP:
         return f"apt-get install {' '.join(libraries)}"
     elif lang == SupportedLanguage.GO:

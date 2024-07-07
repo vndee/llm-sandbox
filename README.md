@@ -54,7 +54,20 @@ with SandboxSession(image="python:3.9.19-bullseye", keep_template=True, lang="py
     # Run some Python code in the sandbox
     result = session.run("print('Hello, World!')")
     print(result)
+
+# With custom Dockerfile
+with SandboxSession(dockerfile="Dockerfile", keep_template=True, lang="python") as session:
+    # Run some Python code in the sandbox
+    result = session.run("print('Hello, World!')")
+    print(result)
+
+# Or default image
+with SandboxSession(lang="python", keep_template=True) as session:
+    # Run some Python code in the sandbox
+    result = session.run("print('Hello, World!')")
+    print(result)
 ```
+
 
 LLM Sandbox also supports copying files between the host and the sandbox:
 
@@ -62,7 +75,7 @@ LLM Sandbox also supports copying files between the host and the sandbox:
 from llm_sandbox.session import SandboxSession
 
 # Create a new sandbox session
-with SandboxSession(image="python:3.9.19-bullseye", keep_template=True, lang="python") as session:
+with SandboxSession(lang="python", keep_template=True) as session:
     # Copy a file from the host to the sandbox
     session.copy_to_runtime("test.py", "/sandbox/test.py")
 
@@ -110,8 +123,8 @@ SandboxSession(
 We welcome contributions to improve LLM Sandbox! Since I am a Python developer, I am not familiar with other languages. If you are interested in adding better support for other languages, please feel free to submit a pull request.
 
 Here is a list of things you can do to contribute:
-- [ ] Add support for Java.
-- [ ] Add support for JavaScript.
+- [ ] Add Java maven support.
+- [x] Add support for JavaScript.
 - [ ] Add support for C++.
 - [ ] Add support for Go.
 - [ ] Add support for Ruby.
