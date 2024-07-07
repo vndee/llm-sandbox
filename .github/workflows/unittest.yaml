@@ -13,10 +13,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "::add-path::${HOME}/.local/bin"
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          poetry install
 
       - name: Run unittests
-        run: python -m unittest discover -s tests -v
+        run: |
+          poetry run python -m unittest discover -s tests -v
