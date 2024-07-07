@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "llm-sandbox"
+version = "0.1.0"
+description = "A Python library for managing LLM runtime sandboxes."
+authors = ["Duy Huynh <vndee.huynh@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [
+    { include = "llm_sandbox" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+docker = "^7.1.0"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.2"
+pre-commit = "^3.7.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
