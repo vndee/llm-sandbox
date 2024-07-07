@@ -1,4 +1,4 @@
-PHONY: hello env lint
+PHONY: hello env lint unittest
 
 RED=\033[0;31m
 GREEN=\033[0;32m
@@ -22,4 +22,9 @@ env:
 lint:
 	@echo "Running linter..."
 	@source $$(poetry env info --path)/bin/activate && pre-commit run --all-files
+	@echo "Done."
+
+unittest:
+	@echo "Running tests..."
+	@source $$(poetry env info --path)/bin/activate && poetry run python -m unittest discover -s tests -v
 	@echo "Done."

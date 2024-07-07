@@ -5,13 +5,14 @@ import tarfile
 from typing import List, Optional, Union
 
 from docker.models.images import Image
+from docker.models.containers import Container
 from llm_sandbox.utils import (
     image_exists,
     get_libraries_installation_command,
     get_code_file_extension,
     get_code_execution_command,
 )
-from llm_sandbox.const import SupportedLanguage, SupportedLanguageValues
+from llm_sandbox.const import SupportedLanguage, SupportedLanguageValues, DefaultImage
 
 
 class SandboxSession:
@@ -34,19 +35,19 @@ class SandboxSession:
         if image and dockerfile:
             raise ValueError("Only one of image or dockerfile should be provided")
 
-        if not image and not dockerfile:
-            raise ValueError("Either image or dockerfile should be provided")
-
         if lang not in SupportedLanguageValues:
             raise ValueError(
                 f"Language {lang} is not supported. Must be one of {SupportedLanguageValues}"
             )
 
+        if not image and not dockerfile:
+            image = DefaultImage.__dict__[lang.upper()]
+
         self.lang: str = lang
         self.client: docker.DockerClient = docker.from_env()
         self.image: Union[Image, str] = image
         self.dockerfile: Optional[str] = dockerfile
-        self.container = None
+        self.container: Optional[Container] = None
         self.path = None
         self.keep_template = keep_template
         self.is_create_template: bool = False
@@ -89,6 +90,9 @@ class SandboxSession:
 
     def close(self):
         if self.container:
+            if isinstance(self.image, Image):
+                self.container.commit(self.image.tags[-1])
+
             self.container.remove(force=True)
             self.container = None
 
@@ -168,7 +172,10 @@ class SandboxSession:
         tarstream.seek(0)
         self.container.put_archive(os.path.dirname(dest), tarstream)
 
-    def execute_command(self, command: str):
+    def execute_command(self, command: Optional[str]):
+        if not command:
+            raise ValueError("Command cannot be empty")
+
         if not self.container:
             raise RuntimeError(
                 "Session is not open. Please call open() method before executing commands."
@@ -177,12 +184,19 @@ class SandboxSession:
         if self.verbose:
             print(f"Executing command: {command}")
 
-        exit_code, output = self.container.exec_run(command)
-        if self.verbose:
-            print(f"Output: {output.decode()}")
-            print(f"Exit code: {exit_code}")
+        _, exec_log = self.container.exec_run(command, stream=True)
+        output = ""
 
-        return exit_code, output.decode()
+        if self.verbose:
+            print("Output:", end=" ")
+
+        for chunk in exec_log:
+            chunk_str = chunk.decode("utf-8")
+            output += chunk_str
+            if self.verbose:
+                print(chunk_str, end="")
+
+        return output
 
     def __enter__(self):
         self.open()

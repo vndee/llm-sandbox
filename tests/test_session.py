@@ -47,6 +47,7 @@ class TestSandboxSession(unittest.TestCase):
     def test_close(self):
         mock_container = MagicMock()
         self.session.container = mock_container
+        mock_container.commit.return_values = MagicMock(tags=["python:3.9.19-bullseye"])
 
         self.session.close()
         mock_container.remove.assert_called_once()
@@ -113,12 +114,15 @@ class TestSandboxSession(unittest.TestCase):
         self.session.container = mock_container
 
         command = "echo 'Hello'"
-        mock_container.exec_run.return_value = (0, b"Hello\n")
+        mock_container.exec_run.return_value = (0, iter([b"Hello\n"]))
 
-        exit_code, output = self.session.execute_command(command)
-        mock_container.exec_run.assert_called_with(command)
-        self.assertEqual(exit_code, 0)
+        output = self.session.execute_command(command)
+        mock_container.exec_run.assert_called_with(command, stream=True)
         self.assertEqual(output, "Hello\n")
+
+    def test_execute_empty_command(self):
+        with self.assertRaises(ValueError):
+            self.session.execute_command("")
 
 
 if __name__ == "__main__":
