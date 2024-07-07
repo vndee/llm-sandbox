@@ -15,6 +15,8 @@ def run_python_code():
         output = session.run("import pandas as pd\nprint(pd.__version__)")
         print(output)
 
+        session.copy_to_runtime("README.md", "/sandbox/data.csv")
+
 
 if __name__ == "__main__":
     run_python_code()

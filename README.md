@@ -108,6 +108,14 @@ SandboxSession(
 ### Contributing
 
 We welcome contributions to improve LLM Sandbox! Since I am a Python developer, I am not familiar with other languages. If you are interested in adding better support for other languages, please feel free to submit a pull request.
+Here is a list of things you can do to contribute:
+- [ ] Add support for Java.
+- [ ] Add support for JavaScript.
+- [ ] Add support for C++.
+- [ ] Add support for Go.
+- [ ] Add support for Ruby.
+- [ ] Add remote Docker host support.
+- [ ] Add remote Kubernetes cluster support.
 
 ### License
 

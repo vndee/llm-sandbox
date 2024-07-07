@@ -162,7 +162,15 @@ class SandboxSession:
                 "Session is not open. Please call open() method before copying files."
             )
 
+        is_created_dir = False
+        directory = os.path.dirname(dest)
+        if directory:
+            self.container.exec_run(f"mkdir -p {directory}")
+            is_created_dir = True
+
         if self.verbose:
+            if is_created_dir:
+                print(f"Creating directory {self.container.short_id}:{directory}")
             print(f"Copying {src} to {self.container.short_id}:{dest}..")
 
         tarstream = io.BytesIO()
