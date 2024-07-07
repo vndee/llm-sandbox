@@ -125,7 +125,7 @@ We welcome contributions to improve LLM Sandbox! Since I am a Python developer, 
 Here is a list of things you can do to contribute:
 - [ ] Add Java maven support.
 - [x] Add support for JavaScript.
-- [ ] Add support for C++.
+- [x] Add support for C++.
 - [ ] Add support for Go.
 - [ ] Add support for Ruby.
 - [ ] Add remote Docker host support.
