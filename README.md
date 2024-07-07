@@ -47,7 +47,7 @@ The `SandboxSession` class manages the lifecycle of the sandbox environment, inc
 Here's a simple example to demonstrate how to use LLM Sandbox:
 
 ```python
-from llm_sandbox.session import SandboxSession
+from llm_sandbox import SandboxSession
 
 # Create a new sandbox session
 with SandboxSession(image="python:3.9.19-bullseye", keep_template=True, lang="python") as session:
@@ -72,7 +72,7 @@ with SandboxSession(lang="python", keep_template=True) as session:
 LLM Sandbox also supports copying files between the host and the sandbox:
 
 ```python
-from llm_sandbox.session import SandboxSession
+from llm_sandbox import SandboxSession
 
 # Create a new sandbox session
 with SandboxSession(lang="python", keep_template=True) as session:
@@ -86,6 +86,8 @@ with SandboxSession(lang="python", keep_template=True) as session:
     # Copy a file from the sandbox to the host
     session.copy_from_runtime("/sandbox/output.txt", "output.txt")
 ```
+
+For other languages usage, please refer to the [examples](examples/code_runner.py).
 
 ### API Reference
 
