@@ -65,11 +65,11 @@ from llm_sandbox.session import SandboxSession
 with SandboxSession(image="python:3.9.19-bullseye", keep_template=True, lang="python") as session:
     # Copy a file from the host to the sandbox
     session.copy_to_runtime("test.py", "/sandbox/test.py")
-    
+
     # Run the copied Python code in the sandbox
     result = session.run("python /sandbox/test.py")
     print(result)
-    
+
     # Copy a file from the sandbox to the host
     session.copy_from_runtime("/sandbox/output.txt", "output.txt")
 ```
