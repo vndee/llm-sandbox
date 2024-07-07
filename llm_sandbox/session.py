@@ -12,7 +12,12 @@ from llm_sandbox.utils import (
     get_code_file_extension,
     get_code_execution_command,
 )
-from llm_sandbox.const import SupportedLanguage, SupportedLanguageValues, DefaultImage, NotSupportedLibraryInstallation
+from llm_sandbox.const import (
+    SupportedLanguage,
+    SupportedLanguageValues,
+    DefaultImage,
+    NotSupportedLibraryInstallation,
+)
 
 
 class SandboxSession:
@@ -141,8 +146,13 @@ class SandboxSession:
             f.write(code)
 
         self.copy_to_runtime(code_file, code_file)
-        result = self.execute_command(get_code_execution_command(self.lang, code_file))
-        return result
+
+        output = ""
+        commands = get_code_execution_command(self.lang, code_file)
+        for command in commands:
+            output = self.execute_command(command)
+
+        return output
 
     def copy_from_runtime(self, src: str, dest: str):
         if not self.container:
@@ -169,7 +179,7 @@ class SandboxSession:
 
         is_created_dir = False
         directory = os.path.dirname(dest)
-        if directory:
+        if directory and not self.container.exec_run(f"test -d {directory}")[0] == 0:
             self.container.exec_run(f"mkdir -p {directory}")
             is_created_dir = True
 

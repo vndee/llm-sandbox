@@ -1,6 +1,6 @@
 ## LLM Sandbox
 
-**Lightweight and portable LLM sandbox runtime at home**
+**Lightweight and portable LLM sandbox runtime**
 
 LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated manner using Docker containers. This project aims to provide an easy-to-use interface for setting up, managing, and executing code in a controlled Docker environment, making it ideal for testing and experimenting with LLMs.
 
