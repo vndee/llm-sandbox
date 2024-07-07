@@ -1,9 +1,16 @@
+import io
 import os
 import docker
+import tarfile
 from typing import List, Optional, Union
 
 from docker.models.images import Image
-from llm_sandbox.utils import image_exists
+from llm_sandbox.utils import (
+    image_exists,
+    get_libraries_installation_command,
+    get_code_file_extension,
+    get_code_execution_command,
+)
 from llm_sandbox.const import SupportedLanguage, SupportedLanguageValues
 
 
@@ -47,14 +54,14 @@ class SandboxSession:
 
     def open(self):
         warning_str = (
-            "Since the `keep_image` flag is set to True the image and container will not be removed after the session "
-            "ends and remains for future use."
+            "Since the `keep_template` flag is set to True the docker image will not be removed after the session ends "
+            "and remains for future use."
         )
         if self.dockerfile:
             self.path = os.path.dirname(self.dockerfile)
             if self.verbose:
                 f_str = f"Building docker image from {self.dockerfile}"
-                f_str = f"{f_str}. {warning_str}" if self.keep_template else f_str
+                f_str = f"{f_str}\n{warning_str}" if self.keep_template else f_str
                 print(f_str)
 
             self.image, _ = self.client.images.build(
@@ -67,8 +74,8 @@ class SandboxSession:
         if isinstance(self.image, str):
             if not image_exists(self.client, self.image):
                 if self.verbose:
-                    f_str = f"Pulling image {self.image}"
-                    f_str = f"{f_str}. {warning_str}" if self.keep_template else f_str
+                    f_str = f"Pulling image {self.image}.."
+                    f_str = f"{f_str}\n{warning_str}" if self.keep_template else f_str
                     print(f_str)
 
                 self.image = self.client.images.pull(self.image)
@@ -81,7 +88,7 @@ class SandboxSession:
         self.container = self.client.containers.run(self.image, detach=True, tty=True)
 
     def close(self):
-        if self.container and not self.keep_template:
+        if self.container:
             self.container.remove(force=True)
             self.container = None
 
@@ -107,20 +114,75 @@ class SandboxSession:
             else:
                 if self.verbose:
                     print(
-                        f"Image {self.image.tags[-1]} is in use by other containers. Skipping removal."
+                        f"Image {self.image.tags[-1]} is in use by other containers. Skipping removal.."
                     )
 
-    def run(self, code: str, libraries: List = []):
-        raise NotImplementedError
+    def run(self, code: str, libraries: Optional[List] = None):
+        if not self.container:
+            raise RuntimeError(
+                "Session is not open. Please call open() method before running code."
+            )
 
-    def copy_from_runtime(self, path: str):
-        raise NotImplementedError
+        if libraries:
+            command = get_libraries_installation_command(self.lang, libraries)
+            self.execute_command(command)
 
-    def copy_to_runtime(self, path: str):
-        raise NotImplementedError
+        code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
+        with open(code_file, "w") as f:
+            f.write(code)
 
-    def execute_command(self, command: str, shell: str = "/bin/sh"):
-        raise NotImplementedError
+        self.copy_to_runtime(code_file, code_file)
+        result = self.execute_command(get_code_execution_command(self.lang, code_file))
+        return result
+
+    def copy_from_runtime(self, src: str, dest: str):
+        if not self.container:
+            raise RuntimeError(
+                "Session is not open. Please call open() method before copying files."
+            )
+
+        if self.verbose:
+            print(f"Copying {self.container.short_id}:{src} to {dest}..")
+
+        bits, stat = self.container.get_archive(src)
+        if stat["size"] == 0:
+            raise FileNotFoundError(f"File {src} not found in the container")
+
+        tarstream = io.BytesIO(b"".join(bits))
+        with tarfile.open(fileobj=tarstream, mode="r") as tar:
+            tar.extractall(os.path.dirname(dest))
+
+    def copy_to_runtime(self, src: str, dest: str):
+        if not self.container:
+            raise RuntimeError(
+                "Session is not open. Please call open() method before copying files."
+            )
+
+        if self.verbose:
+            print(f"Copying {src} to {self.container.short_id}:{dest}..")
+
+        tarstream = io.BytesIO()
+        with tarfile.open(fileobj=tarstream, mode="w") as tar:
+            tar.add(src, arcname=os.path.basename(src))
+
+        tarstream.seek(0)
+        self.container.put_archive(os.path.dirname(dest), tarstream)
+
+    def execute_command(self, command: str):
+        if not self.container:
+            raise RuntimeError(
+                "Session is not open. Please call open() method before executing commands."
+            )
+
+        if self.verbose:
+            print(f"Executing command: {command}")
+
+        exit_code, output = self.container.exec_run(command)
+        if self.verbose:
+            print(f"Output: {output.decode()}")
+            print(f"Exit code: {exit_code}")
+
+        return exit_code, output.decode()
 
     def __enter__(self):
         self.open()
@@ -128,10 +190,3 @@ class SandboxSession:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
-
-if __name__ == "__main__":
-    with SandboxSession(
-        dockerfile="tests/busybox.Dockerfile", keep_template=False, lang="python"
-    ) as session:
-        session.run("print('Hello, World!')")
