@@ -121,7 +121,7 @@ def run_go_code():
             )
             func main() {
                 fmt.Println("Hello, World!")
-                json := []byte(`...`)
+                json := []byte(`{"price": 100}`)
 
                 root, _ := ajson.Unmarshal(json)
                 nodes, _ := root.JSONPath("$..price")
