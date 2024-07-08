@@ -129,7 +129,7 @@ Here is a list of things you can do to contribute:
 - [ ] Add Java maven support.
 - [x] Add support for JavaScript.
 - [x] Add support for C++.
-- [ ] Add support for Go.
+- [x] Add support for Go.
 - [ ] Add support for Ruby.
 - [ ] Add remote Docker host support.
 - [ ] Add remote Kubernetes cluster support.

@@ -139,27 +139,36 @@ class SandboxSession:
                 )
 
             if self.lang == SupportedLanguage.GO:
-                init_cmd = "sh -c 'cd /sandbox && go mod init example.com/sandbox && go mod tidy'"
-                self.execute_command(init_cmd)
+                self.execute_command("mkdir -p /example")
+                self.execute_command("go mod init example", worKdir="/example")
+                self.execute_command("go mod tidy", worKdir="/example")
 
                 for lib in libraries:
-                    install_cmd = f"sh -c 'cd /sandbox && go get {lib}'"
-                    self.execute_command(install_cmd)
+                    command = get_libraries_installation_command(self.lang, lib)
+                    self.execute_command(command, worKdir="/example")
             else:
                 for lib in libraries:
                     command = get_libraries_installation_command(self.lang, lib)
                     self.execute_command(command)
 
         code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
+        if self.lang == SupportedLanguage.GO:
+            code_dest_file = "/example/code.go"
+        else:
+            code_dest_file = code_file
+
         with open(code_file, "w") as f:
             f.write(code)
 
-        self.copy_to_runtime(code_file, code_file)
+        self.copy_to_runtime(code_file, code_dest_file)
 
         output = ""
-        commands = get_code_execution_command(self.lang, code_file)
+        commands = get_code_execution_command(self.lang, code_dest_file)
         for command in commands:
-            output = self.execute_command(command)
+            if self.lang == SupportedLanguage.GO:
+                output = self.execute_command(command, worKdir="/example")
+            else:
+                output = self.execute_command(command)
 
         return output
 
@@ -204,7 +213,7 @@ class SandboxSession:
         tarstream.seek(0)
         self.container.put_archive(os.path.dirname(dest), tarstream)
 
-    def execute_command(self, command: Optional[str]):
+    def execute_command(self, command: Optional[str], worKdir: Optional[str] = None):
         if not command:
             raise ValueError("Command cannot be empty")
 
@@ -216,9 +225,14 @@ class SandboxSession:
         if self.verbose:
             print(f"Executing command: {command}")
 
-        _, exec_log = self.container.exec_run(command, stream=True, tty=True)
-        output = ""
+        if worKdir:
+            _, exec_log = self.container.exec_run(
+                command, stream=True, tty=True, workdir=worKdir
+            )
+        else:
+            _, exec_log = self.container.exec_run(command, stream=True, tty=True)
 
+        output = ""
         if self.verbose:
             print("Output:", end=" ")
 

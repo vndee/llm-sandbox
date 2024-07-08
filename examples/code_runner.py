@@ -99,7 +99,7 @@ def run_cpp_code():
 
 
 def run_go_code():
-    with SandboxSession(lang="go", keep_template=False, verbose=True) as session:
+    with SandboxSession(lang="go", keep_template=True, verbose=True) as session:
         output = session.run(
             """
             package main
@@ -117,20 +117,31 @@ def run_go_code():
             package main
             import (
                 "fmt"
-                "github.com/gorilla/mux"
+                "github.com/spyzhov/ajson"
             )
             func main() {
                 fmt.Println("Hello, World!")
+                json := []byte(`...`)
+
+                root, _ := ajson.Unmarshal(json)
+                nodes, _ := root.JSONPath("$..price")
+                for _, node := range nodes {
+                    node.SetNumeric(node.MustNumeric() * 1.25)
+                    node.Parent().AppendObject("currency", ajson.StringNode("", "EUR"))
+                }
+                result, _ := ajson.Marshal(root)
+
+                fmt.Printf("%s", result)
             }
             """,
-            libraries=["github.com/gorilla/mux"],
+            libraries=["github.com/spyzhov/ajson"],
         )
         print(output)
 
 
 if __name__ == "__main__":
-    run_python_code()
-    run_java_code()
-    run_javascript_code()
-    run_cpp_code()
-    # run_go_code()
+    # run_python_code()
+    # run_java_code()
+    # run_javascript_code()
+    # run_cpp_code()
+    run_go_code()
