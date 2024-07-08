@@ -23,7 +23,7 @@ def image_exists(client: DockerClient, image: str) -> bool:
 
 
 def get_libraries_installation_command(
-    lang: str, libraries: List[str]
+    lang: str, library: str
 ) -> Optional[str]:
     """
     Get the command to install libraries for the given language
@@ -32,17 +32,17 @@ def get_libraries_installation_command(
     :return: Installation command
     """
     if lang == SupportedLanguage.PYTHON:
-        return f"pip install {' '.join(libraries)}"
+        return f"pip install {library}"
     elif lang == SupportedLanguage.JAVA:
-        return f"mvn install:install-file -Dfile={' '.join(libraries)}"
+        return f"mvn install:install-file -Dfile={library}"
     elif lang == SupportedLanguage.JAVASCRIPT:
-        return f"yarn add {' '.join(libraries)}"
+        return f"yarn add {library}"
     elif lang == SupportedLanguage.CPP:
-        return f"apt-get install {' '.join(libraries)}"
+        return f"apt-get install {library}"
     elif lang == SupportedLanguage.GO:
-        return f"go get {' '.join(libraries)}"
+        return f"go get {library}"
     elif lang == SupportedLanguage.RUBY:
-        return f"gem install {' '.join(libraries)}"
+        return f"gem install {library}"
     else:
         raise ValueError(f"Language {lang} is not supported")
 

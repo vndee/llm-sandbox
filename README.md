@@ -133,6 +133,7 @@ Here is a list of things you can do to contribute:
 - [ ] Add support for Ruby.
 - [ ] Add remote Docker host support.
 - [ ] Add remote Kubernetes cluster support.
+- [ ] Release version 1.0.0.
 
 ### License
 

@@ -73,7 +73,7 @@ class SandboxSession:
             self.image, _ = self.client.images.build(
                 path=self.path,
                 dockerfile=os.path.basename(self.dockerfile),
-                tag="sandbox",
+                tag=f"sandbox-{self.lang.lower()}-{os.path.basename(self.path)}",
             )
             self.is_create_template = True
 
@@ -138,8 +138,17 @@ class SandboxSession:
                     f"Library installation has not been supported for {self.lang} yet!"
                 )
 
-            command = get_libraries_installation_command(self.lang, libraries)
-            self.execute_command(command)
+            if self.lang == SupportedLanguage.GO:
+                init_cmd = "sh -c 'cd /sandbox && go mod init example.com/sandbox && go mod tidy'"
+                self.execute_command(init_cmd)
+
+                for lib in libraries:
+                    install_cmd = f"sh -c 'cd /sandbox && go get {lib}'"
+                    self.execute_command(install_cmd)
+            else:
+                for lib in libraries:
+                    command = get_libraries_installation_command(self.lang, lib)
+                    self.execute_command(command)
 
         code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
         with open(code_file, "w") as f:
@@ -207,7 +216,7 @@ class SandboxSession:
         if self.verbose:
             print(f"Executing command: {command}")
 
-        _, exec_log = self.container.exec_run(command, stream=True)
+        _, exec_log = self.container.exec_run(command, stream=True, tty=True)
         output = ""
 
         if self.verbose:

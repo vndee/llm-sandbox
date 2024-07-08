@@ -98,8 +98,39 @@ def run_cpp_code():
         print(output)
 
 
+def run_go_code():
+    with SandboxSession(lang="go", keep_template=False, verbose=True) as session:
+        output = session.run(
+            """
+            package main
+            import "fmt"
+            func main() {
+                fmt.Println("Hello, World!")
+            }
+            """,
+        )
+        print(output)
+
+        # run with libraries
+        output = session.run(
+            """
+            package main
+            import (
+                "fmt"
+                "github.com/gorilla/mux"
+            )
+            func main() {
+                fmt.Println("Hello, World!")
+            }
+            """,
+            libraries=["github.com/gorilla/mux"],
+        )
+        print(output)
+
+
 if __name__ == "__main__":
     run_python_code()
     run_java_code()
     run_javascript_code()
     run_cpp_code()
+    # run_go_code()
