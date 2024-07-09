@@ -90,6 +90,24 @@ with SandboxSession(lang="python", keep_template=True) as session:
 
 For other languages usage, please refer to the [examples](examples/code_runner.py).
 
+You can also use [remote Docker host](https://docs.docker.com/config/daemon/remote-access/) as below:
+    
+```python
+from llm_sandbox import SandboxSession
+
+with SandboxSession(
+    mage="python:3.9.19-bullseye", 
+    keep_template=True, 
+    lang="python", 
+    docker_host="tcp://<your_host>:<port>", 
+    docker_tls_verify=True, 
+    docker_cert_path="path/to/cert/dir"
+) as session:
+    result = session.run("print('Hello, World!')")
+    print(result)
+```
+
+
 ### API Reference
 
 #### `SandboxSession`
@@ -131,7 +149,7 @@ Here is a list of things you can do to contribute:
 - [x] Add support for C++.
 - [x] Add support for Go.
 - [ ] Add support for Ruby.
-- [ ] Add remote Docker host support.
+- [x] Add remote Docker host support.
 - [ ] Add remote Kubernetes cluster support.
 - [ ] Release version 1.0.0.
 
