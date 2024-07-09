@@ -10,7 +10,7 @@ LLM Sandbox is a lightweight and portable sandbox environment designed to run la
 - **Isolation:** Run your code in isolated Docker containers to prevent interference with your host system.
 - **Flexibility:** Support for multiple programming languages.
 - **Portability:** Use predefined Docker images or custom Dockerfiles.
-- **Scalability:** Support Kubernetes.
+- **Scalability:** Support Kubernetes and remote Docker host.
 
 ### Installation
 
