@@ -1,9 +1,13 @@
+import io
+import os
 import time
+import uuid
+import tarfile
 from typing import List, Optional
 
 from kubernetes import client as k8s_client, config
 from kubernetes.stream import stream
-from llm_sandbox.base import Session
+from llm_sandbox.base import Session, ConsoleOutput, KubernetesConsoleOutput
 from llm_sandbox.utils import (
     get_libraries_installation_command,
     get_code_file_extension,
@@ -49,7 +53,7 @@ class SandboxKubernetesSession(Session):
 
         self.image = image
         self.kube_namespace = kube_namespace
-        self.pod_name = f"sandbox-{lang.lower()}"
+        self.pod_name = f"sandbox-{lang.lower()}-{uuid.uuid4().hex}"
         self.keep_template = keep_template
         self.container = None
 
@@ -89,36 +93,67 @@ class SandboxKubernetesSession(Session):
         self._delete_kubernetes_pod()
 
     def _delete_kubernetes_pod(self):
-        if not self.keep_template:
-            self.client.delete_namespaced_pod(
-                name=self.pod_name,
-                namespace=self.kube_namespace,
-                body=k8s_client.V1DeleteOptions(),
-            )
+        self.client.delete_namespaced_pod(
+            name=self.pod_name,
+            namespace=self.kube_namespace,
+            body=k8s_client.V1DeleteOptions(),
+        )
 
-    def run(self, code: str, libraries: Optional[List] = None):
+    def run(self, code: str, libraries: Optional[List] = None) -> ConsoleOutput:
         if not self.container:
             raise RuntimeError(
                 "Session is not open. Please call open() method before running code."
             )
 
         if libraries:
-            command = get_libraries_installation_command(self.lang, libraries)
-            self.execute_command(command)
+            if self.lang == SupportedLanguage.GO:
+                self.execute_command("mkdir -p /example")
+                self.execute_command("go mod init example", workdir="/example")
+                self.execute_command("go mod tidy", workdir="/example")
+
+                for library in libraries:
+                    install_command = get_libraries_installation_command(
+                        self.lang, library
+                    )
+                    output = self.execute_command(install_command, workdir="/example")
+                    if output.exit_code != 0:
+                        raise RuntimeError(
+                            f"Failed to install library {library}: {output}"
+                        )
+            else:
+                for library in libraries:
+                    install_command = get_libraries_installation_command(
+                        self.lang, library
+                    )
+                    output = self.execute_command(install_command)
+                    if output.exit_code != 0:
+                        raise RuntimeError(
+                            f"Failed to install library {library}: {output}"
+                        )
 
         code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
+        if self.lang == SupportedLanguage.GO:
+            code_dest_file = "/example/code.go"
+        else:
+            code_dest_file = code_file
+
         with open(code_file, "w") as f:
             f.write(code)
 
-        self.copy_to_runtime(code_file, code_file)
-        commands = get_code_execution_command(self.lang, code_file)
+        self.copy_to_runtime(code_file, code_dest_file)
+        commands = get_code_execution_command(self.lang, code_dest_file)
 
-        output = ""
+        output = KubernetesConsoleOutput(0, "")
         for command in commands:
-            exit_code, output = self.execute_command(command)
-            if exit_code != 0:
+            if self.lang == SupportedLanguage.GO:
+                output = self.execute_command(command, workdir="/example")
+            else:
+                output = self.execute_command(command)
+
+            if output.exit_code != 0:
                 break
-        return exit_code, output
+
+        return ConsoleOutput(output.text)
 
     def copy_to_runtime(self, src: str, dest: str):
         if not self.container:
@@ -126,11 +161,25 @@ class SandboxKubernetesSession(Session):
                 "Session is not open. Please call open() method before copying files."
             )
 
+        start_time = time.time()
         if self.verbose:
             print(f"Copying {src} to {self.container}:{dest}..")
 
+        dest_dir = os.path.dirname(dest)
+        dest_file = os.path.basename(dest)
+
+        if dest_dir:
+            self.execute_command(f"mkdir -p {dest_dir}")
+
         with open(src, "rb") as f:
-            exec_command = ["tar", "xvf", "-", "-C", dest]
+            tarstream = io.BytesIO()
+            with tarfile.open(fileobj=tarstream, mode="w") as tar:
+                tarinfo = tarfile.TarInfo(name=dest_file)
+                tarinfo.size = os.path.getsize(src)
+                tar.addfile(tarinfo, f)
+            tarstream.seek(0)
+
+            exec_command = ["tar", "xvf", "-", "-C", dest_dir]
             resp = stream(
                 self.client.connect_get_namespaced_pod_exec,
                 self.container,
@@ -148,8 +197,14 @@ class SandboxKubernetesSession(Session):
                     print(resp.read_stdout())
                 if resp.peek_stderr():
                     print(resp.read_stderr())
-                resp.write_stdin(f.read())
+                resp.write_stdin(tarstream.read(4096))
             resp.close()
+
+        end_time = time.time()
+        if self.verbose:
+            print(
+                f"Copied {src} to {self.container}:{dest} in {end_time - start_time:.2f} seconds"
+            )
 
     def copy_from_runtime(self, src: str, dest: str):
         if not self.container:
@@ -180,7 +235,9 @@ class SandboxKubernetesSession(Session):
                 if resp.peek_stderr():
                     print(resp.read_stderr())
 
-    def execute_command(self, command: str):
+    def execute_command(
+        self, command: str, workdir: Optional[str] = None
+    ) -> KubernetesConsoleOutput:
         if not self.container:
             raise RuntimeError(
                 "Session is not open. Please call open() method before executing commands."
@@ -189,7 +246,11 @@ class SandboxKubernetesSession(Session):
         if self.verbose:
             print(f"Executing command: {command}")
 
-        exec_command = ["/bin/sh", "-c", command]
+        if workdir:
+            exec_command = ["sh", "-c", f"cd {workdir} && {command}"]
+        else:
+            exec_command = ["/bin/sh", "-c", command]
+
         resp = stream(
             self.client.connect_get_namespaced_pod_exec,
             self.container,
@@ -199,7 +260,25 @@ class SandboxKubernetesSession(Session):
             stdin=False,
             stdout=True,
             tty=False,
+            _preload_content=False,
         )
-        output = resp.read_stdout()
-        exit_code = 0 if resp.returncode is None else resp.returncode
-        return exit_code, output
+
+        output = ""
+        if self.verbose:
+            print("Output:", end=" ")
+
+        while resp.is_open():
+            resp.update(timeout=1)
+            if resp.peek_stdout():
+                chunk = resp.read_stdout()
+                output += chunk
+                if self.verbose:
+                    print(chunk, end="")
+            if resp.peek_stderr():
+                chunk = resp.read_stderr()
+                output += chunk
+                if self.verbose:
+                    print(chunk, end="")
+
+        exit_code = resp.returncode
+        return KubernetesConsoleOutput(exit_code, output)

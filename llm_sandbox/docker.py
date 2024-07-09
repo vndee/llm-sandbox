@@ -12,7 +12,7 @@ from llm_sandbox.utils import (
     get_code_file_extension,
     get_code_execution_command,
 )
-from llm_sandbox.base import Session
+from llm_sandbox.base import Session, ConsoleOutput
 from llm_sandbox.const import (
     SupportedLanguage,
     SupportedLanguageValues,
@@ -137,7 +137,7 @@ class SandboxDockerSession(Session):
                         f"Image {self.image.tags[-1]} is in use by other containers. Skipping removal.."
                     )
 
-    def run(self, code: str, libraries: Optional[List] = None):
+    def run(self, code: str, libraries: Optional[List] = None) -> ConsoleOutput:
         if not self.container:
             raise RuntimeError(
                 "Session is not open. Please call open() method before running code."
@@ -151,16 +151,16 @@ class SandboxDockerSession(Session):
 
             if self.lang == SupportedLanguage.GO:
                 self.execute_command("mkdir -p /example")
-                self.execute_command("go mod init example", worKdir="/example")
-                self.execute_command("go mod tidy", worKdir="/example")
+                self.execute_command("go mod init example", workdir="/example")
+                self.execute_command("go mod tidy", workdir="/example")
 
-                for lib in libraries:
-                    command = get_libraries_installation_command(self.lang, lib)
-                    self.execute_command(command, worKdir="/example")
+                for library in libraries:
+                    command = get_libraries_installation_command(self.lang, library)
+                    _ = self.execute_command(command, workdir="/example")
             else:
-                for lib in libraries:
-                    command = get_libraries_installation_command(self.lang, lib)
-                    self.execute_command(command)
+                for library in libraries:
+                    command = get_libraries_installation_command(self.lang, library)
+                    _ = self.execute_command(command)
 
         code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
         if self.lang == SupportedLanguage.GO:
@@ -173,11 +173,11 @@ class SandboxDockerSession(Session):
 
         self.copy_to_runtime(code_file, code_dest_file)
 
-        output = ""
+        output = ConsoleOutput("")
         commands = get_code_execution_command(self.lang, code_dest_file)
         for command in commands:
             if self.lang == SupportedLanguage.GO:
-                output = self.execute_command(command, worKdir="/example")
+                output = self.execute_command(command, workdir="/example")
             else:
                 output = self.execute_command(command)
 
@@ -224,7 +224,9 @@ class SandboxDockerSession(Session):
         tarstream.seek(0)
         self.container.put_archive(os.path.dirname(dest), tarstream)
 
-    def execute_command(self, command: Optional[str], worKdir: Optional[str] = None):
+    def execute_command(
+        self, command: Optional[str], workdir: Optional[str] = None
+    ) -> ConsoleOutput:
         if not command:
             raise ValueError("Command cannot be empty")
 
@@ -236,12 +238,14 @@ class SandboxDockerSession(Session):
         if self.verbose:
             print(f"Executing command: {command}")
 
-        if worKdir:
-            _, exec_log = self.container.exec_run(
-                command, stream=True, tty=True, workdir=worKdir
+        if workdir:
+            exit_code, exec_log = self.container.exec_run(
+                command, stream=True, tty=True, workdir=workdir
             )
         else:
-            _, exec_log = self.container.exec_run(command, stream=True, tty=True)
+            exit_code, exec_log = self.container.exec_run(
+                command, stream=True, tty=True
+            )
 
         output = ""
         if self.verbose:
@@ -253,4 +257,4 @@ class SandboxDockerSession(Session):
             if self.verbose:
                 print(chunk_str, end="")
 
-        return output
+        return ConsoleOutput(output)

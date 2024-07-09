@@ -152,7 +152,8 @@ Here is a list of things you can do to contribute:
 - [x] Add support for Go.
 - [ ] Add support for Ruby.
 - [x] Add remote Docker host support.
-- [ ] Add remote Kubernetes cluster support.
+- [x] Add remote Kubernetes cluster support.
+- [ ] Commit the last container state to the image before closing kubernetes session.
 - [ ] Release version 1.0.0.
 
 ### License
