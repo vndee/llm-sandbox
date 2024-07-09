@@ -117,8 +117,8 @@ class TestSandboxSession(unittest.TestCase):
         mock_container.exec_run.return_value = (0, iter([b"Hello\n"]))
 
         output = self.session.execute_command(command)
-        mock_container.exec_run.assert_called_with(command, stream=True)
-        self.assertEqual(output, "Hello\n")
+        mock_container.exec_run.assert_called_with(command, stream=True, tty=True)
+        self.assertEqual(output.text, "Hello\n")
 
     def test_execute_empty_command(self):
         with self.assertRaises(ValueError):
