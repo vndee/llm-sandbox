@@ -84,7 +84,7 @@ with SandboxSession(lang="python", keep_template=True) as session:
     session.copy_from_runtime("/sandbox/output.txt", "output.txt")
 ```
 
-For other languages usage, please refer to the [examples](examples/code_runner.py).
+For other languages usage, please refer to the [examples](examples/code_runner_docker.py).
 
 You can also use [remote Docker host](https://docs.docker.com/config/daemon/remote-access/) as below:
 

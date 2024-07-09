@@ -31,3 +31,10 @@ class Session(ABC):
     @abstractmethod
     def execute_command(self, command: str):
         raise NotImplementedError
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.close()
