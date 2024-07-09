@@ -109,6 +109,9 @@ with SandboxSession(
     print(result)
 ```
 
+For Kubernetes usage, please refer to the examples. Essentially, you just need to set the use_kubernetes flag to True and provide the Kubernetes client, or leave it as the default for the local context.
+
+```python
 
 ### API Reference
 
