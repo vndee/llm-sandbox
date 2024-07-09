@@ -52,19 +52,16 @@ from llm_sandbox import SandboxSession
 
 # Create a new sandbox session
 with SandboxSession(image="python:3.9.19-bullseye", keep_template=True, lang="python") as session:
-    # Run some Python code in the sandbox
     result = session.run("print('Hello, World!')")
     print(result)
 
 # With custom Dockerfile
 with SandboxSession(dockerfile="Dockerfile", keep_template=True, lang="python") as session:
-    # Run some Python code in the sandbox
     result = session.run("print('Hello, World!')")
     print(result)
 
 # Or default image
 with SandboxSession(lang="python", keep_template=True) as session:
-    # Run some Python code in the sandbox
     result = session.run("print('Hello, World!')")
     print(result)
 ```
@@ -75,7 +72,6 @@ LLM Sandbox also supports copying files between the host and the sandbox:
 ```python
 from llm_sandbox import SandboxSession
 
-# Create a new sandbox session
 with SandboxSession(lang="python", keep_template=True) as session:
     # Copy a file from the host to the sandbox
     session.copy_to_runtime("test.py", "/sandbox/test.py")
@@ -93,7 +89,6 @@ For other languages usage, please refer to the [examples](examples/code_runner.p
 You can also use [remote Docker host](https://docs.docker.com/config/daemon/remote-access/) as below:
 
 ```python
-import os
 import docker
 from llm_sandbox import SandboxSession
 
