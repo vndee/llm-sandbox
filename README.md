@@ -126,11 +126,11 @@ SandboxSession(
 )
 ```
 
-- **image**: Docker image to use.
-- **dockerfile**: Path to the Dockerfile, if an image is not provided.
-- **lang**: Language of the code (default: `SupportedLanguage.PYTHON`).
-- **keep_template**: If `True`, the image and container will not be removed after the session ends.
-- **verbose**: If `True`, print messages.
+- **`image`**: Docker image to use.
+- **`dockerfile`**: Path to the Dockerfile, if an image is not provided.
+- **`lang`**: Language of the code (default: `SupportedLanguage.PYTHON`).
+- **`keep_template`**: If `True`, the image and container will not be removed after the session ends.
+- **`verbose`**: If `True`, print messages.
 
 ##### Methods
 
