@@ -24,26 +24,23 @@ from llm_sandbox.const import (
 class SandboxDockerSession(Session):
     def __init__(
         self,
+        client: Optional[docker.DockerClient] = None,
         image: Optional[str] = None,
         dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         verbose: bool = True,
-        docker_host: Optional[str] = None,
-        docker_tls_verify: Optional[bool] = None,
-        docker_cert_path: Optional[str] = None,
     ):
         """
         Create a new sandbox session
+        :param client: Docker client, if not provided, a new client will be created based on local Docker context
         :param image: Docker image to use
         :param dockerfile: Path to the Dockerfile, if image is not provided
         :param lang: Language of the code
         :param keep_template: if True, the image and container will not be removed after the session ends
         :param verbose: if True, print messages
-        :param docker_host: The URL of the Docker host. For example, tcp://localhost:1234.
-        :param docker_tls_verify: Whether to verify the server's certificate or not.
-        :param docker_cert_path: Path to the directory containing the CA certificate, client certificate, and client key.
         """
+        super().__init__(lang, verbose)
         if image and dockerfile:
             raise ValueError("Only one of image or dockerfile should be provided")
 
@@ -56,7 +53,14 @@ class SandboxDockerSession(Session):
             image = DefaultImage.__dict__[lang.upper()]
 
         self.lang: str = lang
-        self.client: docker.DockerClient = self._create_docker_client(docker_host, docker_tls_verify, docker_cert_path)
+        self.client: Optional[docker.DockerClient] = None
+
+        if not client:
+            print("Using local Docker context since client is not provided..")
+            self.client = docker.from_env()
+        else:
+            self.client = client
+
         self.image: Union[Image, str] = image
         self.dockerfile: Optional[str] = dockerfile
         self.container: Optional[Container] = None
@@ -64,28 +68,6 @@ class SandboxDockerSession(Session):
         self.keep_template = keep_template
         self.is_create_template: bool = False
         self.verbose = verbose
-
-    @staticmethod
-    def _create_docker_client(docker_host: Optional[str], docker_tls_verify: Optional[bool], docker_cert_path: Optional[str]) -> docker.DockerClient:
-        """
-        Create a new Docker client
-        :param docker_host: The URL of the Docker host. For example, tcp://localhost:1234.
-        :param docker_tls_verify: Whether to verify the server's certificate or not.
-        :param docker_cert_path: Path to the directory containing the CA certificate, client certificate, and client key.
-        :return: Docker client
-        """
-        if docker_host:
-            tls_config = None
-            if docker_tls_verify and docker_cert_path:
-                tls_config = docker.tls.TLSConfig(
-                    client_cert=(os.path.join(docker_cert_path, "cert.pem"), os.path.join(docker_cert_path, "key.pem")),
-                    ca_cert=os.path.join(docker_cert_path, "ca.pem"),
-                    verify=docker_tls_verify
-                )
-
-            return docker.DockerClient(base_url=docker_host, tls=tls_config)
-
-        return docker.from_env()
 
     def open(self):
         warning_str = (

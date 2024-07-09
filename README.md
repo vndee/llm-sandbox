@@ -91,17 +91,24 @@ with SandboxSession(lang="python", keep_template=True) as session:
 For other languages usage, please refer to the [examples](examples/code_runner.py).
 
 You can also use [remote Docker host](https://docs.docker.com/config/daemon/remote-access/) as below:
-    
+
 ```python
+import os
+import docker
 from llm_sandbox import SandboxSession
 
+tls_config = docker.tls.TLSConfig(
+    client_cert=("path/to/cert.pem", "path/to/key.pem"),
+    ca_cert="path/to/ca.pem",
+    verify=True
+)
+docker_client = docker.DockerClient(base_url="tcp://<your_host>:<port>", tls=tls_config)
+
 with SandboxSession(
-    mage="python:3.9.19-bullseye", 
-    keep_template=True, 
-    lang="python", 
-    docker_host="tcp://<your_host>:<port>", 
-    docker_tls_verify=True, 
-    docker_cert_path="path/to/cert/dir"
+    client=docker_client,
+    mage="python:3.9.19-bullseye",
+    keep_template=True,
+    lang="python",
 ) as session:
     result = session.run("print('Hello, World!')")
     print(result)
