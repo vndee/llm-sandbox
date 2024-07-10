@@ -46,7 +46,7 @@ def run_javascript_code():
         output = session.run(
             """
             const axios = require('axios');
-            axios.get('https://jsonplaceholder.typicode.com/posts/1', 
+            axios.get('https://jsonplaceholder.typicode.com/posts/1',
             {
                 timeout: 5000,
                 headers: {
