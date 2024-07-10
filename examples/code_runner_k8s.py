@@ -43,16 +43,20 @@ def run_javascript_code():
         output = session.run("console.log('Hello, World!')")
         print(output.text)
 
-        # TODO: Fix this
-        # output = session.run(
-        #     """
-        #     const axios = require('axios');
-        #     axios.get('https://jsonplaceholder.typicode.com/posts/1')
-        #         .then(response => console.log(response.data));
-        #     """,
-        #     libraries=["axios"],
-        # )
-        # print(output.text)
+        output = session.run(
+            """
+            const axios = require('axios');
+            axios.get('https://jsonplaceholder.typicode.com/posts/1', 
+            {
+                timeout: 5000,
+                headers: {
+                    Accept: 'application/json',
+                },
+            }).then(response => console.log(response.data));
+            """,
+            libraries=["axios"],
+        )
+        print(output.text)
 
 
 def run_cpp_code():
@@ -151,8 +155,8 @@ def run_go_code():
 
 
 if __name__ == "__main__":
-    # run_python_code()
-    # run_java_code()
+    run_python_code()
+    run_java_code()
     run_javascript_code()
-    # run_cpp_code()
-    # run_go_code()
+    run_cpp_code()
+    run_go_code()
