@@ -45,7 +45,9 @@ class SandboxKubernetesSession(Session):
             image = DefaultImage.__dict__[lang.upper()]
 
         if not client:
-            print("Using local Kubernetes context since client is not provided..")
+            if self.verbose:
+                print("Using local Kubernetes context since client is not provided..")
+
             config.load_kube_config()
             self.client = k8s_client.CoreV1Api()
         else:

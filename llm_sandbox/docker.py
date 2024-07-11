@@ -56,7 +56,9 @@ class SandboxDockerSession(Session):
         self.client: Optional[docker.DockerClient] = None
 
         if not client:
-            print("Using local Docker context since client is not provided..")
+            if self.verbose:
+                print("Using local Docker context since client is not provided..")
+
             self.client = docker.from_env()
         else:
             self.client = client
