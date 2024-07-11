@@ -1,3 +1,5 @@
+# Reference: https://docs.llamaindex.ai/en/stable/examples/agent/anthropic_agent/
+
 from typing import Optional, List
 from llm_sandbox import SandboxSession
 from langchain import hub
@@ -10,7 +12,7 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 def run_code(lang: str, code: str, libraries: Optional[List] = None) -> str:
     """
     Run code in a sandboxed environment.
-    :param lang: The language of the code.
+    :param lang: The language of the code, must be one of ['python', 'java', 'javascript', 'cpp', 'go', 'ruby'].
     :param code: The code to run.
     :param libraries: The libraries to use, it is optional.
     :return: The output of the code.
@@ -42,5 +44,10 @@ if __name__ == "__main__":
 
     output = agent_executor.invoke(
         {"input": "Write python code to calculate the Fibonacci sequence then run it."}
+    )
+    print(output)
+
+    output = agent_executor.invoke(
+        {"input": "Calculate the sum of the first 10000 numbers."}
     )
     print(output)

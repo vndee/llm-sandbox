@@ -163,6 +163,64 @@ if __name__ == "__main__":
     print(output)
 ```
 
+For Llama-Index:
+```python
+from typing import Optional, List
+from llm_sandbox import SandboxSession
+
+from llama_index.llms.openai import OpenAI
+from llama_index.core.tools import FunctionTool
+from llama_index.core.agent import FunctionCallingAgentWorker
+
+
+import nest_asyncio
+
+nest_asyncio.apply()
+
+
+def run_code(lang: str, code: str, libraries: Optional[List] = None) -> str:
+    """
+    Run code in a sandboxed environment.
+    :param lang: The language of the code, must be one of ['python', 'java', 'javascript', 'cpp', 'go', 'ruby'].
+    :param code: The code to run.
+    :param libraries: The libraries to use, it is optional.
+    :return: The output of the code.
+    """
+    with SandboxSession(lang=lang, verbose=False) as session:  # type: ignore[attr-defined]
+        return session.run(code, libraries).text
+
+
+if __name__ == "__main__":
+    llm = OpenAI(model="gpt-4o", temperature=0)
+    code_execution_tool = FunctionTool.from_defaults(fn=run_code)
+
+    agent_worker = FunctionCallingAgentWorker.from_tools(
+        [code_execution_tool],
+        llm=llm,
+        verbose=True,
+        allow_parallel_tool_calls=False,
+    )
+    agent = agent_worker.as_agent()
+
+    response = agent.chat(
+        "Write python code to calculate Pi number by Monte Carlo method then run it."
+    )
+    print(response)
+
+    response = agent.chat(
+        "Write python code to calculate the factorial of a number then run it."
+    )
+    print(response)
+
+    response = agent.chat(
+        "Write python code to calculate the Fibonacci sequence then run it."
+    )
+    print(response)
+
+    response = agent.chat("Calculate the sum of the first 10000 numbers.")
+    print(response)
+```
+
 ### Contributing
 
 We welcome contributions to improve LLM Sandbox! Since I am a Python developer, I am not familiar with other languages. If you are interested in adding better support for other languages, please feel free to submit a pull request.
@@ -176,7 +234,7 @@ Here is a list of things you can do to contribute:
 - [x] Add remote Docker host support.
 - [x] Add remote Kubernetes cluster support.
 - [x] Langchain integration.
-- [ ] LlamaIndex integration.
+- [x] LlamaIndex integration.
 - [ ] Commit the last container state to the image before closing kubernetes session.
 - [ ] Release version 1.0.0.
 
