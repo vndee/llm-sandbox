@@ -21,6 +21,7 @@ class SandboxKubernetesSession(Session):
         self,
         client: Optional[k8s_client.CoreV1Api] = None,
         image: Optional[str] = None,
+        dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         verbose: bool = False,
@@ -30,6 +31,7 @@ class SandboxKubernetesSession(Session):
         Create a new sandbox session
         :param client: Kubernetes client, if not provided, a new client will be created based on local Kubernetes context
         :param image: Docker image to use
+        :param dockerfile: Path to the Dockerfile, if image is not provided
         :param lang: Language of the code
         :param keep_template: if True, the image and container will not be removed after the session ends
         :param verbose: if True, print messages
