@@ -101,7 +101,7 @@ docker_client = docker.DockerClient(base_url="tcp://<your_host>:<port>", tls=tls
 
 with SandboxSession(
     client=docker_client,
-    mage="python:3.9.19-bullseye",
+    image="python:3.9.19-bullseye",
     keep_template=True,
     lang="python",
 ) as session:
@@ -110,6 +110,58 @@ with SandboxSession(
 ```
 
 For Kubernetes usage, please refer to the examples. Essentially, you just need to set the use_kubernetes flag to True and provide the Kubernetes client, or leave it as the default for the local context.
+
+#### Integration
+With Langchain integration, you can easily run the generated code in a safe and isolated environment. Here's an example of how to use LLM Sandbox with Langchain:
+
+```python
+from typing import Optional, List
+from llm_sandbox import SandboxSession
+from langchain import hub
+from langchain_openai import ChatOpenAI
+from langchain.tools import tool
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+
+
+@tool
+def run_code(lang: str, code: str, libraries: Optional[List] = None) -> str:
+    """
+    Run code in a sandboxed environment.
+    :param lang: The language of the code.
+    :param code: The code to run.
+    :param libraries: The libraries to use, it is optional.
+    :return: The output of the code.
+    """
+    with SandboxSession(lang=lang, verbose=False) as session:  # type: ignore[attr-defined]
+        return session.run(code, libraries).text
+
+
+if __name__ == "__main__":
+    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    prompt = hub.pull("hwchase17/openai-functions-agent")
+    tools = [run_code]
+
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+    output = agent_executor.invoke(
+        {
+            "input": "Write python code to calculate Pi number by Monte Carlo method then run it."
+        }
+    )
+    print(output)
+
+    output = agent_executor.invoke(
+        {
+            "input": "Write python code to calculate the factorial of a number then run it."
+        }
+    )
+    print(output)
+
+    output = agent_executor.invoke(
+        {"input": "Write python code to calculate the Fibonacci sequence then run it."}
+    )
+    print(output)
+```
 
 ### API Reference
 
@@ -154,6 +206,8 @@ Here is a list of things you can do to contribute:
 - [ ] Add support for Ruby.
 - [x] Add remote Docker host support.
 - [x] Add remote Kubernetes cluster support.
+- [x] Langchain integration.
+- [ ] LlamaIndex integration.
 - [ ] Commit the last container state to the image before closing kubernetes session.
 - [ ] Release version 1.0.0.
 

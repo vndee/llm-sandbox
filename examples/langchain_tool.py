@@ -15,7 +15,7 @@ def run_code(lang: str, code: str, libraries: Optional[List] = None) -> str:
     :param libraries: The libraries to use, it is optional.
     :return: The output of the code.
     """
-    with SandboxSession(lang=lang) as session:  # type: ignore[attr-defined]
+    with SandboxSession(lang=lang, verbose=False) as session:  # type: ignore[attr-defined]
         return session.run(code, libraries).text
 
 

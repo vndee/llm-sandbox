@@ -24,7 +24,7 @@ class SandboxKubernetesSession(Session):
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         verbose: bool = True,
-        kube_namespace: str = "default",
+        kube_namespace: Optional[str] = "default",
     ):
         """
         Create a new sandbox session
