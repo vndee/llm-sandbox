@@ -236,7 +236,6 @@ Here is a list of things you can do to contribute:
 - [x] Langchain integration.
 - [x] LlamaIndex integration.
 - [ ] Commit the last container state to the image before closing kubernetes session.
-- [ ] Release version 1.0.0.
 
 ### License
 
