@@ -163,37 +163,6 @@ if __name__ == "__main__":
     print(output)
 ```
 
-### API Reference
-
-#### `SandboxSession`
-
-##### Initialization
-
-```python
-SandboxSession(
-    image: Optional[str] = None,
-    dockerfile: Optional[str] = None,
-    lang: str = SupportedLanguage.PYTHON,
-    keep_template: bool = False,
-    verbose: bool = True
-)
-```
-
-- **`image`**: Docker image to use.
-- **`dockerfile`**: Path to the Dockerfile, if an image is not provided.
-- **`lang`**: Language of the code (default: `SupportedLanguage.PYTHON`).
-- **`keep_template`**: If `True`, the image and container will not be removed after the session ends.
-- **`verbose`**: If `True`, print messages.
-
-##### Methods
-
-- **`open()`**: Start the Docker container.
-- **`close()`**: Stop and remove the Docker container.
-- **`run(code: str, libraries: Optional[List] = None)`**: Execute code inside the sandbox.
-- **`copy_from_runtime(src: str, dest: str)`**: Copy a file from the sandbox to the host.
-- **`copy_to_runtime(src: str, dest: str)`**: Copy a file from the host to the sandbox.
-- **`execute_command(command: str)`**: Execute a command inside the sandbox.
-
 ### Contributing
 
 We welcome contributions to improve LLM Sandbox! Since I am a Python developer, I am not familiar with other languages. If you are interested in adding better support for other languages, please feel free to submit a pull request.
