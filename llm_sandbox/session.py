@@ -13,7 +13,7 @@ class SandboxSession:
         image: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
-        verbose: bool = True,
+        verbose: bool = False,
         use_kubernetes: bool = False,
         kube_namespace: Optional[str] = "default",
     ):

@@ -29,7 +29,7 @@ class SandboxDockerSession(Session):
         dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
-        verbose: bool = True,
+        verbose: bool = False,
     ):
         """
         Create a new sandbox session
