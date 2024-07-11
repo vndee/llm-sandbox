@@ -41,8 +41,6 @@ if __name__ == "__main__":
     print(output)
 
     output = agent_executor.invoke(
-        {
-            "input": "Write python code to calculate the Fibonacci sequence then run it."
-        }
+        {"input": "Write python code to calculate the Fibonacci sequence then run it."}
     )
     print(output)
