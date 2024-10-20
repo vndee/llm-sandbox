@@ -2,6 +2,7 @@ import io
 import os
 import docker
 import tarfile
+import tempfile
 from typing import List, Optional, Union
 
 from docker.models.images import Image
@@ -163,27 +164,28 @@ class SandboxDockerSession(Session):
                 for library in libraries:
                     command = get_libraries_installation_command(self.lang, library)
                     _ = self.execute_command(command)
+        with tempfile.TemporaryDirectory() as directory_name:
 
-        code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
-        if self.lang == SupportedLanguage.GO:
-            code_dest_file = "/example/code.go"
-        else:
-            code_dest_file = code_file
-
-        with open(code_file, "w") as f:
-            f.write(code)
-
-        self.copy_to_runtime(code_file, code_dest_file)
-
-        output = ConsoleOutput("")
-        commands = get_code_execution_command(self.lang, code_dest_file)
-        for command in commands:
+            code_file = os.path.join(directory_name,f"code.{get_code_file_extension(self.lang)}")
             if self.lang == SupportedLanguage.GO:
-                output = self.execute_command(command, workdir="/example")
+                code_dest_file = "/example/code.go"
             else:
-                output = self.execute_command(command)
+                code_dest_file = f"/tmp/code.{get_code_file_extension(self.lang)}"# code_file
 
-        return output
+            with open(code_file, "w") as f:
+                f.write(code)
+
+            self.copy_to_runtime(code_file, code_dest_file)
+
+            output = ConsoleOutput("")
+            commands = get_code_execution_command(self.lang, code_dest_file)
+            for command in commands:
+                if self.lang == SupportedLanguage.GO:
+                    output = self.execute_command(command, workdir="/example")
+                else:
+                    output = self.execute_command(command)
+
+            return output
 
     def copy_from_runtime(self, src: str, dest: str):
         if not self.container:
