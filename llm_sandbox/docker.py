@@ -165,12 +165,15 @@ class SandboxDockerSession(Session):
                     command = get_libraries_installation_command(self.lang, library)
                     _ = self.execute_command(command)
         with tempfile.TemporaryDirectory() as directory_name:
-
-            code_file = os.path.join(directory_name,f"code.{get_code_file_extension(self.lang)}")
+            code_file = os.path.join(
+                directory_name, f"code.{get_code_file_extension(self.lang)}"
+            )
             if self.lang == SupportedLanguage.GO:
                 code_dest_file = "/example/code.go"
             else:
-                code_dest_file = f"/tmp/code.{get_code_file_extension(self.lang)}"# code_file
+                code_dest_file = (
+                    f"/tmp/code.{get_code_file_extension(self.lang)}"  # code_file
+                )
 
             with open(code_file, "w") as f:
                 f.write(code)
