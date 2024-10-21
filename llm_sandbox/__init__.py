@@ -1,1 +1,1 @@
-from .session import SandboxSession  # noqa: F401
+from .session import SandboxSession, PythonInteractiveSandboxSession  # noqa: F401

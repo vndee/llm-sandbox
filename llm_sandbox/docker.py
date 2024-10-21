@@ -1,7 +1,9 @@
 import io
 import os
+import time
 import docker
 import tarfile
+import threading
 from typing import List, Optional, Union
 
 from docker.models.images import Image
@@ -30,6 +32,10 @@ class SandboxDockerSession(Session):
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         verbose: bool = False,
+        network_disabled: bool = False,
+        network_mode: Optional[str] = "bridge",
+        remove: bool = True,
+        read_only: bool = False,
     ):
         """
         Create a new sandbox session
@@ -70,6 +76,10 @@ class SandboxDockerSession(Session):
         self.keep_template = keep_template
         self.is_create_template: bool = False
         self.verbose = verbose
+        self.network_disabled = network_disabled
+        self.network_mode = network_mode
+        self.remove = remove
+        self.read_only = read_only
 
     def open(self):
         warning_str = (
@@ -104,7 +114,15 @@ class SandboxDockerSession(Session):
                 if self.verbose:
                     print(f"Using image {self.image.tags[-1]}")
 
-        self.container = self.client.containers.run(self.image, detach=True, tty=True)
+        self.container = self.client.containers.run(
+            self.image,
+            detach=True,
+            tty=True,
+            remove=self.remove,
+            network_disabled=self.network_disabled,
+            network_mode=self.network_mode,
+            read_only=self.read_only
+        )
 
     def close(self):
         if self.container:
@@ -258,5 +276,94 @@ class SandboxDockerSession(Session):
             output += chunk_str
             if self.verbose:
                 print(chunk_str, end="")
+
+        return ConsoleOutput(output)
+
+
+import threading
+import time
+
+
+class PythonInteractiveSandboxDockerSession(SandboxDockerSession):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.python_interpreter = None
+        self.interpreter_thread = None
+        self.interpreter_output = ""
+        self.input_pipe = None
+
+    def open(self):
+        """Open a persistent Docker session with a running Python interpreter."""
+        if not self.container:
+            super().open()
+            print("Checking if Python interpreter is already running..")
+
+            # Start the Python interpreter
+            exec_result = self.container.exec_run(
+                cmd="python -i", tty=True, stdin=True, stdout=True, stderr=True, stream=True
+            )
+            self.input_pipe = exec_result.input
+            self.python_interpreter = exec_result.output
+
+            # Start the interpreter in a separate thread to handle output
+            self.interpreter_thread = threading.Thread(target=self._read_interpreter_output)
+            self.interpreter_thread.start()
+
+            if self.verbose:
+                print(f"Python interpreter started in the container {self.container.short_id}")
+        else:
+            if self.verbose:
+                print("Session is already open. Skipping..")
+
+    def _read_interpreter_output(self):
+        """Helper function to read the Python interpreter output."""
+        for chunk in self.python_interpreter:
+            self.interpreter_output += chunk.decode("utf-8")
+            time.sleep(0.1)  # Simulate waiting for more output
+
+    def close(self):
+        """Close the Docker session and stop the Python interpreter."""
+        if self.input_pipe:
+            # Send an exit command to the interpreter
+            self.input_pipe.write(b"exit()\n")
+            self.input_pipe.flush()
+
+            if self.verbose:
+                print("Python interpreter stopped")
+
+        # Wait for the interpreter thread to stop
+        if self.interpreter_thread and self.interpreter_thread.is_alive():
+            self.interpreter_thread.join()
+
+        super().close()
+
+    def run_cell(self, code: str) -> ConsoleOutput:
+        """
+        Run a cell in the Python interpreter.
+        :param code: Python code to execute
+        :return: Output of the executed code
+        """
+        if not self.container:
+            raise RuntimeError(
+                "Session is not open. Please call open() method before running code."
+            )
+
+        if self.verbose:
+            print(f"Running cell: {code}")
+
+        # Write the code to the interpreter
+        if self.input_pipe:
+            self.input_pipe.write(code.encode("utf-8") + b"\n")
+            self.input_pipe.flush()
+
+        # Allow some time for execution
+        time.sleep(1)
+
+        # Read the output from the interpreter
+        output = self.interpreter_output
+        self.interpreter_output = ""  # Reset the output buffer
+
+        if self.verbose:
+            print(f"Output: {output}")
 
         return ConsoleOutput(output)
