@@ -7,6 +7,7 @@ from typing import List, Optional, Union
 
 from docker.models.images import Image
 from docker.models.containers import Container
+from docker.types import Mount
 from llm_sandbox.utils import (
     image_exists,
     get_libraries_installation_command,
@@ -31,6 +32,7 @@ class SandboxDockerSession(Session):
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         verbose: bool = False,
+        mounts: Optional[list[Mount]] = None,
     ):
         """
         Create a new sandbox session
@@ -71,6 +73,7 @@ class SandboxDockerSession(Session):
         self.keep_template = keep_template
         self.is_create_template: bool = False
         self.verbose = verbose
+        self.mounts = mounts
 
     def open(self):
         warning_str = (
@@ -105,7 +108,9 @@ class SandboxDockerSession(Session):
                 if self.verbose:
                     print(f"Using image {self.image.tags[-1]}")
 
-        self.container = self.client.containers.run(self.image, detach=True, tty=True)
+        self.container = self.client.containers.run(
+            self.image, detach=True, tty=True, mounts=self.mounts
+        )
 
     def close(self):
         if self.container:
