@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "llm-sandbox"
-version = "0.1.1-alpha"
+version = "0.1.2-alpha"
 description = "Lightweight and portable LLM sandbox runtime (code interpreter) Python library"
 authors = ["Duy Huynh <vndee.huynh@gmail.com>"]
 license = "MIT"
