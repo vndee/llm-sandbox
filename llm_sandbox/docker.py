@@ -31,6 +31,7 @@ class SandboxDockerSession(Session):
         dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
+        commit_container: bool = True,
         verbose: bool = False,
         mounts: Optional[list[Mount]] = None,
     ):
@@ -41,6 +42,7 @@ class SandboxDockerSession(Session):
         :param dockerfile: Path to the Dockerfile, if image is not provided
         :param lang: Language of the code
         :param keep_template: if True, the image and container will not be removed after the session ends
+        :param commit_container: if True, the Docker container will be commited after the session ends
         :param verbose: if True, print messages
         """
         super().__init__(lang, verbose)
@@ -71,6 +73,7 @@ class SandboxDockerSession(Session):
         self.container: Optional[Container] = None
         self.path = None
         self.keep_template = keep_template
+        self.commit_container = commit_container
         self.is_create_template: bool = False
         self.verbose = verbose
         self.mounts = mounts
@@ -114,7 +117,7 @@ class SandboxDockerSession(Session):
 
     def close(self):
         if self.container:
-            if isinstance(self.image, Image):
+            if self.commit_container and isinstance(self.image, Image):
                 self.container.commit(self.image.tags[-1])
 
             self.container.remove(force=True)
