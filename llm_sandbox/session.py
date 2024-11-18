@@ -14,6 +14,7 @@ class SandboxSession:
         dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
+        commit_container: bool = True,
         verbose: bool = False,
         use_kubernetes: bool = False,
         kube_namespace: Optional[str] = "default",
@@ -25,6 +26,7 @@ class SandboxSession:
         :param dockerfile: Path to the Dockerfile, if image is not provided
         :param lang: Language of the code
         :param keep_template: if True, the image and container will not be removed after the session ends
+        :param commit_container: if True, the Docker container will be commited after the session ends
         :param verbose: if True, print messages (default is True)
         :param use_kubernetes: if True, use Kubernetes instead of Docker (default is False)
         :param kube_namespace: Kubernetes namespace to use (only if 'use_kubernetes' is True), default is 'default'
@@ -46,5 +48,6 @@ class SandboxSession:
             dockerfile=dockerfile,
             lang=lang,
             keep_template=keep_template,
+            commit_container=commit_container,
             verbose=verbose,
         )
