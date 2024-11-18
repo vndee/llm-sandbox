@@ -18,6 +18,7 @@ class SandboxSession:
         verbose: bool = False,
         use_kubernetes: bool = False,
         kube_namespace: Optional[str] = "default",
+        container_configs: Optional[dict] = None,
     ):
         """
         Create a new sandbox session
@@ -30,6 +31,7 @@ class SandboxSession:
         :param verbose: if True, print messages (default is True)
         :param use_kubernetes: if True, use Kubernetes instead of Docker (default is False)
         :param kube_namespace: Kubernetes namespace to use (only if 'use_kubernetes' is True), default is 'default'
+        :param container_configs: Additional configurations for the Docker container, i.e. resources limits (cpu_count, mem_limit), etc.
         """
         if use_kubernetes:
             return SandboxKubernetesSession(
@@ -50,4 +52,5 @@ class SandboxSession:
             keep_template=keep_template,
             commit_container=commit_container,
             verbose=verbose,
+            container_configs=container_configs,
         )

@@ -34,6 +34,7 @@ class SandboxDockerSession(Session):
         commit_container: bool = True,
         verbose: bool = False,
         mounts: Optional[list[Mount]] = None,
+        container_configs: Optional[dict] = None,
     ):
         """
         Create a new sandbox session
@@ -44,6 +45,8 @@ class SandboxDockerSession(Session):
         :param keep_template: if True, the image and container will not be removed after the session ends
         :param commit_container: if True, the Docker container will be commited after the session ends
         :param verbose: if True, print messages
+        :param mounts: List of mounts to be mounted to the container
+        :param container_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
         """
         super().__init__(lang, verbose)
         if image and dockerfile:
@@ -77,6 +80,7 @@ class SandboxDockerSession(Session):
         self.is_create_template: bool = False
         self.verbose = verbose
         self.mounts = mounts
+        self.container_configs = container_configs
 
     def open(self):
         warning_str = (
@@ -112,7 +116,11 @@ class SandboxDockerSession(Session):
                     print(f"Using image {self.image.tags[-1]}")
 
         self.container = self.client.containers.run(
-            self.image, detach=True, tty=True, mounts=self.mounts
+            self.image,
+            detach=True,
+            tty=True,
+            mounts=self.mounts,
+            **self.container_configs if self.container_configs else {},
         )
 
     def close(self):
