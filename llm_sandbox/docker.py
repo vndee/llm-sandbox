@@ -120,7 +120,7 @@ class SandboxDockerSession(Session):
             detach=True,
             tty=True,
             mounts=self.mounts,
-            **self.container_configs,
+            **self.container_configs if self.container_configs else {},
         )
 
     def close(self):
