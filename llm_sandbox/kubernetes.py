@@ -26,6 +26,7 @@ class SandboxKubernetesSession(Session):
         keep_template: bool = False,
         verbose: bool = False,
         kube_namespace: Optional[str] = "default",
+        env_vars: Optional[dict] = None
     ):
         """
         Create a new sandbox session
@@ -60,6 +61,7 @@ class SandboxKubernetesSession(Session):
         self.pod_name = f"sandbox-{lang.lower()}-{uuid.uuid4().hex}"
         self.keep_template = keep_template
         self.container = None
+        self.env_vars = env_vars
 
     def open(self):
         self._create_kubernetes_pod()
@@ -79,6 +81,11 @@ class SandboxKubernetesSession(Session):
                 ]
             },
         }
+        # Add environment variables if provided
+        if self.env_vars:
+            pod_manifest["spec"]["containers"][0]["env"] = [
+                {"name": key, "value": value} for key, value in self.env_vars.items()
+            ]
         self.client.create_namespaced_pod(
             namespace=self.kube_namespace, body=pod_manifest
         )
