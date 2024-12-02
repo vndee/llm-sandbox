@@ -15,10 +15,12 @@ packages = [
 python = "^3.10"
 docker = "^7.1.0"
 kubernetes = "^30.1.0"
+podman = "^5.2.0"
 
 [tool.poetry.extras]
 docker = ["docker"]
 k8s = ["kubernetes"]
+podman = ["podman"]
 minimal = []
 
 [tool.poetry.group.dev.dependencies]
