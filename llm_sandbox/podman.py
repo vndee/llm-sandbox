@@ -6,11 +6,10 @@ from typing import List, Optional, Union
 from collections.abc import Iterator
 
 from podman import PodmanClient
-from podman.errors import NotFound, ImageNotFound
+from podman.errors import NotFound
 from podman.domain.containers import Container
 from podman.domain.images import Image
 from llm_sandbox.utils import (
-    image_exists,
     get_libraries_installation_command,
     get_code_file_extension,
     get_code_execution_command,
@@ -104,7 +103,9 @@ class SandboxPodmanSession(Session):
                     print(f"Using image {self.image.tags[-1]}")
             except NotFound:
                 if self.verbose:
-                    print(f"Image {self.image} not found locally. Attempting to pull...")
+                    print(
+                        f"Image {self.image} not found locally. Attempting to pull..."
+                    )
 
                 try:
                     # Attempt to pull the image
@@ -126,7 +127,6 @@ class SandboxPodmanSession(Session):
             **self.container_configs if self.container_configs else {},
         )
         self.container.start()
-
 
     def close(self):
         if self.container:
@@ -303,6 +303,5 @@ class SandboxPodmanSession(Session):
 
         if self.verbose:
             print(output)
-
 
         return ConsoleOutput(output)

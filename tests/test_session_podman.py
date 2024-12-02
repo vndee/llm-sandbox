@@ -34,7 +34,7 @@ class TestSandboxSession(unittest.TestCase):
     def test_init_with_both_image_and_dockerfile(self):
         with self.assertRaises(ValueError):
             SandboxPodmanSession(image="some_image", dockerfile="some_dockerfile")
-            
+
     def test_open_with_image(self):
         # Mock the image retrieval
         mock_image = MagicMock(tags=["python:3.9.19-bullseye"])
@@ -49,7 +49,9 @@ class TestSandboxSession(unittest.TestCase):
         self.session.open()
 
         # Assert that `images.get` was called to check if the image exists
-        self.mock_podman_client.images.get.assert_called_once_with("python:3.9.19-bullseye")
+        self.mock_podman_client.images.get.assert_called_once_with(
+            "python:3.9.19-bullseye"
+        )
 
         # Assert that `containers.create` was called with the correct parameters
         self.mock_podman_client.containers.create.assert_called_once_with(
@@ -63,9 +65,6 @@ class TestSandboxSession(unittest.TestCase):
 
         # Assert that the `self.container` attribute was set
         self.assertEqual(self.session.container, mock_container)
-
-
-
 
     def test_close(self):
         mock_container = MagicMock()
