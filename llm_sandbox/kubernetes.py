@@ -26,7 +26,7 @@ class SandboxKubernetesSession(Session):
         keep_template: bool = False,
         verbose: bool = False,
         kube_namespace: Optional[str] = "default",
-        env_vars: Optional[dict] = None
+        env_vars: Optional[dict] = None,
     ):
         """
         Create a new sandbox session
