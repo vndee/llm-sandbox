@@ -80,7 +80,7 @@ with SandboxSession(lang="python", keep_template=True) as session:
     session.copy_to_runtime("test.py", "/sandbox/test.py")
 
     # Run the copied Python code in the sandbox
-    result = session.run("python /sandbox/test.py")
+    result = session.execute_command("python /sandbox/test.py")
     print(result)
 
     # Copy a file from the sandbox to the host
