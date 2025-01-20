@@ -34,6 +34,7 @@ class SandboxDockerSession(Session):
         commit_container: bool = True,
         verbose: bool = False,
         mounts: Optional[list[Mount]] = None,
+        stream: bool = True,
         container_configs: Optional[dict] = None,
     ):
         """
@@ -46,6 +47,7 @@ class SandboxDockerSession(Session):
         :param commit_container: if True, the Docker container will be commited after the session ends
         :param verbose: if True, print messages
         :param mounts: List of mounts to be mounted to the container
+        :param stream: if True, the output will be streamed (enabling this option prevents obtaining an exit code of run command)
         :param container_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
         """
         super().__init__(lang, verbose)
@@ -80,6 +82,7 @@ class SandboxDockerSession(Session):
         self.is_create_template: bool = False
         self.verbose = verbose
         self.mounts = mounts
+        self.stream = stream
         self.container_configs = container_configs
 
     def open(self):
@@ -196,7 +199,7 @@ class SandboxDockerSession(Session):
 
             self.copy_to_runtime(code_file, code_dest_file)
 
-            output = ConsoleOutput("")
+            output = ConsoleOutput(0, "")
             commands = get_code_execution_command(self.lang, code_dest_file)
             for command in commands:
                 if self.lang == SupportedLanguage.GO:
@@ -263,16 +266,19 @@ class SandboxDockerSession(Session):
 
         if workdir:
             exit_code, exec_log = self.container.exec_run(
-                command, stream=True, tty=True, workdir=workdir
+                command, stream=self.stream, tty=True, workdir=workdir
             )
         else:
             exit_code, exec_log = self.container.exec_run(
-                command, stream=True, tty=True
+                command, stream=self.stream, tty=True
             )
 
         output = ""
         if self.verbose:
             print("Output:", end=" ")
+
+        if not self.stream:
+            exec_log = [exec_log]
 
         for chunk in exec_log:
             chunk_str = chunk.decode("utf-8")
@@ -280,4 +286,4 @@ class SandboxDockerSession(Session):
             if self.verbose:
                 print(chunk_str, end="")
 
-        return ConsoleOutput(output)
+        return ConsoleOutput(exit_code, output)

@@ -3,22 +3,23 @@ from typing import Optional, List
 
 
 class ConsoleOutput:
-    def __init__(self, text: str):
+    def __init__(self, exit_code: Optional[int], text: str):
+        self._exit_code = exit_code
         self._text = text
+
+    @property
+    def exit_code(self):
+        return self._exit_code
 
     @property
     def text(self):
         return self._text
 
     def __str__(self):
-        return f"ConsoleOutput(text={self.text})"
+        return f"ConsoleOutput(text={self.text}, exit_code={self._exit_code})"
 
 
 class KubernetesConsoleOutput(ConsoleOutput):
-    def __init__(self, exit_code: int, text: str):
-        super().__init__(text)
-        self.exit_code = exit_code
-
     def __str__(self):
         return f"KubernetesConsoleOutput(text={self.text}, exit_code={self.exit_code})"
 
