@@ -21,7 +21,6 @@ class MicromambaSession(SandboxDockerSession):
         keep_template: bool = False,
         verbose: bool = False,
         mounts: Optional[list[Mount]] = None,
-        stream: bool = True,
         environment: str = "base",
     ):
         super().__init__(
@@ -32,7 +31,6 @@ class MicromambaSession(SandboxDockerSession):
             keep_template=keep_template,
             verbose=verbose,
             mounts=mounts,
-            stream=stream,
         )
         self.environment = environment
 
@@ -53,19 +51,16 @@ class MicromambaSession(SandboxDockerSession):
 
         if workdir:
             exit_code, exec_log = self.container.exec_run(
-                command, stream=self.stream, tty=True, workdir=workdir
+                command, stream=True, tty=True, workdir=workdir
             )
         else:
             exit_code, exec_log = self.container.exec_run(
-                command, stream=self.stream, tty=True
+                command, stream=True, tty=True
             )
 
         output = ""
         if self.verbose:
             print("Output:", end=" ")
-
-        if not self.stream:
-            exec_log = [exec_log]
 
         for chunk in exec_log:
             chunk_str = chunk.decode("utf-8")
