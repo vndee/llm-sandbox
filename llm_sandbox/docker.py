@@ -47,6 +47,7 @@ class SandboxDockerSession(Session):
         :param commit_container: if True, the Docker container will be commited after the session ends
         :param verbose: if True, print messages
         :param mounts: List of mounts to be mounted to the container
+        :param stream: if True, the output will be streamed (enabling this option prevents obtaining an exit code of run command)
         :param container_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
         """
         super().__init__(lang, verbose)

@@ -3,7 +3,7 @@ from typing import Optional, List
 
 
 class ConsoleOutput:
-    def __init__(self, exit_code: int, text: str):
+    def __init__(self, exit_code: Optional[int], text: str):
         self._exit_code = exit_code
         self._text = text
 
