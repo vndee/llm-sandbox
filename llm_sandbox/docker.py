@@ -34,6 +34,7 @@ class SandboxDockerSession(Session):
         commit_container: bool = True,
         verbose: bool = False,
         mounts: Optional[list[Mount]] = None,
+        stream: bool = True,
         container_configs: Optional[dict] = None,
     ):
         """
@@ -80,6 +81,7 @@ class SandboxDockerSession(Session):
         self.is_create_template: bool = False
         self.verbose = verbose
         self.mounts = mounts
+        self.stream = stream
         self.container_configs = container_configs
 
     def open(self):
@@ -263,16 +265,19 @@ class SandboxDockerSession(Session):
 
         if workdir:
             exit_code, exec_log = self.container.exec_run(
-                command, stream=True, tty=True, workdir=workdir
+                command, stream=self.stream, tty=True, workdir=workdir
             )
         else:
             exit_code, exec_log = self.container.exec_run(
-                command, stream=True, tty=True
+                command, stream=self.stream, tty=True
             )
 
         output = ""
         if self.verbose:
             print("Output:", end=" ")
+
+        if not self.stream:
+            exec_log = [exec_log]
 
         for chunk in exec_log:
             chunk_str = chunk.decode("utf-8")
