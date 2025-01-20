@@ -218,7 +218,7 @@ class SandboxPodmanSession(Session):
 
             self.copy_to_runtime(code_file, code_dest_file)
 
-            output = ConsoleOutput("")
+            output = ConsoleOutput(0, "")
             commands = get_code_execution_command(self.lang, code_dest_file)
             for command in commands:
                 if self.lang == SupportedLanguage.GO:
@@ -304,4 +304,4 @@ class SandboxPodmanSession(Session):
         if self.verbose:
             print(output)
 
-        return ConsoleOutput(output)
+        return ConsoleOutput(exit_code, output)

@@ -149,6 +149,19 @@ class TestSandboxSession(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.session.execute_command("")
 
+    def test_execute_failing_command(self):
+        mock_container = MagicMock()
+        self.session.container = mock_container
+
+        command = "exit 1"
+        mock_container.exec_run.return_value = (1, iter([]))
+
+        output = self.session.execute_command(command)
+
+        mock_container.exec_run.assert_called_with(command, stream=True, tty=True)
+        self.assertEqual(output.exit_code, 1)
+        self.assertEqual(output.text, "")
+
 
 if __name__ == "__main__":
     unittest.main()

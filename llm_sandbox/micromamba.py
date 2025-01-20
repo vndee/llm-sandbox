@@ -68,4 +68,4 @@ class MicromambaSession(SandboxDockerSession):
             if self.verbose:
                 print(chunk_str, end="")
 
-        return ConsoleOutput(output)
+        return ConsoleOutput(exit_code, output)
