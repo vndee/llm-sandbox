@@ -35,6 +35,8 @@ class SandboxDockerSession(Session):
         verbose: bool = False,
         mounts: Optional[list[Mount]] = None,
         container_configs: Optional[dict] = None,
+        *args,
+        **kwargs
     ):
         """
         Create a new sandbox session
@@ -280,4 +282,4 @@ class SandboxDockerSession(Session):
             if self.verbose:
                 print(chunk_str, end="")
 
-        return ConsoleOutput(output)
+        return ConsoleOutput(output, exit_code)

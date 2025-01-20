@@ -137,11 +137,6 @@ class Session(ABC):
             raise
             
     @abstractmethod
-    def _execute_code(self, code: str, libraries: Optional[List] = None) -> ConsoleOutput:
-        """Execute code in the sandbox environment."""
-        raise NotImplementedError
-        
-    @abstractmethod
     def copy_to_runtime(self, src: str, dest: str):
         """Copy file to sandbox runtime."""
         raise NotImplementedError

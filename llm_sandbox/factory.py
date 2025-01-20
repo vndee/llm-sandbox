@@ -42,10 +42,14 @@ class DockerSessionFactory(SessionFactory):
             'mem_limit': str(resource_limits.max_memory_bytes),
             'network_disabled': kwargs.pop('network_disabled', False)
         }
-        
+
+        if kwargs.get('container_configs', {}):
+            kwargs['container_configs'] = kwargs.get('container_configs', {}) | container_configs
+        else:
+            kwargs['container_configs'] = container_configs
+
         return SandboxDockerSession(
             client=self.client,
-            container_configs=container_configs,
             **kwargs
         )
 

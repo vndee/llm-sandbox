@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from kubernetes import client as k8s_client, config
 from kubernetes.stream import stream
-from llm_sandbox.base import Session, ConsoleOutput, KubernetesConsoleOutput
+from llm_sandbox.base import Session, ConsoleOutput
 from llm_sandbox.utils import (
     get_libraries_installation_command,
     get_code_file_extension,
@@ -154,7 +154,7 @@ class SandboxKubernetesSession(Session):
         self.copy_to_runtime(code_file, code_dest_file)
         commands = get_code_execution_command(self.lang, code_dest_file)
 
-        output = KubernetesConsoleOutput(0, "")
+        output = ConsoleOutput(exit_code=0, text="")
         for command in commands:
             if self.lang == SupportedLanguage.GO:
                 output = self.execute_command(command, workdir="/example")
@@ -164,7 +164,7 @@ class SandboxKubernetesSession(Session):
             if output.exit_code != 0:
                 break
 
-        return ConsoleOutput(output.text)
+        return ConsoleOutput(output.text, output.exit_code)
 
     def copy_to_runtime(self, src: str, dest: str):
         if not self.container:
@@ -248,7 +248,7 @@ class SandboxKubernetesSession(Session):
 
     def execute_command(
         self, command: str, workdir: Optional[str] = None
-    ) -> KubernetesConsoleOutput:
+    ) -> ConsoleOutput:
         if not self.container:
             raise RuntimeError(
                 "Session is not open. Please call open() method before executing commands."
@@ -292,4 +292,4 @@ class SandboxKubernetesSession(Session):
                     print(chunk, end="")
 
         exit_code = resp.returncode
-        return KubernetesConsoleOutput(exit_code, output)
+        return ConsoleOutput(output, exit_code)
