@@ -1,15 +1,23 @@
-import docker
-from typing import Optional, Union
-from kubernetes import client as k8s_client
-from llm_sandbox.const import SupportedLanguage
-from llm_sandbox.docker import SandboxDockerSession
-from llm_sandbox.kubernetes import SandboxKubernetesSession
+"""Main session module for LLM Sandbox."""
 
+from typing import Optional, Union
+
+import docker
+from kubernetes import client as k8s_client
+
+from .const import SupportedLanguage
+from .monitoring import ResourceLimits
+from .factory import UnifiedSessionFactory
+from .docker import SandboxDockerSession
+from .kubernetes import SandboxKubernetesSession
+from .podman import SandboxPodmanSession
 
 class SandboxSession:
+    """Factory function for creating sandbox sessions."""
+    
     def __new__(
         cls,
-        client: Union[docker.DockerClient, k8s_client.CoreV1Api] = None,
+        client: Optional[Union[docker.DockerClient, k8s_client.CoreV1Api]] = None,
         image: Optional[str] = None,
         dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
@@ -17,40 +25,56 @@ class SandboxSession:
         commit_container: bool = True,
         verbose: bool = False,
         use_kubernetes: bool = False,
+        use_podman: bool = False,
         kube_namespace: Optional[str] = "default",
+        resource_limits: Optional[ResourceLimits] = None,
+        strict_security: bool = True,
         container_configs: Optional[dict] = None,
-    ):
+    ) -> Union[SandboxDockerSession, SandboxKubernetesSession, SandboxPodmanSession]:
         """
-        Create a new sandbox session
-        :param client: Either Docker or Kubernetes client, if not provided, a new client will be created based on local context
-        :param image: Docker image to use
-        :param dockerfile: Path to the Dockerfile, if image is not provided
-        :param lang: Language of the code
-        :param keep_template: if True, the image and container will not be removed after the session ends
-        :param commit_container: if True, the Docker container will be commited after the session ends
-        :param verbose: if True, print messages (default is True)
-        :param use_kubernetes: if True, use Kubernetes instead of Docker (default is False)
-        :param kube_namespace: Kubernetes namespace to use (only if 'use_kubernetes' is True), default is 'default'
-        :param container_configs: Additional configurations for the Docker container, i.e. resources limits (cpu_count, mem_limit), etc.
+        Create a new sandbox session.
+        
+        Args:
+            client: Docker, Kubernetes or Podman client
+            image: Container image to use
+            dockerfile: Path to Dockerfile
+            lang: Programming language
+            keep_template: Whether to keep the container template
+            commit_container: Whether to commit container changes
+            verbose: Enable verbose logging
+            use_kubernetes: Use Kubernetes backend
+            use_podman: Use Podman backend
+            kube_namespace: Kubernetes namespace
+            resource_limits: Resource limits for the container
+            strict_security: Enable strict security checks
+            container_configs: Additional container configurations
+            
+        Returns:
+            A new sandbox session
         """
+        factory = UnifiedSessionFactory(
+            docker_client=client if isinstance(client, docker.DockerClient) else None,
+            k8s_client=client if isinstance(client, k8s_client.CoreV1Api) else None,
+            default_resource_limits=resource_limits,
+            default_k8s_namespace=kube_namespace
+        )
+        
         if use_kubernetes:
-            return SandboxKubernetesSession(
-                client=client,
-                image=image,
-                dockerfile=dockerfile,
-                lang=lang,
-                keep_template=keep_template,
-                verbose=verbose,
-                kube_namespace=kube_namespace,
-            )
-
-        return SandboxDockerSession(
-            client=client,
+            backend = 'kubernetes'
+        elif use_podman:
+            backend = 'podman'
+        else:
+            backend = 'docker'
+            
+        return factory.create_session(
+            backend=backend,
             image=image,
             dockerfile=dockerfile,
             lang=lang,
             keep_template=keep_template,
             commit_container=commit_container,
             verbose=verbose,
-            container_configs=container_configs,
+            kube_namespace=kube_namespace,
+            strict_security=strict_security,
+            container_configs=container_configs
         )
