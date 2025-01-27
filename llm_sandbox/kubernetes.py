@@ -68,6 +68,28 @@ class SandboxKubernetesSession(Session):
         self.pod_manifest = pod_manifest or self._default_pod_manifest()
         self._reconfigure_with_pod_manifest()
 
+    def _default_pod_manifest(self) -> dict:
+        pod_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "name": self.pod_name,
+                "namespace": self.kube_namespace,
+                "labels": {"app": "sandbox"},
+            },
+            "spec": {
+                "containers": [
+                    {"name": "sandbox-container", "image": self.image, "tty": True}
+                ]
+            },
+        }
+        # Add environment variables if provided
+        if self.env_vars:
+            pod_manifest["spec"]["containers"][0]["env"] = [  # type: ignore[index]
+                {"name": key, "value": value} for key, value in self.env_vars.items()
+            ]
+        return pod_manifest
+
     def _reconfigure_with_pod_manifest(self):
         self.pod_name = self.pod_manifest.get("metadata", {}).get("name", self.pod_name)
         self.kube_namespace = self.pod_manifest.get("metadata", {}).get(
@@ -91,28 +113,6 @@ class SandboxKubernetesSession(Session):
             time.sleep(1)
 
         self.container = self.pod_name
-
-    def _default_pod_manifest(self) -> dict:
-        pod_manifest = {
-            "apiVersion": "v1",
-            "kind": "Pod",
-            "metadata": {
-                "name": self.pod_name,
-                "namespace": self.kube_namespace,
-                "labels": {"app": "sandbox"},
-            },
-            "spec": {
-                "containers": [
-                    {"name": "sandbox-container", "image": self.image, "tty": True}
-                ]
-            },
-        }
-        # Add environment variables if provided
-        if self.env_vars:
-            pod_manifest["spec"]["containers"][0]["env"] = [  # type: ignore[index]
-                {"name": key, "value": value} for key, value in self.env_vars.items()
-            ]
-        return pod_manifest
 
     def close(self):
         self._delete_kubernetes_pod()
