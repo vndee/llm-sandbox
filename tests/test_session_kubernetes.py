@@ -6,9 +6,6 @@ from llm_sandbox.kubernetes import SandboxKubernetesSession
 class TestSandboxKubernetesSession(unittest.TestCase):
     @patch("kubernetes.config.load_kube_config")
     def setUp(self, mock_kube_config):
-        self.mock_kube_config = MagicMock()
-        mock_kube_config.return_value = self.mock_kube_config
-
         self.image = "python:3.9.19-bullseye"
         self.dockerfile = None
         self.lang = "python"
@@ -23,7 +20,8 @@ class TestSandboxKubernetesSession(unittest.TestCase):
             verbose=self.verbose,
         )
 
-    def test_with_pod_manifest(self):
+    @patch("kubernetes.config.load_kube_config")
+    def test_with_pod_manifest(self, mock_kube_config):
         pod_manifest = {
             "apiVersion": "v1",
             "kind": "Pod",
