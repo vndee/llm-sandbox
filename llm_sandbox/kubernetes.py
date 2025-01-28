@@ -1,8 +1,10 @@
 import io
 import os
+import tempfile
 import time
 import uuid
 import tarfile
+from pathlib import Path
 from typing import List, Optional
 
 from kubernetes import client as k8s_client, config
@@ -142,16 +144,18 @@ class SandboxKubernetesSession(Session):
                             f"Failed to install library {library}: {output}"
                         )
 
-        code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
+        code_file_name = f"code.{get_code_file_extension(self.lang)}"
         if self.lang == SupportedLanguage.GO:
             code_dest_file = "/example/code.go"
         else:
-            code_dest_file = code_file
+            code_dest_file = f"/tmp/{code_file_name}"
 
-        with open(code_file, "w") as f:
-            f.write(code)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            code_file = Path(tmp_dir) / code_file_name
+            with open(code_file, "w") as f:
+                f.write(code)
+            self.copy_to_runtime(str(code_file), code_dest_file)
 
-        self.copy_to_runtime(code_file, code_dest_file)
         commands = get_code_execution_command(self.lang, code_dest_file)
 
         output = KubernetesConsoleOutput(0, "")
