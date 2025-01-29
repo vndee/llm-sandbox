@@ -27,6 +27,7 @@ class SandboxKubernetesSession(Session):
         verbose: bool = False,
         kube_namespace: Optional[str] = "default",
         env_vars: Optional[dict] = None,
+        pod_manifest: Optional[dict] = None,
     ):
         """
         Create a new sandbox session
@@ -37,6 +38,8 @@ class SandboxKubernetesSession(Session):
         :param keep_template: if True, the image and container will not be removed after the session ends
         :param verbose: if True, print messages
         :param kube_namespace: Kubernetes namespace to use, default is 'default'
+        :param env_vars: Environment variables to use
+        :param pod_manifest: Pod manifest to use (ignores other settings: `image`, `kube_namespace` and `env_vars`)
         """
         super().__init__(lang, verbose)
         if lang not in SupportedLanguageValues:
@@ -62,11 +65,10 @@ class SandboxKubernetesSession(Session):
         self.keep_template = keep_template
         self.container = None
         self.env_vars = env_vars
+        self.pod_manifest = pod_manifest or self._default_pod_manifest()
+        self._reconfigure_with_pod_manifest()
 
-    def open(self):
-        self._create_kubernetes_pod()
-
-    def _create_kubernetes_pod(self):
+    def _default_pod_manifest(self) -> dict:
         pod_manifest = {
             "apiVersion": "v1",
             "kind": "Pod",
@@ -83,11 +85,23 @@ class SandboxKubernetesSession(Session):
         }
         # Add environment variables if provided
         if self.env_vars:
-            pod_manifest["spec"]["containers"][0]["env"] = [
+            pod_manifest["spec"]["containers"][0]["env"] = [  # type: ignore[index]
                 {"name": key, "value": value} for key, value in self.env_vars.items()
             ]
+        return pod_manifest
+
+    def _reconfigure_with_pod_manifest(self):
+        self.pod_name = self.pod_manifest.get("metadata", {}).get("name", self.pod_name)
+        self.kube_namespace = self.pod_manifest.get("metadata", {}).get(
+            "namespace", self.kube_namespace
+        )
+
+    def open(self):
+        self._create_kubernetes_pod()
+
+    def _create_kubernetes_pod(self):
         self.client.create_namespaced_pod(
-            namespace=self.kube_namespace, body=pod_manifest
+            namespace=self.kube_namespace, body=self.pod_manifest
         )
 
         while True:
