@@ -35,3 +35,9 @@ class ValidationError(SandboxException):
     """Raised when input validation fails."""
 
     pass
+
+
+class DependencyError(SandboxException):
+    """Raised when a required dependency is not installed."""
+
+    pass

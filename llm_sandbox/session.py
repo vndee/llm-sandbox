@@ -1,73 +1,91 @@
 """Main session module for LLM Sandbox."""
 
-from typing import Optional, Union
+from typing import Optional, TypeVar, cast, TYPE_CHECKING
+from importlib.util import find_spec
 
-import docker
-from kubernetes import client as k8s_client
-
-from .const import SupportedLanguage
-from .monitoring import ResourceLimits
+from .const import SupportedLanguage, SandboxBackend
 from .factory import UnifiedSessionFactory
-from .docker import SandboxDockerSession
-from .kubernetes import SandboxKubernetesSession
-from .podman import SandboxPodmanSession
+from .exceptions import DependencyError
+from .base import Session
+
+# Type checking imports that won't be evaluated at runtime
+if TYPE_CHECKING:
+    pass
+
+T = TypeVar("T", bound=Session)
+
+
+def _check_dependency(backend: SandboxBackend) -> None:
+    """Check if required dependency is installed for the given backend."""
+    if backend == SandboxBackend.DOCKER or backend == SandboxBackend.MICROMAMBA:
+        if not find_spec("docker"):
+            raise DependencyError(
+                "Docker backend requires 'docker' package. Install it with: pip install llm-sandbox[docker]"
+            )
+    elif backend == SandboxBackend.KUBERNETES:
+        if not find_spec("kubernetes"):
+            raise DependencyError(
+                "Kubernetes backend requires 'kubernetes' package. Install it with: pip install llm-sandbox[k8s]"
+            )
+    elif backend == SandboxBackend.PODMAN:
+        if not find_spec("podman"):
+            raise DependencyError(
+                "Podman backend requires 'podman' package. Install it with: pip install llm-sandbox[podman]"
+            )
+
+
+class ContextManagerMixin:
+    """Mixin to add context manager support to session instances."""
+
+    def __enter__(self):
+        """Enter the context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager."""
+        if hasattr(self, "close"):
+            self.close()
 
 
 class SandboxSession:
-    """Factory function for creating sandbox sessions."""
+    """Factory class for creating sandbox sessions with context manager support."""
 
     def __new__(
         cls,
-        client: Optional[Union[docker.DockerClient, k8s_client.CoreV1Api]] = None,
+        backend: SandboxBackend = SandboxBackend.DOCKER,
         image: Optional[str] = None,
         dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         commit_container: bool = True,
         verbose: bool = False,
-        use_kubernetes: bool = False,
-        use_podman: bool = False,
-        kube_namespace: Optional[str] = "default",
-        resource_limits: Optional[ResourceLimits] = None,
-        strict_security: bool = True,
-        container_configs: Optional[dict] = None,
-    ) -> Union[SandboxDockerSession, SandboxKubernetesSession, SandboxPodmanSession]:
+        runtime_configs: Optional[dict] = None,
+    ) -> "SandboxSession":
         """
         Create a new sandbox session.
 
         Args:
-            client: Docker, Kubernetes or Podman client
+            backend: Docker, Kubernetes or Podman backend
             image: Container image to use
             dockerfile: Path to Dockerfile
             lang: Programming language
             keep_template: Whether to keep the container template
             commit_container: Whether to commit container changes
             verbose: Enable verbose logging
-            use_kubernetes: Use Kubernetes backend
-            use_podman: Use Podman backend
-            kube_namespace: Kubernetes namespace
-            resource_limits: Resource limits for the container
-            strict_security: Enable strict security checks
-            container_configs: Additional container configurations
+            runtime_configs: Additional runtime configurations, check the specific backend for more details
 
         Returns:
-            A new sandbox session
+            A new sandbox session of the appropriate type (Docker, Kubernetes, Podman, or Micromamba)
+
+        Raises:
+            DependencyError: If the required dependency for the chosen backend is not installed
         """
-        factory = UnifiedSessionFactory(
-            docker_client=client if isinstance(client, docker.DockerClient) else None,
-            k8s_client=client if isinstance(client, k8s_client.CoreV1Api) else None,
-            default_resource_limits=resource_limits,
-            default_k8s_namespace=kube_namespace,
-        )
+        # Check if required dependency is installed
+        _check_dependency(backend)
 
-        if use_kubernetes:
-            backend = "kubernetes"
-        elif use_podman:
-            backend = "podman"
-        else:
-            backend = "docker"
+        factory = UnifiedSessionFactory()
 
-        return factory.create_session(
+        session = factory.create_session(
             backend=backend,
             image=image,
             dockerfile=dockerfile,
@@ -75,7 +93,14 @@ class SandboxSession:
             keep_template=keep_template,
             commit_container=commit_container,
             verbose=verbose,
-            kube_namespace=kube_namespace,
-            strict_security=strict_security,
-            container_configs=container_configs,
+            runtime_configs=runtime_configs,
         )
+
+        # Create a new class that inherits from both the session class and our mixin
+        session.__class__ = type(
+            "SandboxSession",
+            (session.__class__, ContextManagerMixin, SandboxSession),
+            {},
+        )
+
+        return cast("SandboxSession", session)

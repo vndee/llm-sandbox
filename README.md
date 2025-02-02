@@ -89,47 +89,45 @@ with SandboxSession(lang="python", keep_template=True) as session:
     session.copy_from_runtime("/sandbox/output.txt", "output.txt")
 ```
 
-#### Advanced Security Features
+#### Custom runtime configs
 
 ```python
-# Enable strict security mode
-with SandboxSession(lang="python", strict_security=True) as session:
-    try:
-        result = session.run("""
-        import os
-        print('Current directory:', os.getcwd())
-        """)
-    except SecurityError as e:
-        print(f"Security violation: {e}")
-```
+from llm_sandbox import SandboxSession
 
-#### Resource Monitoring and Limits
-
-```python
-from llm_sandbox.monitoring import ResourceLimits
-
-limits = ResourceLimits(
-    max_cpu_percent=50.0,
-    max_memory_bytes=256 * 1024 * 1024,  # 256MB
-    max_execution_time=10,  # 10 seconds
-    max_network_bytes=5 * 1024 * 1024  # 5MB
-)
-
+pod_manifest = {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "test",
+        "namespace": "test",
+        "labels": {"app": "sandbox"},
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "sandbox-container",
+                "image": "test",
+                "tty": True,
+                "volumeMounts": {
+                    "name": "tmp",
+                    "mountPath": "/tmp",
+                },
+            }
+        ],
+        "volumes": [{"name": "tmp", "emptyDir": {"sizeLimit": "5Gi"}}],
+    },
+}
 with SandboxSession(
+    backend="kubernetes",
+    image="python:3.9.19-bullseye",
+    dockerfile=None,
     lang="python",
-    resource_limits=limits,
-    verbose=True
+    keep_template=False,
+    verbose=False,
+    pod_manifest=pod_manifest,
 ) as session:
-    result = session.run("""
-    import numpy as np
-    arr = np.random.rand(1000, 1000)
-    print(arr.mean())
-    """)
-
-    print(f"Resource Usage:")
-    print(f"- CPU: {result.resource_usage['cpu_percent']['avg']}%")
-    print(f"- Memory: {result.resource_usage['memory_mb']['max']}MB")
-    print(f"- Time: {result.execution_time}s")
+    result = session.run("print('Hello, World!')")
+    print(result)
 ```
 
 #### Remote Docker Host
@@ -167,10 +165,10 @@ k8s_client = client.CoreV1Api()
 
 with SandboxSession(
     client=k8s_client,
+    backend="kubernetes",
     image="python:3.9.19-bullseye",
     lang="python",
-    use_kubernetes=True,
-    kube_namespace="sandbox"
+    pod_manifest=pod_manifest, # None by default
 ) as session:
     result = session.run("print('Hello from Kubernetes!')")
     print(result)
@@ -182,8 +180,8 @@ with SandboxSession(
 from llm_sandbox import SandboxSession
 
 with SandboxSession(
+    backend="podman",
     lang="python",
-    use_podman=True,
     image="python:3.9.19-bullseye"
 ) as session:
     result = session.run("print('Hello from Podman!')")

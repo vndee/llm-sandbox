@@ -2,12 +2,8 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from dataclasses import dataclass
-
-from .exceptions import ContainerError, SecurityError, ResourceError
-from .security import SecurityScanner
-from .monitoring import ResourceMonitor, ResourceLimits
 
 
 @dataclass
@@ -36,8 +32,11 @@ class ConsoleOutput:
     def exit_code(self) -> int:
         return self._exit_code
 
-    def __str__(self):
+    def __repr__(self):
         return f"ConsoleOutput(text={self.text}, exit_code={self.exit_code})"
+
+    def __str__(self):
+        return self.text
 
 
 class Session(ABC):
@@ -47,32 +46,20 @@ class Session(ABC):
         self,
         lang: str,
         verbose: bool = True,
-        resource_limits: Optional[ResourceLimits] = None,
         strict_security: bool = True,
+        runtime_configs: Optional[dict] = None,
         logger: Optional[logging.Logger] = None,
     ):
         self.lang = lang
         self.verbose = verbose
-        self.resource_limits = resource_limits or ResourceLimits()
+        self.runtime_configs = runtime_configs
         self.strict_security = strict_security
         self.logger = logger or logging.getLogger(__name__)
-
-        # Initialize components
-        self.security_scanner = SecurityScanner()
-        self.resource_monitor: Optional[ResourceMonitor] = None
-        self._container = None
 
     def _log(self, message: str, level: str = "info"):
         """Log message if verbose is enabled."""
         if self.verbose:
             getattr(self.logger, level)(message)
-
-    def _setup_monitoring(self):
-        """Set up resource monitoring for the container."""
-        if self._container:
-            self.resource_monitor = ResourceMonitor(
-                self._container, limits=self.resource_limits
-            )
 
     @abstractmethod
     def open(self):
@@ -83,60 +70,6 @@ class Session(ABC):
     def close(self):
         """Close the sandbox session."""
         raise NotImplementedError
-
-    def run(self, code: str, libraries: Optional[List] = None) -> ExecutionResult:
-        """
-        Run code in the sandbox with security checks and resource monitoring.
-
-        Args:
-            code: The code to execute
-            libraries: Optional list of libraries to install
-
-        Returns:
-            ExecutionResult containing execution details
-
-        Raises:
-            SecurityError: If code fails security checks
-            ResourceError: If resource limits are exceeded
-            ContainerError: If container operations fail
-        """
-        try:
-            # Security scan
-            self._log("Performing security scan...")
-            security_issues = self.security_scanner.scan_code(
-                code, strict=self.strict_security
-            )
-
-            if security_issues:
-                self._log(
-                    f"Found {len(security_issues)} security issues", level="warning"
-                )
-
-            # Start resource monitoring
-            if self.resource_monitor:
-                self._log("Starting resource monitoring...")
-                self.resource_monitor.start()
-
-            # Execute code
-            self._log("Executing code...")
-            result = self._execute_code(code, libraries)
-
-            # Get resource usage summary
-            resource_summary = {}
-            if self.resource_monitor:
-                resource_summary = self.resource_monitor.get_summary()
-
-            return ExecutionResult(
-                exit_code=result.exit_code,
-                output=result.text,
-                error="",  # Add error handling
-                execution_time=resource_summary.get("duration_seconds", 0),
-                resource_usage=resource_summary,
-            )
-
-        except (SecurityError, ResourceError, ContainerError) as e:
-            self._log(f"Error during execution: {str(e)}", level="error")
-            raise
 
     @abstractmethod
     def copy_to_runtime(self, src: str, dest: str):

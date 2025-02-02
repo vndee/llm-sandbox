@@ -20,7 +20,7 @@ class SecurityScanner:
     """Scanner for detecting potential security issues in code."""
 
     def __init__(self):
-        self.patterns: Dict[str, Pattern] = {
+        self.patterns: Dict[str, Pattern] = {  # type: ignore[annotation-unchecked]
             "system_calls": re.compile(r"os\.system|subprocess\."),
             "code_execution": re.compile(r"eval\(|exec\(|compile\("),
             "file_operations": re.compile(r"open\(|file\(|read|write"),

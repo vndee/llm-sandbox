@@ -1,8 +1,10 @@
 import io
 import os
+import tempfile
 import time
 import uuid
 import tarfile
+from pathlib import Path
 from typing import List, Optional
 
 from kubernetes import client as k8s_client, config
@@ -27,6 +29,8 @@ class SandboxKubernetesSession(Session):
         verbose: bool = False,
         kube_namespace: Optional[str] = "default",
         env_vars: Optional[dict] = None,
+        pod_manifest: Optional[dict] = None,
+        **kwargs,
     ):
         """
         Create a new sandbox session
@@ -37,6 +41,8 @@ class SandboxKubernetesSession(Session):
         :param keep_template: if True, the image and container will not be removed after the session ends
         :param verbose: if True, print messages
         :param kube_namespace: Kubernetes namespace to use, default is 'default'
+        :param env_vars: Environment variables to use
+        :param pod_manifest: Pod manifest to use (ignores other settings: `image`, `kube_namespace` and `env_vars`)
         """
         super().__init__(lang, verbose)
         if lang not in SupportedLanguageValues:
@@ -62,11 +68,10 @@ class SandboxKubernetesSession(Session):
         self.keep_template = keep_template
         self.container = None
         self.env_vars = env_vars
+        self.pod_manifest = pod_manifest or self._default_pod_manifest()
+        self._reconfigure_with_pod_manifest()
 
-    def open(self):
-        self._create_kubernetes_pod()
-
-    def _create_kubernetes_pod(self):
+    def _default_pod_manifest(self) -> dict:
         pod_manifest = {
             "apiVersion": "v1",
             "kind": "Pod",
@@ -83,11 +88,23 @@ class SandboxKubernetesSession(Session):
         }
         # Add environment variables if provided
         if self.env_vars:
-            pod_manifest["spec"]["containers"][0]["env"] = [
+            pod_manifest["spec"]["containers"][0]["env"] = [  # type: ignore[index]
                 {"name": key, "value": value} for key, value in self.env_vars.items()
             ]
+        return pod_manifest
+
+    def _reconfigure_with_pod_manifest(self):
+        self.pod_name = self.pod_manifest.get("metadata", {}).get("name", self.pod_name)
+        self.kube_namespace = self.pod_manifest.get("metadata", {}).get(
+            "namespace", self.kube_namespace
+        )
+
+    def open(self):
+        self._create_kubernetes_pod()
+
+    def _create_kubernetes_pod(self):
         self.client.create_namespaced_pod(
-            namespace=self.kube_namespace, body=pod_manifest
+            namespace=self.kube_namespace, body=self.pod_manifest
         )
 
         while True:
@@ -142,16 +159,18 @@ class SandboxKubernetesSession(Session):
                             f"Failed to install library {library}: {output}"
                         )
 
-        code_file = f"/tmp/code.{get_code_file_extension(self.lang)}"
+        code_file_name = f"code.{get_code_file_extension(self.lang)}"
         if self.lang == SupportedLanguage.GO:
             code_dest_file = "/example/code.go"
         else:
-            code_dest_file = code_file
+            code_dest_file = f"/tmp/{code_file_name}"
 
-        with open(code_file, "w") as f:
-            f.write(code)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            code_file = Path(tmp_dir) / code_file_name
+            with open(code_file, "w") as f:
+                f.write(code)
+            self.copy_to_runtime(str(code_file), code_dest_file)
 
-        self.copy_to_runtime(code_file, code_dest_file)
         commands = get_code_execution_command(self.lang, code_dest_file)
 
         output = ConsoleOutput(exit_code=0, text="")
@@ -164,7 +183,7 @@ class SandboxKubernetesSession(Session):
             if output.exit_code != 0:
                 break
 
-        return ConsoleOutput(output.text, output.exit_code)
+        return ConsoleOutput(output.exit_code, output.text)
 
     def copy_to_runtime(self, src: str, dest: str):
         if not self.container:
@@ -292,4 +311,4 @@ class SandboxKubernetesSession(Session):
                     print(chunk, end="")
 
         exit_code = resp.returncode
-        return ConsoleOutput(output, exit_code)
+        return ConsoleOutput(exit_code=exit_code, text=output)

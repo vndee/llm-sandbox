@@ -6,7 +6,6 @@ from unittest.mock import patch, MagicMock
 
 from llm_sandbox import SandboxSession
 from llm_sandbox.exceptions import SecurityError, ResourceError, ValidationError
-from llm_sandbox.monitoring import ResourceLimits
 
 
 @pytest.fixture
@@ -19,19 +18,12 @@ def mock_docker_client():
 
 @pytest.fixture
 def session(mock_docker_client):
-    resource_limits = ResourceLimits(
-        max_cpu_percent=50.0,
-        max_memory_bytes=256 * 1024 * 1024,  # 256MB
-        max_execution_time=10,
-        max_network_bytes=5 * 1024 * 1024,  # 5MB
-    )
-
     return SandboxSession(
+        backend="docker",
         image="python:3.9.19-bullseye",
         lang="python",
         keep_template=False,
         verbose=False,
-        resource_limits=resource_limits,
         strict_security=True,
     )
 

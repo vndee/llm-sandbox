@@ -34,8 +34,7 @@ class SandboxDockerSession(Session):
         commit_container: bool = True,
         verbose: bool = False,
         mounts: Optional[list[Mount]] = None,
-        container_configs: Optional[dict] = None,
-        *args,
+        runtime_configs: Optional[dict] = None,
         **kwargs,
     ):
         """
@@ -48,7 +47,7 @@ class SandboxDockerSession(Session):
         :param commit_container: if True, the Docker container will be commited after the session ends
         :param verbose: if True, print messages
         :param mounts: List of mounts to be mounted to the container
-        :param container_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
+        :param runtime_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
         """
         super().__init__(lang, verbose)
         if image and dockerfile:
@@ -82,7 +81,7 @@ class SandboxDockerSession(Session):
         self.is_create_template: bool = False
         self.verbose = verbose
         self.mounts = mounts
-        self.container_configs = container_configs
+        self.runtime_configs = runtime_configs
 
     def open(self):
         warning_str = (
@@ -122,7 +121,7 @@ class SandboxDockerSession(Session):
             detach=True,
             tty=True,
             mounts=self.mounts,
-            **self.container_configs if self.container_configs else {},
+            **self.runtime_configs if self.runtime_configs else {},
         )
 
     def close(self):
@@ -182,6 +181,7 @@ class SandboxDockerSession(Session):
                 for library in libraries:
                     command = get_libraries_installation_command(self.lang, library)
                     _ = self.execute_command(command)
+
         with tempfile.TemporaryDirectory() as directory_name:
             code_file = os.path.join(
                 directory_name, f"code.{get_code_file_extension(self.lang)}"
@@ -198,7 +198,7 @@ class SandboxDockerSession(Session):
 
             self.copy_to_runtime(code_file, code_dest_file)
 
-            output = ConsoleOutput("")
+            output = ConsoleOutput(text="", exit_code=0)
             commands = get_code_execution_command(self.lang, code_dest_file)
             for command in commands:
                 if self.lang == SupportedLanguage.GO:
@@ -282,4 +282,4 @@ class SandboxDockerSession(Session):
             if self.verbose:
                 print(chunk_str, end="")
 
-        return ConsoleOutput(output, exit_code)
+        return ConsoleOutput(text=output, exit_code=exit_code)

@@ -1,132 +1,95 @@
 """Factory for creating sandbox sessions."""
 
-from typing import Optional, Union
+from typing import Union, Type, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
-import docker
-from kubernetes import client as k8s_client
-
-from .docker import SandboxDockerSession
-from .kubernetes import SandboxKubernetesSession
-from .podman import SandboxPodmanSession
-from .monitoring import ResourceLimits
+from .const import SandboxBackend
 from .exceptions import ValidationError
+
+if TYPE_CHECKING:
+    from .docker import SandboxDockerSession
+    from .kubernetes import SandboxKubernetesSession
+    from .podman import SandboxPodmanSession
+    from .micromamba import MicromambaSession
 
 
 class SessionFactory(ABC):
     """Abstract base factory for creating sandbox sessions."""
 
     @abstractmethod
-    def create_session(self, **kwargs):
+    def create_session(
+        self, **kwargs
+    ) -> Union[
+        "SandboxDockerSession",
+        "SandboxKubernetesSession",
+        "SandboxPodmanSession",
+        "MicromambaSession",
+    ]:
         """Create a new sandbox session."""
-        pass
+        raise NotImplementedError
 
 
 class DockerSessionFactory(SessionFactory):
     """Factory for creating Docker-based sandbox sessions."""
 
-    def __init__(
-        self,
-        client: Optional[docker.DockerClient] = None,
-        default_resource_limits: Optional[ResourceLimits] = None,
-    ):
-        self.client = client or docker.from_env()
-        self.default_resource_limits = default_resource_limits or ResourceLimits()
-
-    def create_session(self, **kwargs) -> SandboxDockerSession:
+    def create_session(self, **kwargs) -> "SandboxDockerSession":
         """Create a new Docker sandbox session."""
-        # Merge default resource limits with provided ones
-        resource_limits = kwargs.pop("resource_limits", self.default_resource_limits)
+        from .docker import SandboxDockerSession
 
-        # Convert resource limits to Docker container configs
-        container_configs = {
-            "cpu_count": resource_limits.max_cpu_percent / 100.0,
-            "mem_limit": str(resource_limits.max_memory_bytes),
-            "network_disabled": kwargs.pop("network_disabled", False),
-        }
-
-        if kwargs.get("container_configs", {}):
-            kwargs["container_configs"] = (
-                kwargs.get("container_configs", {}) | container_configs
-            )
-        else:
-            kwargs["container_configs"] = container_configs
-
-        return SandboxDockerSession(client=self.client, **kwargs)
+        return SandboxDockerSession(**kwargs)
 
 
 class KubernetesSessionFactory(SessionFactory):
     """Factory for creating Kubernetes-based sandbox sessions."""
 
-    def __init__(
-        self,
-        client: Optional[k8s_client.CoreV1Api] = None,
-        default_namespace: str = "default",
-    ):
-        if not client:
-            k8s_client.Configuration.set_default(k8s_client.Configuration())
-            self.client = k8s_client.CoreV1Api()
-        else:
-            self.client = client
-        self.default_namespace = default_namespace
-
-    def create_session(self, **kwargs) -> SandboxKubernetesSession:
+    def create_session(self, **kwargs) -> "SandboxKubernetesSession":
         """Create a new Kubernetes sandbox session."""
-        namespace = kwargs.pop("kube_namespace", self.default_namespace)
+        from .kubernetes import SandboxKubernetesSession
 
-        return SandboxKubernetesSession(
-            client=self.client, kube_namespace=namespace, **kwargs
-        )
+        return SandboxKubernetesSession(**kwargs)
 
 
 class PodmanSessionFactory(SessionFactory):
     """Factory for creating Podman-based sandbox sessions."""
 
-    def create_session(self, **kwargs) -> SandboxPodmanSession:
+    def create_session(self, **kwargs) -> "SandboxPodmanSession":
         """Create a new Podman sandbox session."""
+        from .podman import SandboxPodmanSession
+
         return SandboxPodmanSession(**kwargs)
+
+
+class MicromambaSessionFactory(SessionFactory):
+    """Factory for creating Micromamba-based sandbox sessions."""
+
+    def create_session(self, **kwargs) -> "MicromambaSession":
+        """Create a new Micromamba sandbox session."""
+        from .micromamba import MicromambaSession
+
+        return MicromambaSession(**kwargs)
 
 
 class UnifiedSessionFactory:
     """Unified factory for creating sandbox sessions of any type."""
 
-    def __init__(
-        self,
-        docker_client: Optional[docker.DockerClient] = None,
-        k8s_client: Optional[k8s_client.CoreV1Api] = None,
-        default_resource_limits: Optional[ResourceLimits] = None,
-        default_k8s_namespace: str = "default",
-    ):
-        self.factories = {
-            "docker": DockerSessionFactory(
-                client=docker_client, default_resource_limits=default_resource_limits
-            ),
-            "kubernetes": KubernetesSessionFactory(
-                client=k8s_client, default_namespace=default_k8s_namespace
-            ),
-            "podman": PodmanSessionFactory(),
+    def create_session(
+        self, backend: SandboxBackend = SandboxBackend.DOCKER, **kwargs
+    ) -> Union[
+        "SandboxDockerSession",
+        "SandboxKubernetesSession",
+        "SandboxPodmanSession",
+        "MicromambaSession",
+    ]:
+        """Create a new sandbox session of the specified type."""
+        factories: dict[SandboxBackend, Type[SessionFactory]] = {
+            SandboxBackend.DOCKER: DockerSessionFactory,
+            SandboxBackend.KUBERNETES: KubernetesSessionFactory,
+            SandboxBackend.PODMAN: PodmanSessionFactory,
+            SandboxBackend.MICROMAMBA: MicromambaSessionFactory,
         }
 
-    def create_session(
-        self, backend: str = "docker", **kwargs
-    ) -> Union[SandboxDockerSession, SandboxKubernetesSession, SandboxPodmanSession]:
-        """
-        Create a new sandbox session.
+        factory_class = factories.get(backend)
+        if factory_class is None:
+            raise ValidationError(f"Unsupported backend: {backend}")
 
-        Args:
-            backend: The backend to use ('docker', 'kubernetes', or 'podman')
-            **kwargs: Additional arguments for session creation
-
-        Returns:
-            A new sandbox session
-
-        Raises:
-            ValidationError: If backend is not supported
-        """
-        if backend not in self.factories:
-            raise ValidationError(
-                f"Unsupported backend: {backend}. "
-                f"Must be one of: {list(self.factories.keys())}"
-            )
-
-        return self.factories[backend].create_session(**kwargs)
+        return factory_class().create_session(**kwargs)
