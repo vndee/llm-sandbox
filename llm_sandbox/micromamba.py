@@ -1,7 +1,6 @@
 from typing import Optional
 import docker
-from llm_sandbox.session import SandboxDockerSession
-from llm_sandbox.docker import ConsoleOutput
+from llm_sandbox.docker import SandboxDockerSession, ConsoleOutput
 from llm_sandbox.const import SupportedLanguage
 from docker.types import Mount
 
@@ -68,4 +67,4 @@ class MicromambaSession(SandboxDockerSession):
             if self.verbose:
                 print(chunk_str, end="")
 
-        return ConsoleOutput(exit_code, output)
+        return ConsoleOutput(text=output, exit_code=exit_code)

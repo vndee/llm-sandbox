@@ -34,7 +34,7 @@ class SandboxPodmanSession(Session):
         commit_container: bool = True,
         verbose: bool = False,
         mounts: Optional[list] = None,
-        container_configs: Optional[dict] = None,
+        runtime_configs: Optional[dict] = None,
     ):
         """
         Create a new sandbox session
@@ -46,7 +46,7 @@ class SandboxPodmanSession(Session):
         :param commit_container: if True, the podman container will be commited after the session ends
         :param verbose: if True, print messages
         :param mounts: List of mounts to be mounted to the container
-        :param container_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
+        :param runtime_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
         """
         super().__init__(lang, verbose)
         if image and dockerfile:
@@ -71,7 +71,7 @@ class SandboxPodmanSession(Session):
         self.is_create_template: bool = False
         self.verbose = verbose
         self.mounts = mounts
-        self.container_configs = container_configs
+        self.runtime_configs = runtime_configs
 
     def open(self):
         warning_str = (
@@ -124,7 +124,7 @@ class SandboxPodmanSession(Session):
             image=self.image.id if isinstance(self.image, Image) else self.image,
             tty=True,
             mounts=mounts,  # Use the adjusted mounts
-            **self.container_configs if self.container_configs else {},
+            **self.runtime_configs if self.runtime_configs else {},
         )
         self.container.start()
 
@@ -304,4 +304,4 @@ class SandboxPodmanSession(Session):
         if self.verbose:
             print(output)
 
-        return ConsoleOutput(exit_code, output)
+        return ConsoleOutput(text=output, exit_code=exit_code)

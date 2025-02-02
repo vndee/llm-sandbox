@@ -1,4 +1,12 @@
+from enum import StrEnum
 from dataclasses import dataclass
+
+
+class SandboxBackend(StrEnum):
+    DOCKER = "docker"
+    KUBERNETES = "kubernetes"
+    PODMAN = "podman"
+    MICROMAMBA = "micromamba"
 
 
 @dataclass

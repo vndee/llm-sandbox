@@ -1,0 +1,15 @@
+# Changelog
+
+All notable changes to LLM Sandbox will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.2.0] - 2025-02-02
+
+### Added
+- CHANGELOG.md
+- SessionFactory for creating sessions with context manager support, change the init method from `use_kubernetes`, `use_podman` to `backend` for more flexibility. See https://github.com/vndee/llm-sandbox/blob/main/llm_sandbox/session.py
+- Separated library dependencies as extras (https://github.com/vndee/llm-sandbox/issues/18)
+- `ConsoleOutput` for docker backend now support `exit_code` (https://github.com/vndee/llm-sandbox/pull/15)
+- `pod_manifest` settings for k8s backend (https://github.com/vndee/llm-sandbox/pull/16)

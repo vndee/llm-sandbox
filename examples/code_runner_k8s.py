@@ -3,7 +3,7 @@ from llm_sandbox import SandboxSession
 
 def run_python_code():
     with SandboxSession(
-        lang="python", keep_template=True, verbose=True, use_kubernetes=True
+        lang="python", keep_template=True, verbose=True, backend="kubernetes"
     ) as session:
         output = session.run("print('Hello, World!')")
         print(output.text)
@@ -22,7 +22,7 @@ def run_python_code():
 
 def run_java_code():
     with SandboxSession(
-        lang="java", keep_template=True, verbose=True, use_kubernetes=True
+        lang="java", keep_template=True, verbose=True, backend="kubernetes"
     ) as session:
         output = session.run(
             """
@@ -38,7 +38,7 @@ def run_java_code():
 
 def run_javascript_code():
     with SandboxSession(
-        lang="javascript", keep_template=True, verbose=True, use_kubernetes=True
+        lang="javascript", keep_template=True, verbose=True, backend="kubernetes"
     ) as session:
         output = session.run("console.log('Hello, World!')")
         print(output.text)
@@ -61,7 +61,7 @@ def run_javascript_code():
 
 def run_cpp_code():
     with SandboxSession(
-        lang="cpp", keep_template=True, verbose=True, use_kubernetes=True
+        lang="cpp", keep_template=True, verbose=True, backend="kubernetes"
     ) as session:
         output = session.run(
             """
@@ -113,7 +113,7 @@ def run_cpp_code():
 
 def run_go_code():
     with SandboxSession(
-        lang="go", keep_template=True, verbose=True, use_kubernetes=True
+        lang="go", keep_template=True, verbose=True, backend="kubernetes"
     ) as session:
         output = session.run(
             """
