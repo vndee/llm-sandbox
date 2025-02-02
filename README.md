@@ -27,7 +27,7 @@ LLM Sandbox is a lightweight and portable sandbox environment designed to run la
 2. Add the package to your project:
 
 ```sh
-poetry add llm-sandbox
+poetry add llm-sandbox # or poetry add llm-sandbox[kubernetes] or poetry add llm-sandbox[podman] or poetry add llm-sandbox[docker]
 ```
 
 #### Using pip
@@ -36,8 +36,10 @@ poetry add llm-sandbox
 2. Install the package:
 
 ```sh
-pip install llm-sandbox
+pip install llm-sandbox # or pip install llm-sandbox[kubernetes] or pip install llm-sandbox[podman] or pip install llm-sandbox[docker]
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for more details.
 
 ### Usage
 
