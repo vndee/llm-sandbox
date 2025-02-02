@@ -1,17 +1,15 @@
-from __future__ import annotations
-
-from typing import Optional, Union, TYPE_CHECKING, cast
+import docker
+from typing import Optional, Union
+from kubernetes import client as k8s_client
 from llm_sandbox.const import SupportedLanguage
-
-if TYPE_CHECKING:
-    import docker
-    from kubernetes import client as k8s_client
+from llm_sandbox.docker import SandboxDockerSession
+from llm_sandbox.kubernetes import SandboxKubernetesSession
 
 
 class SandboxSession:
     def __new__(
         cls,
-        client: Union[docker.DockerClient, k8s_client.CoreV1Api, None] = None,
+        client: Union[docker.DockerClient, k8s_client.CoreV1Api] = None,
         image: Optional[str] = None,
         dockerfile: Optional[str] = None,
         lang: str = SupportedLanguage.PYTHON,
@@ -36,11 +34,8 @@ class SandboxSession:
         :param container_configs: Additional configurations for the Docker container, i.e. resources limits (cpu_count, mem_limit), etc.
         """
         if use_kubernetes:
-            from kubernetes import client as k8s_client
-            from llm_sandbox.kubernetes import SandboxKubernetesSession
-
             return SandboxKubernetesSession(
-                client=cast(k8s_client.CoreV1Api, client),
+                client=client,
                 image=image,
                 dockerfile=dockerfile,
                 lang=lang,
@@ -49,11 +44,8 @@ class SandboxSession:
                 kube_namespace=kube_namespace,
             )
 
-        import docker
-        from llm_sandbox.docker import SandboxDockerSession
-
         return SandboxDockerSession(
-            client=cast(docker.DockerClient, client),
+            client=client,
             image=image,
             dockerfile=dockerfile,
             lang=lang,
