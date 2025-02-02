@@ -1,12 +1,14 @@
 """Tests for security scanning functionality."""
 
 import pytest
-from llm_sandbox.security import SecurityScanner, SecurityIssue
+from llm_sandbox.security import SecurityScanner
 from llm_sandbox.exceptions import SecurityError
+
 
 @pytest.fixture
 def scanner():
     return SecurityScanner()
+
 
 def test_safe_code(scanner):
     code = """
@@ -20,6 +22,7 @@ print(result)
     assert len(issues) == 0
     assert scanner.is_safe(code)
 
+
 def test_system_calls(scanner):
     code = """
 import os
@@ -30,6 +33,7 @@ os.system('ls')
     assert "system command execution" in str(exc_info.value).lower()
     assert not scanner.is_safe(code)
 
+
 def test_code_execution(scanner):
     code = """
 user_input = input()
@@ -39,14 +43,16 @@ eval(user_input)
         scanner.scan_code(code, strict=True)
     assert "code execution" in str(exc_info.value).lower()
 
+
 def test_file_operations(scanner):
     code = """
 with open('file.txt', 'w') as f:
     f.write('hello')
 """
     issues = scanner.scan_code(code, strict=False)
-    assert any(i.pattern == 'file_operations' for i in issues)
-    assert any(i.severity == 'medium' for i in issues)
+    assert any(i.pattern == "file_operations" for i in issues)
+    assert any(i.severity == "medium" for i in issues)
+
 
 def test_network_access(scanner):
     code = """
@@ -54,7 +60,8 @@ import socket
 s = socket.socket()
 """
     issues = scanner.scan_code(code, strict=False)
-    assert any(i.pattern == 'network_access' for i in issues)
+    assert any(i.pattern == "network_access" for i in issues)
+
 
 def test_shell_injection(scanner):
     code = """
@@ -65,17 +72,14 @@ subprocess.run('ls', shell=True)
         scanner.scan_code(code, strict=True)
     assert "shell injection" in str(exc_info.value).lower()
 
-@pytest.mark.parametrize("dangerous_import", [
-    "os",
-    "sys",
-    "subprocess",
-    "shutil"
-])
+
+@pytest.mark.parametrize("dangerous_import", ["os", "sys", "subprocess", "shutil"])
 def test_dangerous_imports(scanner, dangerous_import):
     code = f"import {dangerous_import}"
     issues = scanner.scan_code(code, strict=False)
     assert len(issues) == 1
-    assert issues[0].pattern == 'dangerous_imports'
+    assert issues[0].pattern == "dangerous_imports"
+
 
 def test_multiple_issues(scanner):
     code = """
@@ -92,10 +96,10 @@ def dangerous_func():
         scanner.scan_code(code, strict=True)
     assert "high severity" in str(exc_info.value).lower()
 
-@pytest.mark.parametrize("strict_mode,expected_exception", [
-    (True, True),
-    (False, False)
-])
+
+@pytest.mark.parametrize(
+    "strict_mode,expected_exception", [(True, True), (False, False)]
+)
 def test_strict_mode(scanner, strict_mode, expected_exception):
     code = """
 import os
@@ -107,4 +111,4 @@ os.system('ls')
     else:
         issues = scanner.scan_code(code, strict=strict_mode)
         assert len(issues) > 0
-        assert issues[0].severity == 'high' 
+        assert issues[0].severity == "high"

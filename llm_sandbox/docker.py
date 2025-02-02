@@ -36,7 +36,7 @@ class SandboxDockerSession(Session):
         mounts: Optional[list[Mount]] = None,
         container_configs: Optional[dict] = None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         """
         Create a new sandbox session

@@ -12,9 +12,10 @@ from .docker import SandboxDockerSession
 from .kubernetes import SandboxKubernetesSession
 from .podman import SandboxPodmanSession
 
+
 class SandboxSession:
     """Factory function for creating sandbox sessions."""
-    
+
     def __new__(
         cls,
         client: Optional[Union[docker.DockerClient, k8s_client.CoreV1Api]] = None,
@@ -33,7 +34,7 @@ class SandboxSession:
     ) -> Union[SandboxDockerSession, SandboxKubernetesSession, SandboxPodmanSession]:
         """
         Create a new sandbox session.
-        
+
         Args:
             client: Docker, Kubernetes or Podman client
             image: Container image to use
@@ -48,7 +49,7 @@ class SandboxSession:
             resource_limits: Resource limits for the container
             strict_security: Enable strict security checks
             container_configs: Additional container configurations
-            
+
         Returns:
             A new sandbox session
         """
@@ -56,16 +57,16 @@ class SandboxSession:
             docker_client=client if isinstance(client, docker.DockerClient) else None,
             k8s_client=client if isinstance(client, k8s_client.CoreV1Api) else None,
             default_resource_limits=resource_limits,
-            default_k8s_namespace=kube_namespace
+            default_k8s_namespace=kube_namespace,
         )
-        
+
         if use_kubernetes:
-            backend = 'kubernetes'
+            backend = "kubernetes"
         elif use_podman:
-            backend = 'podman'
+            backend = "podman"
         else:
-            backend = 'docker'
-            
+            backend = "docker"
+
         return factory.create_session(
             backend=backend,
             image=image,
@@ -76,5 +77,5 @@ class SandboxSession:
             verbose=verbose,
             kube_namespace=kube_namespace,
             strict_security=strict_security,
-            container_configs=container_configs
+            container_configs=container_configs,
         )

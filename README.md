@@ -125,7 +125,7 @@ with SandboxSession(
     arr = np.random.rand(1000, 1000)
     print(arr.mean())
     """)
-    
+
     print(f"Resource Usage:")
     print(f"- CPU: {result.resource_usage['cpu_percent']['avg']}%")
     print(f"- Memory: {result.resource_usage['memory_mb']['max']}MB")
