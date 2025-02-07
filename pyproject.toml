@@ -24,12 +24,12 @@ podman = ["podman"]
 minimal = []
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.2.2"
 pre-commit = "^3.7.1"
 langchain = "^0.2.7"
 langchain-openai = "^0.1.15"
 langchainhub = "^0.1.20"
 llama-index = "^0.10.54.post1"
+pytest = "^8.3.4"
 
 [build-system]
 requires = ["poetry-core"]
