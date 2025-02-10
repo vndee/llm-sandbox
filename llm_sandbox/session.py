@@ -60,6 +60,7 @@ class SandboxSession:
         commit_container: bool = True,
         verbose: bool = False,
         runtime_configs: Optional[dict] = None,
+        **kwargs,
     ) -> "SandboxSession":
         """
         Create a new sandbox session.
@@ -94,6 +95,7 @@ class SandboxSession:
             commit_container=commit_container,
             verbose=verbose,
             runtime_configs=runtime_configs,
+            **kwargs,
         )
 
         # Create a new class that inherits from both the session class and our mixin
