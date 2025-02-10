@@ -1,7 +1,7 @@
 import docker
 from llm_sandbox import SandboxSession
 
-docker_host="tcp://<remote-docker-ip>:2375"
+docker_host = "tcp://<remote-docker-ip>:2375"
 
 docker_client = docker.DockerClient(base_url=docker_host)
 
