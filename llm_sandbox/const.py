@@ -1,8 +1,8 @@
-from enum import StrEnum
+from enum import Enum
 from dataclasses import dataclass
 
 
-class SandboxBackend(StrEnum):
+class SandboxBackend(str, Enum):
     DOCKER = "docker"
     KUBERNETES = "kubernetes"
     PODMAN = "podman"
