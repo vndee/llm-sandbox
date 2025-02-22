@@ -198,7 +198,7 @@ class SandboxDockerSession(Session):
 
             with open(code_file, "w") as f:
                 f.write(code)
-
+                
             self.copy_to_runtime(code_file, code_dest_file)
 
             output = ConsoleOutput(text="", exit_code=0)
@@ -208,6 +208,9 @@ class SandboxDockerSession(Session):
                     output = self.execute_command(command, workdir="/example")
                 else:
                     output = self.execute_command(command)
+                
+                if output.exit_code != 0:
+                    return output
 
             return output
 
