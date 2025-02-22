@@ -209,6 +209,9 @@ class SandboxDockerSession(Session):
                 else:
                     output = self.execute_command(command)
 
+                if output.exit_code != 0:
+                    return output
+
             return output
 
     def copy_from_runtime(self, src: str, dest: str):
