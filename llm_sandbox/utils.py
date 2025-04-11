@@ -1,8 +1,11 @@
 from typing import Optional
 from llm_sandbox.const import SupportedLanguage
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from docker import DockerClient
 
-def image_exists(client: DockerClient, image: str) -> bool:
+def image_exists(client: "DockerClient", image: str) -> bool:
     """
     Check if a Docker image exists
     :param client: Docker client
