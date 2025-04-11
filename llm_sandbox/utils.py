@@ -1,18 +1,26 @@
-import docker
-import docker.errors
 from typing import Optional
-
-from docker import DockerClient
 from llm_sandbox.const import SupportedLanguage
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from docker import DockerClient
 
 
-def image_exists(client: DockerClient, image: str) -> bool:
+def image_exists(client: "DockerClient", image: str) -> bool:
     """
     Check if a Docker image exists
     :param client: Docker client
     :param image: Docker image
     :return: True if the image exists, False otherwise
     """
+    try:
+        import docker
+        import docker.errors  # Only import when needed
+    except ImportError as e:
+        raise ImportError(
+            "The 'docker' module is required to use the 'image_exists' function. "
+            "Please install the 'docker' extra via 'pip install llm-sandbox[docker]'."
+        ) from e
     try:
         client.images.get(image)
         return True
