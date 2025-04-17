@@ -29,7 +29,7 @@ pre-commit = "^3.7.1"
 langchain = "^0.2.7"
 langchain-openai = "^0.1.15"
 langchainhub = "^0.1.20"
-llama-index = "^0.10.54.post1"
+llama-index = ">=0.10.54,<0.13.0"
 
 [build-system]
 requires = ["poetry-core"]
