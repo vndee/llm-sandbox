@@ -183,7 +183,7 @@ class SandboxKubernetesSession(Session):
             if output.exit_code != 0:
                 break
 
-        return ConsoleOutput(output.exit_code, output.text)
+        return ConsoleOutput(text=output.text, exit_code=output.exit_code)
 
     def copy_to_runtime(self, src: str, dest: str):
         if not self.container:
