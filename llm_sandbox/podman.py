@@ -35,6 +35,7 @@ class SandboxPodmanSession(Session):
         verbose: bool = False,
         mounts: Optional[list] = None,
         runtime_configs: Optional[dict] = None,
+        **kwargs,
     ):
         """
         Create a new sandbox session
