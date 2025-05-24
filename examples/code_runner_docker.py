@@ -1,24 +1,34 @@
+import logging
+
 from llm_sandbox import SandboxSession
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-def run_python_code():
+logger = logging.getLogger(__name__)
+
+
+def run_python_code() -> None:
+    """Run Python code in the sandbox."""
     with SandboxSession(lang="python", keep_template=True, verbose=True) as session:
         output = session.run("print('Hello, World!')")
-        print(output.text)
+        logger.info(output)
 
         output = session.run(
             "import numpy as np\nprint(np.random.rand())", libraries=["numpy"]
         )
-        print(output.text)
+        logger.info(output)
 
-        session.execute_command("pip install pandas")
+        session.install(["pandas"])
         output = session.run("import pandas as pd\nprint(pd.__version__)")
-        print(output.text)
+        logger.info(output)
 
         session.copy_to_runtime("README.md", "/sandbox/data.csv")
 
 
-def run_java_code():
+def run_java_code() -> None:
+    """Run Java code in the sandbox."""
     with SandboxSession(lang="java", keep_template=True, verbose=True) as session:
         output = session.run(
             """
@@ -29,13 +39,14 @@ def run_java_code():
             }
             """,
         )
-        print(output.text)
+        logger.info(output)
 
 
-def run_javascript_code():
+def run_javascript_code() -> None:
+    """Run JavaScript code in the sandbox."""
     with SandboxSession(lang="javascript", keep_template=True, verbose=True) as session:
         output = session.run("console.log('Hello, World!')")
-        print(output.text)
+        logger.info(output)
 
         output = session.run(
             """
@@ -45,10 +56,11 @@ def run_javascript_code():
             """,
             libraries=["axios"],
         )
-        print(output.text)
+        logger.info(output)
 
 
-def run_cpp_code():
+def run_cpp_code() -> None:
+    """Run C++ code in the sandbox."""
     with SandboxSession(lang="cpp", keep_template=True, verbose=True) as session:
         output = session.run(
             """
@@ -59,7 +71,7 @@ def run_cpp_code():
             }
             """,
         )
-        print(output.text)
+        logger.info(output)
 
         output = session.run(
             """
@@ -75,7 +87,7 @@ def run_cpp_code():
             }
             """,
         )
-        print(output.text)
+        logger.info(output)
 
         # run with libraries
         output = session.run(
@@ -95,10 +107,11 @@ def run_cpp_code():
             """,
             libraries=["libstdc++"],
         )
-        print(output.text)
+        logger.info(output)
 
 
-def run_go_code():
+def run_go_code() -> None:
+    """Run Go code in the sandbox."""
     with SandboxSession(lang="go", keep_template=True, verbose=True) as session:
         output = session.run(
             """
@@ -109,7 +122,7 @@ def run_go_code():
             }
             """,
         )
-        print(output.text)
+        logger.info(output)
 
         # run with libraries
         output = session.run(
@@ -136,7 +149,7 @@ def run_go_code():
             """,
             libraries=["github.com/spyzhov/ajson"],
         )
-        print(output.text)
+        logger.info(output)
 
 
 if __name__ == "__main__":

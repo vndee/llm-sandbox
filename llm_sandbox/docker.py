@@ -1,82 +1,93 @@
 import io
-import os
-import docker
 import tarfile
 import tempfile
-from typing import List, Optional, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
+import docker
+from docker.errors import ImageNotFound
 from docker.models.images import Image
-from docker.models.containers import Container
 from docker.types import Mount
-from llm_sandbox.utils import (
-    image_exists,
-    get_libraries_installation_command,
-    get_code_file_extension,
-    get_code_execution_command,
+
+if TYPE_CHECKING:
+    from docker.models.containers import Container
+
+from llm_sandbox.base import ConsoleOutput, Session
+from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.exceptions import (
+    CommandEmptyError,
+    ExtraArgumentsError,
+    ImageNotFoundError,
+    ImagePullError,
+    NotOpenSessionError,
 )
-from llm_sandbox.base import Session, ConsoleOutput
-from llm_sandbox.const import (
-    SupportedLanguage,
-    SupportedLanguageValues,
-    DefaultImage,
-    NotSupportedLibraryInstallation,
-)
+from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 
 
 class SandboxDockerSession(Session):
+    """Sandbox session for Docker."""
+
     def __init__(
         self,
-        client: Optional[docker.DockerClient] = None,
-        image: Optional[str] = None,
-        dockerfile: Optional[str] = None,
+        client: docker.DockerClient | None = None,
+        image: str | None = None,
+        dockerfile: str | None = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
-        commit_container: bool = True,
+        commit_container: bool = False,
         verbose: bool = False,
-        mounts: Optional[list[Mount]] = None,
+        mounts: list[Mount] | None = None,
         stream: bool = True,
-        runtime_configs: Optional[dict] = None,
-        **kwargs,
-    ):
-        """
-        Create a new sandbox session
-        :param client: Docker client, if not provided, a new client will be created based on local Docker context
+        runtime_configs: dict | None = None,
+        workdir: str | None = "/sandbox",
+        **kwargs: dict[str, Any],  # noqa: ARG002
+    ) -> None:
+        """Create a new sandbox session.
+
+        :param client: Docker client, if not provided, a new client will be created
+                        based on local Docker context
         :param image: Docker image to use
         :param dockerfile: Path to the Dockerfile, if image is not provided
         :param lang: Language of the code
-        :param keep_template: if True, the image and container will not be removed after the session ends
-        :param commit_container: if True, the Docker container will be commited after the session ends
+        :param keep_template: if True, the image and container will not be removed
+                                after the session ends
+        :param commit_container: if True, the Docker container will be commited after
+                                    the session ends
         :param verbose: if True, print messages
         :param mounts: List of mounts to be mounted to the container
-        :param stream: if True, the output will be streamed (enabling this option prevents obtaining an exit code of run command)
-        :param runtime_configs: Additional configurations for the container, i.e. resources limits (cpu_count, mem_limit), etc.
+        :param stream: if True, the output will be streamed (enabling this option
+                        prevents obtaining an exit code of run command)
+        :param runtime_configs: Additional configurations for the container,
+                                i.e. resources limits (cpu_count, mem_limit),
+                                user ("1000:1000"), etc. By default runs as root user
+                                for maximum compatibility.
+        :param workdir: Working directory inside the container. Defaults to "/sandbox".
+                        Use "/tmp/sandbox" when running as non-root user.
         """
         super().__init__(lang, verbose)
         if image and dockerfile:
-            raise ValueError("Only one of image or dockerfile should be provided")
-
-        if lang not in SupportedLanguageValues:
-            raise ValueError(
-                f"Language {lang} is not supported. Must be one of {SupportedLanguageValues}"
-            )
+            raise ExtraArgumentsError
 
         if not image and not dockerfile:
             image = DefaultImage.__dict__[lang.upper()]
 
-        self.lang: str = lang
-        self.client: Optional[docker.DockerClient] = None
+        self.language_handler = LanguageHandlerFactory.create_handler(self.lang)
+
+        self.client: docker.DockerClient | None = None
 
         if not client:
             if self.verbose:
-                print("Using local Docker context since client is not provided..")
+                self.logger.info(
+                    "Using local Docker context since client is not provided.."
+                )
 
             self.client = docker.from_env()
         else:
             self.client = client
 
-        self.image: Union[Image, str] = image
-        self.dockerfile: Optional[str] = dockerfile
-        self.container: Optional[Container] = None
+        self.image: Image | str = image
+        self.dockerfile: str | None = dockerfile
+        self.container: Container | None = None
         self.path = None
         self.keep_template = keep_template
         self.commit_container = commit_container
@@ -85,53 +96,97 @@ class SandboxDockerSession(Session):
         self.mounts = mounts
         self.stream = stream
         self.runtime_configs = runtime_configs
+        self.workdir = workdir
 
-    def open(self):
+    def _ensure_ownership(self, folders: list[str]) -> None:
+        """For non-root users, ensure ownership of the resources."""
+        current_user = (
+            self.runtime_configs.get("user") if self.runtime_configs else None
+        )
+        if current_user and current_user != "root":
+            self.container.exec_run(
+                f"chown -R {current_user} {' '.join(folders)}", user="root"
+            )
+
+    def open(self) -> None:
+        """Open the sandbox session."""
         warning_str = (
-            "Since the `keep_template` flag is set to True the docker image will not be removed after the session ends "
-            "and remains for future use."
+            "Since the `keep_template` flag is set to True the docker image will not "
+            "be removed after the session ends and remains for future use."
         )
         if self.dockerfile:
-            self.path = os.path.dirname(self.dockerfile)
+            self.path = str(Path(self.dockerfile).parent)
             if self.verbose:
                 f_str = f"Building docker image from {self.dockerfile}"
                 f_str = f"{f_str}\n{warning_str}" if self.keep_template else f_str
-                print(f_str)
+                self.logger.info(f_str)
 
             self.image, _ = self.client.images.build(
                 path=self.path,
-                dockerfile=os.path.basename(self.dockerfile),
-                tag=f"sandbox-{self.lang.lower()}-{os.path.basename(self.path)}",
+                dockerfile=Path.name(self.dockerfile),
+                tag=f"sandbox-{self.lang.lower()}-{Path.name(self.path)}",
             )
             self.is_create_template = True
 
         if isinstance(self.image, str):
-            if not image_exists(self.client, self.image):
-                if self.verbose:
-                    f_str = f"Pulling image {self.image}.."
-                    f_str = f"{f_str}\n{warning_str}" if self.keep_template else f_str
-                    print(f_str)
-
-                self.image = self.client.images.pull(self.image)
-                self.is_create_template = True
-            else:
+            try:
                 self.image = self.client.images.get(self.image)
                 if self.verbose:
-                    print(f"Using image {self.image.tags[-1]}")
+                    self.logger.info("Using image %s", self.image.tags[-1])
+            except ImageNotFound:
+                if self.verbose:
+                    self.logger.info(
+                        "Image %s not found locally. Attempting to pull...", self.image
+                    )
+
+                try:
+                    self.image = self.client.images.pull(self.image)
+                    if self.verbose:
+                        self.logger.info(
+                            "Successfully pulled image %s", self.image.tags[-1]
+                        )
+                    self.is_create_template = True
+                except Exception as e:
+                    raise ImagePullError(self.image, str(e)) from e
 
         self.container = self.client.containers.run(
             self.image,
             detach=True,
             tty=True,
-            mounts=self.mounts,
-            **self.runtime_configs if self.runtime_configs else {},
+            mounts=self.mounts or [],
+            user=self.runtime_configs.get("user", "root")
+            if self.runtime_configs
+            else "root",
+            **{k: v for k, v in (self.runtime_configs or {}).items() if k != "user"},
         )
 
-    def close(self):
+        self.environment_setup()
+
+    def close(self) -> None:  # noqa: PLR0912, C901
+        """Close the sandbox session."""
         if self.container:
             if self.commit_container and isinstance(self.image, Image):
-                self.container.commit(self.image.tags[-1])
+                if self.image.tags:
+                    full_tag = self.image.tags[-1]
+                    if ":" in full_tag:
+                        repository, tag = full_tag.rsplit(":", 1)
+                    else:
+                        repository = full_tag
+                        tag = "latest"
+                try:
+                    # Commit the container with repository and tag
+                    self.container.commit(repository=repository, tag=tag)
+                    if self.verbose:
+                        self.logger.info(
+                            "Committed container as image %s:%s", repository, tag
+                        )
+                except Exception:
+                    if self.verbose:
+                        self.logger.exception("Failed to commit container")
+                    raise
 
+            self.container.stop()
+            self.container.wait()
             self.container.remove(force=True)
             self.container = None
 
@@ -153,142 +208,169 @@ class SandboxDockerSession(Session):
                 elif isinstance(self.image, Image):
                     self.image.remove(force=True)
                 else:
-                    raise ValueError("Invalid image type")
-            else:
-                if self.verbose:
-                    print(
-                        f"Image {self.image.tags[-1]} is in use by other containers. Skipping removal.."
-                    )
-
-    def run(self, code: str, libraries: Optional[List] = None) -> ConsoleOutput:
-        if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before running code."
-            )
-
-        if libraries:
-            if self.lang.upper() in NotSupportedLibraryInstallation:
-                raise ValueError(
-                    f"Library installation has not been supported for {self.lang} yet!"
+                    raise ImageNotFoundError(self.image)
+            elif self.verbose:
+                self.logger.info(
+                    "Image %s is in use by other containers. Skipping removal..",
+                    self.image.tags[-1],
                 )
 
-            if self.lang == SupportedLanguage.GO:
-                self.execute_command("mkdir -p /example")
-                self.execute_command("go mod init example", workdir="/example")
-                self.execute_command("go mod tidy", workdir="/example")
-
-                for library in libraries:
-                    command = get_libraries_installation_command(self.lang, library)
-                    _ = self.execute_command(command, workdir="/example")
-            else:
-                for library in libraries:
-                    command = get_libraries_installation_command(self.lang, library)
-                    _ = self.execute_command(command)
-
-        with tempfile.TemporaryDirectory() as directory_name:
-            code_file = os.path.join(
-                directory_name, f"code.{get_code_file_extension(self.lang)}"
-            )
-            if self.lang == SupportedLanguage.GO:
-                code_dest_file = "/example/code.go"
-            else:
-                code_dest_file = (
-                    f"/tmp/code.{get_code_file_extension(self.lang)}"  # code_file
-                )
-
-            with open(code_file, "w") as f:
-                f.write(code)
-
-            self.copy_to_runtime(code_file, code_dest_file)
-
-            output = ConsoleOutput(text="", exit_code=0)
-            commands = get_code_execution_command(self.lang, code_dest_file)
-            for command in commands:
-                if self.lang == SupportedLanguage.GO:
-                    output = self.execute_command(command, workdir="/example")
-                else:
-                    output = self.execute_command(command)
-
-                if output.exit_code != 0:
-                    return output
-
-            return output
-
-    def copy_from_runtime(self, src: str, dest: str):
+    def run(self, code: str, libraries: list | None = None) -> ConsoleOutput:
+        """Run the code in the sandbox session."""
         if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before copying files."
+            raise NotOpenSessionError
+
+        self.install(libraries)
+
+        with tempfile.NamedTemporaryFile(
+            delete=True, suffix=f".{self.language_handler.file_extension}"
+        ) as code_file:
+            code_file.write(code.encode("utf-8"))
+            code_file.seek(0)
+
+            code_dest_file = (
+                f"{self.workdir}/code.{self.language_handler.file_extension}"
             )
+            self.copy_to_runtime(code_file.name, code_dest_file)
+
+            commands = self.language_handler.get_execution_commands(code_dest_file)
+            return self.execute_commands(commands, workdir=self.workdir)
+
+    def copy_from_runtime(self, src: str, dest: str) -> None:
+        """Copy a file from the runtime to the local filesystem."""
+        if not self.container:
+            raise NotOpenSessionError
 
         if self.verbose:
-            print(f"Copying {self.container.short_id}:{src} to {dest}..")
+            self.logger.info(
+                "Copying %s:%s to %s..", self.container.short_id, src, dest
+            )
 
         bits, stat = self.container.get_archive(src)
         if stat["size"] == 0:
-            raise FileNotFoundError(f"File {src} not found in the container")
+            msg = f"File {src} not found in the container"
+            self.logger.error(msg)
+            raise FileNotFoundError(msg)
 
         tarstream = io.BytesIO(b"".join(bits))
         with tarfile.open(fileobj=tarstream, mode="r") as tar:
-            tar.extractall(os.path.dirname(dest))
+            # Filter to prevent extraction of unsafe paths
+            safe_members = [
+                member
+                for member in tar.getmembers()
+                if not (member.name.startswith("/") or ".." in member.name)
+            ]
 
-    def copy_to_runtime(self, src: str, dest: str):
+            # Rename the members to match the destination filename
+            dest_name = Path(dest).name
+            for member in safe_members:
+                if member.isfile():
+                    member.name = dest_name
+
+            tar.extractall(str(Path(dest).parent), members=safe_members)  # noqa: S202
+
+    def copy_to_runtime(self, src: str, dest: str) -> None:
+        """Copy a file to the runtime."""
         if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before copying files."
-            )
+            raise NotOpenSessionError
 
         is_created_dir = False
-        directory = os.path.dirname(dest)
-        if directory and not self.container.exec_run(f"test -d {directory}")[0] == 0:
+        directory = Path(dest).parent
+        if directory and self.container.exec_run(f"test -d {directory}")[0] != 0:
             self.container.exec_run(f"mkdir -p {directory}")
             is_created_dir = True
 
         if self.verbose:
             if is_created_dir:
-                print(f"Creating directory {self.container.short_id}:{directory}")
-            print(f"Copying {src} to {self.container.short_id}:{dest}..")
+                self.logger.info(
+                    "Creating directory %s:%s", self.container.short_id, directory
+                )
+            self.logger.info(
+                "Copying %s to %s:%s..", src, self.container.short_id, dest
+            )
 
         tarstream = io.BytesIO()
         with tarfile.open(fileobj=tarstream, mode="w") as tar:
-            tar.add(src, arcname=os.path.basename(src))
+            tar.add(src, arcname=Path(dest).name)
 
         tarstream.seek(0)
-        self.container.put_archive(os.path.dirname(dest), tarstream)
+        self.container.put_archive(str(Path(dest).parent), tarstream)
 
-    def execute_command(
-        self, command: Optional[str], workdir: Optional[str] = None
+        self._ensure_ownership([dest])
+
+    def execute_command(  # noqa: PLR0912, C901
+        self, command: str, workdir: str | None = None
     ) -> ConsoleOutput:
+        """Execute a command in the sandbox session."""
         if not command:
-            raise ValueError("Command cannot be empty")
+            raise CommandEmptyError
 
         if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before executing commands."
-            )
+            raise NotOpenSessionError
 
         if self.verbose:
-            print(f"Executing command: {command}")
+            self.logger.info("Executing command: %s", command)
 
         if workdir:
-            exit_code, exec_log = self.container.exec_run(
-                command, stream=self.stream, tty=True, workdir=workdir
+            result = self.container.exec_run(
+                command,
+                stream=self.stream,
+                tty=False,
+                workdir=workdir,
+                stderr=True,
+                stdout=True,
+                demux=True,
             )
         else:
-            exit_code, exec_log = self.container.exec_run(
-                command, stream=self.stream, tty=True
+            result = self.container.exec_run(
+                command,
+                stream=self.stream,
+                tty=False,
+                stderr=True,
+                stdout=True,
+                demux=True,
             )
 
-        output = ""
+        exit_code = result.exit_code
+        output = result.output
+
+        stdout_output = ""
+        stderr_output = ""
+
         if self.verbose:
-            print("Output:", end=" ")
+            self.logger.info("Output:")
 
         if not self.stream:
-            exec_log = [exec_log]
+            # When not streaming and demux=True, output is a tuple (stdout, stderr)
+            if output:
+                stdout_data, stderr_data = output
 
-        for chunk in exec_log:
-            chunk_str = chunk.decode("utf-8")
-            output += chunk_str
-            if self.verbose:
-                print(chunk_str, end="")
+                if stdout_data:
+                    stdout_output = stdout_data.decode("utf-8")
+                    if self.verbose:
+                        self.logger.info(stdout_output)
 
-        return ConsoleOutput(text=output, exit_code=exit_code)
+                if stderr_data:
+                    stderr_output = stderr_data.decode("utf-8")
+                    if self.verbose:
+                        self.logger.error(stderr_output)
+        else:
+            # When streaming and demux=True, we get a generator of (stdout, stderr)
+            for stdout_chunk, stderr_chunk in output:
+                if stdout_chunk:
+                    chunk_str = stdout_chunk.decode("utf-8")
+                    stdout_output += chunk_str
+                    if self.verbose:
+                        self.logger.info(chunk_str)
+
+                if stderr_chunk:
+                    chunk_str = stderr_chunk.decode("utf-8")
+                    stderr_output += chunk_str
+                    if self.verbose:
+                        self.logger.error(chunk_str)
+
+        return ConsoleOutput(
+            exit_code=exit_code,
+            stdout=stdout_output,
+            stderr=stderr_output,
+        )

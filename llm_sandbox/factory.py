@@ -1,16 +1,16 @@
 """Factory for creating sandbox sessions."""
 
-from typing import Union, Type, TYPE_CHECKING
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, Union
 
 from .const import SandboxBackend
-from .exceptions import ValidationError
+from .exceptions import UnsupportedBackendError
 
 if TYPE_CHECKING:
     from .docker import SandboxDockerSession
     from .kubernetes import SandboxKubernetesSession
-    from .podman import SandboxPodmanSession
     from .micromamba import MicromambaSession
+    from .podman import SandboxPodmanSession
 
 
 class SessionFactory(ABC):
@@ -18,7 +18,7 @@ class SessionFactory(ABC):
 
     @abstractmethod
     def create_session(
-        self, **kwargs
+        self, **kwargs: dict[str, Any]
     ) -> Union[
         "SandboxDockerSession",
         "SandboxKubernetesSession",
@@ -32,7 +32,7 @@ class SessionFactory(ABC):
 class DockerSessionFactory(SessionFactory):
     """Factory for creating Docker-based sandbox sessions."""
 
-    def create_session(self, **kwargs) -> "SandboxDockerSession":
+    def create_session(self, **kwargs: dict[str, Any]) -> "SandboxDockerSession":
         """Create a new Docker sandbox session."""
         from .docker import SandboxDockerSession
 
@@ -42,7 +42,7 @@ class DockerSessionFactory(SessionFactory):
 class KubernetesSessionFactory(SessionFactory):
     """Factory for creating Kubernetes-based sandbox sessions."""
 
-    def create_session(self, **kwargs) -> "SandboxKubernetesSession":
+    def create_session(self, **kwargs: dict[str, Any]) -> "SandboxKubernetesSession":
         """Create a new Kubernetes sandbox session."""
         from .kubernetes import SandboxKubernetesSession
 
@@ -52,7 +52,7 @@ class KubernetesSessionFactory(SessionFactory):
 class PodmanSessionFactory(SessionFactory):
     """Factory for creating Podman-based sandbox sessions."""
 
-    def create_session(self, **kwargs) -> "SandboxPodmanSession":
+    def create_session(self, **kwargs: dict[str, Any]) -> "SandboxPodmanSession":
         """Create a new Podman sandbox session."""
         from .podman import SandboxPodmanSession
 
@@ -62,18 +62,20 @@ class PodmanSessionFactory(SessionFactory):
 class MicromambaSessionFactory(SessionFactory):
     """Factory for creating Micromamba-based sandbox sessions."""
 
-    def create_session(self, **kwargs) -> "MicromambaSession":
+    def create_session(self, **kwargs: dict[str, Any]) -> "MicromambaSession":
         """Create a new Micromamba sandbox session."""
         from .micromamba import MicromambaSession
 
         return MicromambaSession(**kwargs)
 
 
-class UnifiedSessionFactory:
-    """Unified factory for creating sandbox sessions of any type."""
+class SessionFactory:
+    """Factory for creating sandbox sessions of any type."""
 
     def create_session(
-        self, backend: SandboxBackend = SandboxBackend.DOCKER, **kwargs
+        self,
+        backend: SandboxBackend = SandboxBackend.DOCKER,
+        **kwargs: dict[str, Any],
     ) -> Union[
         "SandboxDockerSession",
         "SandboxKubernetesSession",
@@ -81,7 +83,7 @@ class UnifiedSessionFactory:
         "MicromambaSession",
     ]:
         """Create a new sandbox session of the specified type."""
-        factories: dict[SandboxBackend, Type[SessionFactory]] = {
+        factories: dict[SandboxBackend, type[SessionFactory]] = {
             SandboxBackend.DOCKER: DockerSessionFactory,
             SandboxBackend.KUBERNETES: KubernetesSessionFactory,
             SandboxBackend.PODMAN: PodmanSessionFactory,
@@ -90,6 +92,6 @@ class UnifiedSessionFactory:
 
         factory_class = factories.get(backend)
         if factory_class is None:
-            raise ValidationError(f"Unsupported backend: {backend}")
+            raise UnsupportedBackendError(backend)
 
         return factory_class().create_session(**kwargs)

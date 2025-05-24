@@ -1,27 +1,46 @@
-from typing import Optional
+from typing import Any
+
 import docker
-from llm_sandbox.docker import SandboxDockerSession, ConsoleOutput
-from llm_sandbox.const import SupportedLanguage
 from docker.types import Mount
+
+from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.docker import ConsoleOutput, SandboxDockerSession
 
 
 class MicromambaSession(SandboxDockerSession):
-    """
-    SandboxDockerSession does not allow activation of micromamba environment,
-    this class extends it and allows that which makes it possible for LLM agents to installed conda dependencies.
+    """MicromambaSession extends SandboxDockerSession to allow activation of micromamba.
+
+    Reference: https://github.com/vndee/llm-sandbox/pull/3
+
+    This class is used to create a sandbox session that allows the execution of commands
+    in a micromamba environment.
     """
 
     def __init__(
         self,
-        client: Optional[docker.DockerClient] = None,
-        image: Optional[str] = "mambaorg/micromamba:latest",
-        dockerfile: Optional[str] = None,
+        client: docker.DockerClient | None = None,
+        image: str | None = "mambaorg/micromamba:latest",
+        dockerfile: str | None = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         verbose: bool = False,
-        mounts: Optional[list[Mount]] = None,
+        mounts: list[Mount] | None = None,
         environment: str = "base",
-    ):
+        **kwargs: dict[str, Any],
+    ) -> None:
+        """Create a new sandbox session.
+
+        :param client: Docker client, if not provided, a new client will be created
+                        based on local Docker context
+        :param image: Docker image to use
+        :param dockerfile: Path to the Dockerfile, if image is not provided
+        :param lang: Language of the code
+        :param keep_template: if True, the image and container will not be removed
+                            after the session ends
+        :param verbose: if True, print messages
+        :param mounts: List of mounts to be mounted to the container
+        :param environment: Name of the micromamba environment to use
+        """
         super().__init__(
             client=client,
             image=image,
@@ -30,41 +49,19 @@ class MicromambaSession(SandboxDockerSession):
             keep_template=keep_template,
             verbose=verbose,
             mounts=mounts,
+            **kwargs,
         )
+
         self.environment = environment
 
     def execute_command(
-        self, command: Optional[str], workdir: Optional[str] = None
+        self, command: str | None, workdir: str | None = None
     ) -> ConsoleOutput:
-        if not command:
-            raise ValueError("Command cannot be empty")
+        """Execute a command in the micromamba environment.
 
-        if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before executing commands."
-            )
+        :param command: Command to execute
+        :param workdir: Working directory to execute the command in
+        :return: ConsoleOutput object containing the output and exit code
+        """
         command = f"micromamba run -n {self.environment} {command}"
-
-        if self.verbose:
-            print(f"Executing command: {command}")
-
-        if workdir:
-            exit_code, exec_log = self.container.exec_run(
-                command, stream=True, tty=True, workdir=workdir
-            )
-        else:
-            exit_code, exec_log = self.container.exec_run(
-                command, stream=True, tty=True
-            )
-
-        output = ""
-        if self.verbose:
-            print("Output:", end=" ")
-
-        for chunk in exec_log:
-            chunk_str = chunk.decode("utf-8")
-            output += chunk_str
-            if self.verbose:
-                print(chunk_str, end="")
-
-        return ConsoleOutput(text=output, exit_code=exit_code)
+        return super().execute_command(command, workdir)

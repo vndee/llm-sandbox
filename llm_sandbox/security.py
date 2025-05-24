@@ -1,8 +1,9 @@
 """Security scanning functionality for LLM Sandbox."""
 
 import re
-from typing import List, Pattern, Dict
 from dataclasses import dataclass
+from re import Pattern
+
 from .exceptions import SecurityError
 
 
@@ -19,8 +20,9 @@ class SecurityIssue:
 class SecurityScanner:
     """Scanner for detecting potential security issues in code."""
 
-    def __init__(self):
-        self.patterns: Dict[str, Pattern] = {  # type: ignore[annotation-unchecked]
+    def __init__(self) -> None:
+        """Initialize the security scanner."""
+        self.patterns: dict[str, Pattern] = {  # type: ignore[annotation-unchecked]
             "system_calls": re.compile(r"os\.system|subprocess\."),
             "code_execution": re.compile(r"eval\(|exec\(|compile\("),
             "file_operations": re.compile(r"open\(|file\(|read|write"),
@@ -47,9 +49,8 @@ class SecurityScanner:
             "dangerous_imports": "Import of potentially dangerous modules",
         }
 
-    def scan_code(self, code: str, strict: bool = True) -> List[SecurityIssue]:
-        """
-        Scan code for security issues.
+    def scan_code(self, code: str, strict: bool = True) -> list[SecurityIssue]:
+        """Scan code for security issues.
 
         Args:
             code: The code to scan
@@ -60,6 +61,7 @@ class SecurityScanner:
 
         Raises:
             SecurityError: If strict=True and high severity issues are found
+
         """
         issues = []
         lines = code.split("\n")

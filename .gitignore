@@ -5,6 +5,13 @@ __pycache__/
 .idea/
 .vscode/
 .DS_Store
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.svg
+*.csv
+*.json
 
 # C extensions
 *.so

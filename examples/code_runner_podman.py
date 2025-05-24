@@ -1,5 +1,7 @@
 import logging
 
+from podman import PodmanClient
+
 from llm_sandbox import SandboxSession
 
 logging.basicConfig(
@@ -8,11 +10,15 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+client = PodmanClient(
+    base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
+)
+
 
 def run_python_code() -> None:
-    """Run Python code in Kubernetes."""
+    """Run Python code in the sandbox."""
     with SandboxSession(
-        lang="python", keep_template=True, verbose=True, backend="kubernetes"
+        lang="python", keep_template=True, verbose=True, backend="podman", client=client
     ) as session:
         output = session.run("print('Hello, World!')")
         logger.info(output)
@@ -30,9 +36,9 @@ def run_python_code() -> None:
 
 
 def run_java_code() -> None:
-    """Run Java code in Kubernetes."""
+    """Run Java code in the sandbox."""
     with SandboxSession(
-        lang="java", keep_template=True, verbose=True, backend="kubernetes"
+        lang="java", keep_template=True, verbose=True, backend="podman", client=client
     ) as session:
         output = session.run(
             """
@@ -47,9 +53,13 @@ def run_java_code() -> None:
 
 
 def run_javascript_code() -> None:
-    """Run JavaScript code in Kubernetes."""
+    """Run JavaScript code in the sandbox."""
     with SandboxSession(
-        lang="javascript", keep_template=True, verbose=True, backend="kubernetes"
+        lang="javascript",
+        keep_template=True,
+        verbose=True,
+        backend="podman",
+        client=client,
     ) as session:
         output = session.run("console.log('Hello, World!')")
         logger.info(output)
@@ -57,13 +67,8 @@ def run_javascript_code() -> None:
         output = session.run(
             """
             const axios = require('axios');
-            axios.get('https://jsonplaceholder.typicode.com/posts/1',
-            {
-                timeout: 5000,
-                headers: {
-                    Accept: 'application/json',
-                },
-            }).then(response => console.log(response.data));
+            axios.get('https://jsonplaceholder.typicode.com/posts/1')
+                .then(response => console.log(response.data));
             """,
             libraries=["axios"],
         )
@@ -71,9 +76,9 @@ def run_javascript_code() -> None:
 
 
 def run_cpp_code() -> None:
-    """Run C++ code in Kubernetes."""
+    """Run C++ code in the sandbox."""
     with SandboxSession(
-        lang="cpp", keep_template=True, verbose=True, backend="kubernetes"
+        lang="cpp", keep_template=True, verbose=True, backend="podman", client=client
     ) as session:
         output = session.run(
             """
@@ -124,9 +129,9 @@ def run_cpp_code() -> None:
 
 
 def run_go_code() -> None:
-    """Run Go code in Kubernetes."""
+    """Run Go code in the sandbox."""
     with SandboxSession(
-        lang="go", keep_template=True, verbose=True, backend="kubernetes"
+        lang="go", keep_template=True, verbose=True, backend="podman", client=client
     ) as session:
         output = session.run(
             """

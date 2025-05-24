@@ -1,17 +1,17 @@
 # Reference: https://docs.llamaindex.ai/en/stable/examples/agent/anthropic_agent/
 
-from typing import Optional, List
-from llm_sandbox import SandboxSession
+
 from langchain import hub
-from langchain_openai import ChatOpenAI
-from langchain.tools import tool
 from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.tools import tool
+from langchain_openai import ChatOpenAI
+
+from llm_sandbox import SandboxSession
 
 
 @tool
-def run_code(lang: str, code: str, libraries: Optional[List] = None) -> str:
-    """
-    Run code in a sandboxed environment.
+def run_code(lang: str, code: str, libraries: list | None = None) -> str:
+    """Run code in a sandboxed environment.
     :param lang: The language of the code, must be one of ['python', 'java', 'javascript', 'cpp', 'go', 'ruby'].
     :param code: The code to run.
     :param libraries: The libraries to use, it is optional.

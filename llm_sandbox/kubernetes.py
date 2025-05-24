@@ -1,61 +1,65 @@
 import io
-import os
+import tarfile
 import tempfile
 import time
 import uuid
-import tarfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Any
 
-from kubernetes import client as k8s_client, config
+from kubernetes import client as k8s_client
+from kubernetes import config
 from kubernetes.stream import stream
-from llm_sandbox.base import Session, ConsoleOutput
-from llm_sandbox.utils import (
-    get_libraries_installation_command,
-    get_code_file_extension,
-    get_code_execution_command,
-)
-from llm_sandbox.const import SupportedLanguage, SupportedLanguageValues, DefaultImage
+
+from llm_sandbox.base import ConsoleOutput, Session
+from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.exceptions import NotOpenSessionError
+from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 
 
 class SandboxKubernetesSession(Session):
+    """Sandbox session for Kubernetes."""
+
     def __init__(
         self,
-        client: Optional[k8s_client.CoreV1Api] = None,
-        image: Optional[str] = None,
-        dockerfile: Optional[str] = None,
+        client: k8s_client.CoreV1Api | None = None,
+        image: str | None = None,
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         verbose: bool = False,
-        kube_namespace: Optional[str] = "default",
-        env_vars: Optional[dict] = None,
-        pod_manifest: Optional[dict] = None,
-        **kwargs,
-    ):
-        """
-        Create a new sandbox session
-        :param client: Kubernetes client, if not provided, a new client will be created based on local Kubernetes context
+        kube_namespace: str | None = "default",
+        env_vars: dict | None = None,
+        pod_manifest: dict | None = None,
+        workdir: str | None = "/sandbox",
+        **kwargs: dict[str, Any],  # noqa: ARG002
+    ) -> None:
+        """Create a new sandbox session.
+
+        :param client: Kubernetes client, if not provided, a new client will be created
+                    based on local Kubernetes context
         :param image: Docker image to use
-        :param dockerfile: Path to the Dockerfile, if image is not provided
         :param lang: Language of the code
-        :param keep_template: if True, the image and container will not be removed after the session ends
+        :param keep_template: if True, the image and container will not be removed
+                    after the session ends
         :param verbose: if True, print messages
         :param kube_namespace: Kubernetes namespace to use, default is 'default'
         :param env_vars: Environment variables to use
-        :param pod_manifest: Pod manifest to use (ignores other settings: `image`, `kube_namespace` and `env_vars`)
+        :param pod_manifest: Pod manifest to use (ignores other settings: `image`,
+                            `kube_namespace` and `env_vars`). By default runs as root user
+                            for maximum compatibility. Advanced users can override security
+                            context in custom pod_manifest.
         """
         super().__init__(lang, verbose)
-        if lang not in SupportedLanguageValues:
-            raise ValueError(
-                f"Language {lang} is not supported. Must be one of {SupportedLanguageValues}"
-            )
+
+        self.language_handler = LanguageHandlerFactory.create_handler(self.lang)
 
         if not image:
             image = DefaultImage.__dict__[lang.upper()]
 
         if not client:
             if self.verbose:
-                print("Using local Kubernetes context since client is not provided..")
+                self.logger.info(
+                    "Using local Kubernetes context since client is not provided.."
+                )
 
             config.load_kube_config()
             self.client = k8s_client.CoreV1Api()
@@ -69,6 +73,7 @@ class SandboxKubernetesSession(Session):
         self.container = None
         self.env_vars = env_vars
         self.pod_manifest = pod_manifest or self._default_pod_manifest()
+        self.workdir = workdir
         self._reconfigure_with_pod_manifest()
 
     def _default_pod_manifest(self) -> dict:
@@ -82,27 +87,55 @@ class SandboxKubernetesSession(Session):
             },
             "spec": {
                 "containers": [
-                    {"name": "sandbox-container", "image": self.image, "tty": True}
-                ]
+                    {
+                        "name": "sandbox-container",
+                        "image": self.image,
+                        "tty": True,
+                        "securityContext": {
+                            "runAsUser": 0,  # Run as root for maximum compatibility
+                            "runAsGroup": 0,
+                        },
+                    }
+                ],
+                "securityContext": {
+                    "runAsUser": 0,  # Pod-level security context for root access
+                    "runAsGroup": 0,
+                },
             },
         }
-        # Add environment variables if provided
+
         if self.env_vars:
             pod_manifest["spec"]["containers"][0]["env"] = [  # type: ignore[index]
                 {"name": key, "value": value} for key, value in self.env_vars.items()
             ]
         return pod_manifest
 
-    def _reconfigure_with_pod_manifest(self):
+    def _reconfigure_with_pod_manifest(self) -> None:
         self.pod_name = self.pod_manifest.get("metadata", {}).get("name", self.pod_name)
         self.kube_namespace = self.pod_manifest.get("metadata", {}).get(
             "namespace", self.kube_namespace
         )
 
-    def open(self):
+    def open(self) -> None:
+        """Open the sandbox session."""
         self._create_kubernetes_pod()
+        self.environment_setup()
 
-    def _create_kubernetes_pod(self):
+    def _ensure_ownership(self, folders: list[str]) -> None:
+        # For Kubernetes, check if we're running as root to handle ownership
+        # If running as non-root user, the directories should already have correct ownership
+        user_check = self.execute_command("id -u")
+        is_root = user_check.stdout.strip() == "0"
+
+        if not is_root:
+            # For non-root pods, ensure cache directory is owned by current user
+            self.execute_commands(
+                [
+                    (f"chown -R $(id -u):$(id -g) {' '.join(folders)}", None),
+                ]
+            )
+
+    def _create_kubernetes_pod(self) -> None:
         self.client.create_namespaced_pod(
             namespace=self.kube_namespace, body=self.pod_manifest
         )
@@ -117,95 +150,128 @@ class SandboxKubernetesSession(Session):
 
         self.container = self.pod_name
 
-    def close(self):
+    def close(self) -> None:
+        """Close the sandbox session."""
         self._delete_kubernetes_pod()
 
-    def _delete_kubernetes_pod(self):
+    def _delete_kubernetes_pod(self) -> None:
         self.client.delete_namespaced_pod(
             name=self.pod_name,
             namespace=self.kube_namespace,
             body=k8s_client.V1DeleteOptions(),
         )
 
-    def run(self, code: str, libraries: Optional[List] = None) -> ConsoleOutput:
+    def run(self, code: str, libraries: list | None = None) -> ConsoleOutput:
+        """Run the code in the sandbox session."""
         if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before running code."
+            raise NotOpenSessionError
+
+        self.install(libraries)
+
+        with tempfile.TemporaryDirectory() as directory_name:
+            code_file = str(
+                Path(directory_name) / f"code.{self.language_handler.file_extension}"
+            )
+            code_dest_file = (
+                f"{self.workdir}/code.{self.language_handler.file_extension}"
             )
 
-        if libraries:
-            if self.lang == SupportedLanguage.GO:
-                self.execute_command("mkdir -p /example")
-                self.execute_command("go mod init example", workdir="/example")
-                self.execute_command("go mod tidy", workdir="/example")
-
-                for library in libraries:
-                    install_command = get_libraries_installation_command(
-                        self.lang, library
-                    )
-                    output = self.execute_command(install_command, workdir="/example")
-                    if output.exit_code != 0:
-                        raise RuntimeError(
-                            f"Failed to install library {library}: {output}"
-                        )
-            else:
-                for library in libraries:
-                    install_command = get_libraries_installation_command(
-                        self.lang, library
-                    )
-                    output = self.execute_command(install_command)
-                    if output.exit_code != 0:
-                        raise RuntimeError(
-                            f"Failed to install library {library}: {output}"
-                        )
-
-        code_file_name = f"code.{get_code_file_extension(self.lang)}"
-        if self.lang == SupportedLanguage.GO:
-            code_dest_file = "/example/code.go"
-        else:
-            code_dest_file = f"/tmp/{code_file_name}"
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            code_file = Path(tmp_dir) / code_file_name
-            with open(code_file, "w") as f:
+            with Path.open(code_file, "w", encoding="utf-8") as f:
                 f.write(code)
-            self.copy_to_runtime(str(code_file), code_dest_file)
 
-        commands = get_code_execution_command(self.lang, code_dest_file)
+            self.copy_to_runtime(code_file, code_dest_file)
 
-        output = ConsoleOutput(exit_code=0, text="")
-        for command in commands:
-            if self.lang == SupportedLanguage.GO:
-                output = self.execute_command(command, workdir="/example")
-            else:
-                output = self.execute_command(command)
+            commands = self.language_handler.get_execution_commands(code_dest_file)
+            return self.execute_commands(commands, workdir=self.workdir)
 
-            if output.exit_code != 0:
-                break
-
-        return ConsoleOutput(text=output.text, exit_code=output.exit_code)
-
-    def copy_to_runtime(self, src: str, dest: str):
+    def copy_from_runtime(self, src: str, dest: str) -> None:
+        """Copy a file from the runtime."""
         if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before copying files."
-            )
+            raise NotOpenSessionError
+
+        if self.verbose:
+            self.logger.info("Copying %s:%s to %s..", self.container, src, dest)
+
+        exec_command = ["tar", "cf", "-", src]
+        resp = stream(
+            self.client.connect_get_namespaced_pod_exec,
+            self.container,
+            self.kube_namespace,
+            command=exec_command,
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _preload_content=False,
+        )
+
+        # Collect the tar archive data
+        tar_data = io.BytesIO()
+        while resp.is_open():
+            resp.update(timeout=1)
+            if resp.peek_stdout():
+                tar_data.write(
+                    resp.read_stdout().encode()
+                    if isinstance(resp.read_stdout(), str)
+                    else resp.read_stdout()
+                )
+            if resp.peek_stderr():
+                self.logger.error(resp.read_stderr())
+
+        # Extract the file content from the tar archive
+        tar_data.seek(0)
+        with tarfile.open(fileobj=tar_data, mode="r") as tar:
+            # Filter to prevent extraction of unsafe paths
+            safe_members = [
+                member
+                for member in tar.getmembers()
+                if not (member.name.startswith("/") or ".." in member.name)
+            ]
+
+            # Find the file we want to extract
+            target_member = None
+            src_name = Path(src).name
+            for member in safe_members:
+                if member.isfile() and (
+                    member.name == src_name or member.name.endswith(f"/{src_name}")
+                ):
+                    target_member = member
+                    break
+
+            if target_member:
+                # Extract the file content and write to destination
+                file_obj = tar.extractfile(target_member)
+                if file_obj:
+                    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+                    with Path(dest).open("wb") as f:
+                        f.write(file_obj.read())
+                else:
+                    raise FileNotFoundError(
+                        f"Could not extract file content from {src}"
+                    )
+            else:
+                raise FileNotFoundError(f"File {src} not found in the tar archive")
+
+    def copy_to_runtime(self, src: str, dest: str) -> None:
+        """Copy a file to the runtime."""
+        if not self.container:
+            raise NotOpenSessionError
 
         start_time = time.time()
         if self.verbose:
-            print(f"Copying {src} to {self.container}:{dest}..")
+            self.logger.info("Copying %s to %s:%s..", src, self.container, dest)
 
-        dest_dir = os.path.dirname(dest)
-        dest_file = os.path.basename(dest)
+        dest_dir = str(Path(dest).parent)
+        dest_file = str(Path(dest).name)
 
         if dest_dir:
             self.execute_command(f"mkdir -p {dest_dir}")
 
-        with open(src, "rb") as f:
+        with Path(src).open("rb") as f:
             tarstream = io.BytesIO()
             with tarfile.open(fileobj=tarstream, mode="w") as tar:
                 tarinfo = tarfile.TarInfo(name=dest_file)
-                tarinfo.size = os.path.getsize(src)
+                tarinfo.size = Path(src).stat().st_size
                 tar.addfile(tarinfo, f)
             tarstream.seek(0)
 
@@ -224,57 +290,33 @@ class SandboxKubernetesSession(Session):
             while resp.is_open():
                 resp.update(timeout=1)
                 if resp.peek_stdout():
-                    print(resp.read_stdout())
+                    self.logger.info(resp.read_stdout())
                 if resp.peek_stderr():
-                    print(resp.read_stderr())
+                    self.logger.error(resp.read_stderr())
                 resp.write_stdin(tarstream.read(4096))
             resp.close()
 
         end_time = time.time()
         if self.verbose:
-            print(
-                f"Copied {src} to {self.container}:{dest} in {end_time - start_time:.2f} seconds"
+            self.logger.info(
+                "Copied %s to %s:%s in %.2f seconds",
+                src,
+                self.container,
+                dest,
+                end_time - start_time,
             )
 
-    def copy_from_runtime(self, src: str, dest: str):
-        if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before copying files."
-            )
-
-        if self.verbose:
-            print(f"Copying {self.container}:{src} to {dest}..")
-
-        exec_command = ["tar", "cf", "-", src]
-        resp = stream(
-            self.client.connect_get_namespaced_pod_exec,
-            self.container,
-            self.kube_namespace,
-            command=exec_command,
-            stderr=True,
-            stdin=False,
-            stdout=True,
-            tty=False,
-            _preload_content=False,
-        )
-        with open(dest, "wb") as f:
-            while resp.is_open():
-                resp.update(timeout=1)
-                if resp.peek_stdout():
-                    f.write(resp.read_stdout())
-                if resp.peek_stderr():
-                    print(resp.read_stderr())
+        self._ensure_ownership([dest_dir])
 
     def execute_command(
-        self, command: str, workdir: Optional[str] = None
+        self, command: str, workdir: str | None = None
     ) -> ConsoleOutput:
+        """Execute a command in the sandbox session."""
         if not self.container:
-            raise RuntimeError(
-                "Session is not open. Please call open() method before executing commands."
-            )
+            raise NotOpenSessionError
 
         if self.verbose:
-            print(f"Executing command: {command}")
+            self.logger.info("Executing command: %s", command)
 
         if workdir:
             exec_command = ["sh", "-c", f"cd {workdir} && {command}"]
@@ -293,22 +335,29 @@ class SandboxKubernetesSession(Session):
             _preload_content=False,
         )
 
-        output = ""
+        stdout_output = ""
+        stderr_output = ""
         if self.verbose:
-            print("Output:", end=" ")
+            self.logger.info("Output:")
 
         while resp.is_open():
             resp.update(timeout=1)
             if resp.peek_stdout():
                 chunk = resp.read_stdout()
-                output += chunk
+                stdout_output += chunk
                 if self.verbose:
-                    print(chunk, end="")
+                    self.logger.info("Stdout: %s", chunk)
+
             if resp.peek_stderr():
                 chunk = resp.read_stderr()
-                output += chunk
+                stderr_output += chunk
                 if self.verbose:
-                    print(chunk, end="")
+                    self.logger.error("Stderr: %s", chunk)
 
         exit_code = resp.returncode
-        return ConsoleOutput(exit_code=exit_code, text=output)
+
+        return ConsoleOutput(
+            exit_code=exit_code,
+            stdout=stdout_output,
+            stderr=stderr_output,
+        )

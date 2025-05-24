@@ -1,22 +1,19 @@
 # Reference: https://python.langchain.com/v0.1/docs/modules/agents/quick_start/
 # Reference: https://python.langchain.com/v0.1/docs/modules/tools/custom_tools/
 
-from typing import Optional, List
-from llm_sandbox import SandboxSession
-
-from llama_index.llms.openai import OpenAI
-from llama_index.core.tools import FunctionTool
-from llama_index.core.agent import FunctionCallingAgentWorker
-
 
 import nest_asyncio
+from llama_index.core.agent import FunctionCallingAgentWorker
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+from llm_sandbox import SandboxSession
 
 nest_asyncio.apply()
 
 
-def run_code(lang: str, code: str, libraries: Optional[List] = None) -> str:
-    """
-    Run code in a sandboxed environment.
+def run_code(lang: str, code: str, libraries: list | None = None) -> str:
+    """Run code in a sandboxed environment.
     :param lang: The language of the code, must be one of ['python', 'java', 'javascript', 'cpp', 'go', 'ruby'].
     :param code: The code to run.
     :param libraries: The libraries to use, it is optional.

@@ -92,11 +92,33 @@ with SandboxSession(lang="python", keep_template=True) as session:
     session.copy_from_runtime("/sandbox/output.txt", "output.txt")
 ```
 
+#### Security and User Configuration
+
+By default, containers run as `root` user for maximum compatibility and to avoid permission issues. This is suitable for code interpretation where the security boundary is container isolation. Advanced users can override this:
+
+```python
+from llm_sandbox import SandboxSession
+
+# Default behavior - runs as root for maximum compatibility
+with SandboxSession(lang="python") as session:
+    result = session.run("import os; print(f'Running as UID: {os.getuid()}')")
+    print(result)  # Will show: Running as UID: 0
+
+# Advanced: Run as specific user (handle permissions yourself)
+with SandboxSession(
+    lang="python",
+    runtime_configs={"user": "1000:1000"}  # uid:gid
+) as session:
+    result = session.run("import os; print(f'Running as UID: {os.getuid()}')")
+    print(result)  # Will show: Running as UID: 1000
+```
+
 #### Custom runtime configs
 
 ```python
 from llm_sandbox import SandboxSession
 
+# Kubernetes pod manifest with custom security context (non-root)
 pod_manifest = {
     "apiVersion": "v1",
     "kind": "Pod",
@@ -111,12 +133,20 @@ pod_manifest = {
                 "name": "sandbox-container",
                 "image": "test",
                 "tty": True,
+                "securityContext": {
+                    "runAsUser": 1000,  # Override to run as non-root
+                    "runAsGroup": 1000,
+                },
                 "volumeMounts": {
                     "name": "tmp",
                     "mountPath": "/tmp",
                 },
             }
         ],
+        "securityContext": {
+            "runAsUser": 1000,  # Pod-level non-root override
+            "runAsGroup": 1000,
+        },
         "volumes": [{"name": "tmp", "emptyDir": {"sizeLimit": "5Gi"}}],
     },
 }
