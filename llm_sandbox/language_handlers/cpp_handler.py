@@ -49,3 +49,40 @@ class CppHandler(AbstractLanguageHandler):
     ) -> list[FileOutput]:
         """Extract files from the C++ handler."""
         return []
+
+    def safety_check(self, code: str) -> list[str]:
+        """Check the code for safety issues."""
+        warnings = []
+
+        # Check for potentially dangerous operations
+        dangerous_operations = [
+            "system(",
+            "exec(",
+            "popen(",
+            "fork(",
+            "exit(",
+            "malloc(",
+            "free(",
+            "delete",
+            "new",
+        ]
+
+        for dangerous in dangerous_operations:
+            if dangerous in code:
+                warnings.append(
+                    f"Potentially dangerous operation detected: {dangerous}"
+                )
+
+        # Check for file system operations
+        file_operations = ["fopen(", "ofstream", "ifstream", "remove(", "rename("]
+        for op in file_operations:
+            if op in code:
+                warnings.append(f"File system operation detected: {op}")
+
+        # Check for network operations
+        network_operations = ["socket(", "connect(", "bind(", "listen("]
+        for op in network_operations:
+            if op in code:
+                warnings.append(f"Network operation detected: {op}")
+
+        return warnings

@@ -45,6 +45,7 @@ class ConsoleOutput:
         return not self.exit_code
 
 
+@dataclass
 class ExecutionResult(ConsoleOutput):
     """Result of code execution in sandbox."""
 

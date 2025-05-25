@@ -208,3 +208,126 @@ console.log('JavaScript plot detection setup complete');
     ) -> list[FileOutput]:
         """Extract files from JavaScript execution."""
         return self._extract_files_from_path(container, "/tmp/sandbox_output")
+
+    def _extract_files_from_path(
+        self, container: "ContainerProtocol", path: str
+    ) -> list[FileOutput]:
+        """Extract files from a specific path in the container."""
+        files = []
+
+        try:
+            # Check if directory exists
+            result = container.execute_command(f"test -d {path}")
+            if result.exit_code != 0:
+                return files
+
+            # Find all files in the directory
+            result = container.execute_command(f"find {path} -type f")
+            if result.exit_code != 0:
+                return files
+
+            file_paths = result.stdout.strip().split("\n")
+            file_paths = [path.strip() for path in file_paths if path.strip()]
+
+            for file_path in file_paths:
+                try:
+                    file_output = self._extract_single_file(container, file_path)
+                    if file_output:
+                        files.append(file_output)
+                except Exception as e:
+                    print(f"Error extracting file {file_path}: {e}")
+
+        except Exception as e:
+            print(f"Error extracting files from {path}: {e}")
+
+        return files
+
+    def _extract_single_file(
+        self, container: "ContainerProtocol", file_path: str
+    ) -> FileOutput | None:
+        """Extract single file from container."""
+        try:
+            # Get file content
+            bits, stat = container.get_archive(file_path)
+
+            import base64
+            import io
+            import mimetypes
+            import os
+            import tarfile
+
+            tarstream = io.BytesIO(b"".join(bits))
+            with tarfile.open(fileobj=tarstream, mode="r") as tar:
+                member = tar.getmembers()[0]
+                if member.isfile():
+                    file_obj = tar.extractfile(member)
+                    if file_obj:
+                        content = file_obj.read()
+
+                        # Get file info
+                        filename = os.path.basename(file_path)
+                        file_ext = os.path.splitext(filename)[1].lower().lstrip(".")
+                        mime_type, _ = mimetypes.guess_type(file_path)
+
+                        try:
+                            from llm_sandbox.artifact import FileType
+
+                            file_type = FileType(file_ext)
+                        except ValueError:
+                            from llm_sandbox.artifact import FileType
+
+                            file_type = FileType.TXT
+
+                        return FileOutput(
+                            filename=filename,
+                            content_base64=base64.b64encode(content).decode("utf-8"),
+                            file_type=file_type,
+                            mime_type=mime_type or "application/octet-stream",
+                            size=len(content),
+                        )
+
+        except Exception as e:
+            print(f"Error extracting single file: {e}")
+
+        return None
+
+    def safety_check(self, code: str) -> list[str]:
+        """Check the code for safety issues."""
+        warnings = []
+
+        # Check for potentially dangerous operations
+        dangerous_operations = [
+            "require('child_process')",
+            "require('fs')",
+            "require('os')",
+            "process.exit",
+            "eval(",
+            "Function(",
+            "setTimeout",
+            "setInterval",
+        ]
+
+        for dangerous in dangerous_operations:
+            if dangerous in code:
+                warnings.append(
+                    f"Potentially dangerous operation detected: {dangerous}"
+                )
+
+        # Check for file system operations
+        file_operations = ["fs.writeFile", "fs.readFile", "fs.unlink", "fs.rmdir"]
+        for op in file_operations:
+            if op in code:
+                warnings.append(f"File system operation detected: {op}")
+
+        # Check for network operations
+        network_operations = [
+            "require('http')",
+            "require('https')",
+            "require('net')",
+            "fetch(",
+        ]
+        for op in network_operations:
+            if op in code:
+                warnings.append(f"Network operation detected: {op}")
+
+        return warnings

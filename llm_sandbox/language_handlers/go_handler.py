@@ -49,3 +49,38 @@ class GoHandler(AbstractLanguageHandler):
     ) -> list[FileOutput]:
         """Extract files from the Go handler."""
         return []
+
+    def safety_check(self, code: str) -> list[str]:
+        """Check the code for safety issues."""
+        warnings = []
+
+        # Check for potentially dangerous operations
+        dangerous_operations = [
+            "os.Exec",
+            "exec.Command",
+            "syscall.",
+            "unsafe.",
+            "os.Remove",
+            "os.RemoveAll",
+            "ioutil.WriteFile",
+        ]
+
+        for dangerous in dangerous_operations:
+            if dangerous in code:
+                warnings.append(
+                    f"Potentially dangerous operation detected: {dangerous}"
+                )
+
+        # Check for file system operations
+        file_operations = ["os.Create", "os.Open", "os.OpenFile", "ioutil.ReadFile"]
+        for op in file_operations:
+            if op in code:
+                warnings.append(f"File system operation detected: {op}")
+
+        # Check for network operations
+        network_operations = ["net.Dial", "http.Get", "http.Post", "net/http"]
+        for op in network_operations:
+            if op in code:
+                warnings.append(f"Network operation detected: {op}")
+
+        return warnings

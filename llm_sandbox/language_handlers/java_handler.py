@@ -50,3 +50,42 @@ class JavaHandler(AbstractLanguageHandler):
     ) -> list[FileOutput]:
         """Extract files from the Go handler."""
         return []
+
+    def safety_check(self, code: str) -> list[str]:
+        """Check the code for safety issues."""
+        warnings = []
+
+        # Check for potentially dangerous operations
+        dangerous_operations = [
+            "Runtime.getRuntime()",
+            "ProcessBuilder",
+            "System.exit",
+            "Class.forName",
+            "Method.invoke",
+            "Field.set",
+        ]
+
+        for dangerous in dangerous_operations:
+            if dangerous in code:
+                warnings.append(
+                    f"Potentially dangerous operation detected: {dangerous}"
+                )
+
+        # Check for file system operations
+        file_operations = [
+            "FileWriter",
+            "FileOutputStream",
+            "Files.write",
+            "Files.delete",
+        ]
+        for op in file_operations:
+            if op in code:
+                warnings.append(f"File system operation detected: {op}")
+
+        # Check for network operations
+        network_operations = ["Socket", "ServerSocket", "URL", "HttpURLConnection"]
+        for op in network_operations:
+            if op in code:
+                warnings.append(f"Network operation detected: {op}")
+
+        return warnings

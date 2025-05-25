@@ -4,12 +4,23 @@ from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
 from llm_sandbox.artifact import FileOutput, PlotOutput
+from llm_sandbox.base import ConsoleOutput
 from llm_sandbox.exceptions import CommandFailedError, PackageManagerError
 
 if TYPE_CHECKING:
 
     class ContainerProtocol(Protocol):
         """Protocol for container objects (Docker, Podman, K8s)."""
+
+        def execute_command(
+            self, command: str, workdir: str | None = None
+        ) -> "ConsoleOutput":
+            """Execute a command in the container."""
+            ...
+
+        def get_archive(self, path: str) -> tuple:
+            """Get archive of files from container."""
+            ...
 
 
 class PlotLibrary(Enum):
@@ -89,6 +100,10 @@ class AbstractLanguageHandler(ABC):
         self, container: "ContainerProtocol", output_dir: str
     ) -> list[FileOutput]:
         """Extract files from execution."""
+
+    @abstractmethod
+    def safety_check(self, code: str) -> list[str]:
+        """Check the code for safety issues."""
 
     @property
     def name(self) -> str:

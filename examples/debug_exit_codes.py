@@ -1,21 +1,28 @@
-#!/usr/bin/env python3
 """Debug exit codes for virtual environment tests."""
+
+import logging
 
 from llm_sandbox import SandboxSession
 
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-def debug_exit_codes():
+logger = logging.getLogger(__name__)
+
+
+def debug_exit_codes() -> None:
     """Debug what exit codes we're getting."""
-    print("=== Debugging Exit Codes ===")
+    logger.info("=== Debugging Exit Codes ===")
 
     with SandboxSession(backend="docker", lang="python", verbose=True) as session:
         result = session.run("print('Test successful!')", libraries=["urllib3"])
-        print(f"Exit code: {result.exit_code}")
-        print(f"Exit code type: {type(result.exit_code)}")
-        print(f"Stdout: {result.stdout!r}")
-        print(f"Stderr: {result.stderr!r}")
-        print(f"Comparison result.exit_code == 0: {result.exit_code == 0}")
-        print(f"Comparison result.exit_code is None: {result.exit_code is None}")
+        logger.info("Exit code: %s", result.exit_code)
+        logger.info("Exit code type: %s", type(result.exit_code))
+        logger.info("Stdout: %s", result.stdout)
+        logger.info("Stderr: %s", result.stderr)
+        logger.info("Comparison result.exit_code == 0: %s", result.exit_code == 0)
+        logger.info("Comparison result.exit_code is None: %s", result.exit_code is None)
 
 
 if __name__ == "__main__":

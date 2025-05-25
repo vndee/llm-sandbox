@@ -2,14 +2,11 @@
 
 from importlib.util import find_spec
 from types import TracebackType
-from typing import Any, TypeVar, cast
+from typing import Any
 
 from .base import ExecutionResult, Session
 from .const import SandboxBackend, SupportedLanguage
-from .exceptions import DependencyError
-from .factory import SessionFactory
-
-T = TypeVar("T", bound=Session)
+from .exceptions import DependencyError, UnsupportedBackendError
 
 
 def _check_dependency(backend: SandboxBackend) -> None:
@@ -36,29 +33,108 @@ def _check_dependency(backend: SandboxBackend) -> None:
         raise DependencyError(msg)
 
 
-class ContextManagerMixin:
-    """Mixin to add context manager support to session instances."""
+def create_session(
+    backend: SandboxBackend = SandboxBackend.DOCKER,
+    image: str | None = None,
+    dockerfile: str | None = None,
+    lang: str = SupportedLanguage.PYTHON,
+    *,
+    keep_template: bool = False,
+    commit_container: bool = False,
+    verbose: bool = False,
+    runtime_configs: dict | None = None,
+    workdir: str | None = "/sandbox",
+    **kwargs: Any,  # noqa: ANN401
+) -> Session:
+    """Create a new sandbox session.
 
-    def __enter__(self) -> "Session":
-        """Enter the context manager."""
-        return self
+    Args:
+        backend: Docker, Kubernetes or Podman backend
+        image: Container image to use
+        dockerfile: Path to Dockerfile
+        lang: Programming language
+        keep_template: Whether to keep the container template
+        commit_container: Whether to commit container changes
+        verbose: Enable verbose logging
+        runtime_configs: Additional runtime configurations
+        workdir: Working directory inside the container
+        **kwargs: Additional keyword arguments
 
-    def __exit__(
+    Returns:
+        A sandbox session instance
+
+    Raises:
+        DependencyError: If the required dependency for the chosen backend
+                        is not installed
+        UnsupportedBackendError: If the chosen backend is not supported
+
+    """
+    # Check if required dependency is installed
+    _check_dependency(backend)
+
+    # Create the appropriate session based on backend
+    match backend:
+        case SandboxBackend.DOCKER:
+            from .docker import SandboxDockerSession
+
+            return SandboxDockerSession(
+                image=image,
+                dockerfile=dockerfile,
+                lang=lang,
+                keep_template=keep_template,
+                commit_container=commit_container,
+                verbose=verbose,
+                runtime_configs=runtime_configs,
+                workdir=workdir,
+                **kwargs,
+            )
+        case SandboxBackend.KUBERNETES:
+            from .kubernetes import SandboxKubernetesSession
+
+            return SandboxKubernetesSession(
+                image=image,
+                lang=lang,
+                keep_template=keep_template,
+                verbose=verbose,
+                runtime_configs=runtime_configs,
+                workdir=workdir,
+                **kwargs,
+            )
+        case SandboxBackend.PODMAN:
+            from .podman import SandboxPodmanSession
+
+            return SandboxPodmanSession(
+                image=image,
+                dockerfile=dockerfile,
+                lang=lang,
+                keep_template=keep_template,
+                commit_container=commit_container,
+                verbose=verbose,
+                runtime_configs=runtime_configs,
+                workdir=workdir,
+                **kwargs,
+            )
+        case SandboxBackend.MICROMAMBA:
+            from .micromamba import MicromambaSession
+
+            return MicromambaSession(
+                image=image,
+                lang=lang,
+                keep_template=keep_template,
+                verbose=verbose,
+                runtime_configs=runtime_configs,
+                workdir=workdir,
+                **kwargs,
+            )
+        case _:
+            raise UnsupportedBackendError(backend=backend)
+
+
+class ArtifactSandboxSession:
+    """Sandbox session with artifact extraction capabilities."""
+
+    def __init__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        """Exit the context manager."""
-        if hasattr(self, "close"):
-            self.close()
-
-
-class SandboxSession:
-    """Factory class for creating sandbox sessions with context manager support."""
-
-    def __new__(
-        cls,
         backend: SandboxBackend = SandboxBackend.DOCKER,
         image: str | None = None,
         dockerfile: str | None = None,
@@ -69,9 +145,11 @@ class SandboxSession:
         verbose: bool = False,
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
+        enable_plotting: bool = True,
+        enable_file_output: bool = True,
         **kwargs: Any,  # noqa: ANN401
-    ) -> "SandboxSession":
-        """Create a new sandbox session.
+    ) -> None:
+        """Create a new artifact sandbox session.
 
         Args:
             backend: Docker, Kubernetes or Podman backend
@@ -81,27 +159,20 @@ class SandboxSession:
             keep_template: Whether to keep the container template
             commit_container: Whether to commit container changes
             verbose: Enable verbose logging
-            runtime_configs: Additional runtime configurations, check the specific
-                            backend for more details.
-            workdir: Working directory inside the container. Defaults to "/sandbox".
-                        Use "/tmp/sandbox" when running as non-root user.
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            A new sandbox session of the appropriate type
-            (Docker, Kubernetes, Podman, or Micromamba)
+            runtime_configs: Additional runtime configurations
+            workdir: Working directory inside the container
+            enable_plotting: Whether to enable plot extraction
+            enable_file_output: Whether to enable file extraction
+            **kwargs: Additional keyword arguments
 
         Raises:
-            DependencyError: If the required dependency
-            for the chosen backend is not installed
+            DependencyError: If the required dependency for the chosen backend
+                            is not installed
+            UnsupportedBackendError: If the chosen backend is not supported
 
         """
-        # Check if required dependency is installed
-        _check_dependency(backend)
-
-        factory = SessionFactory()
-
-        session = factory.create_session(
+        # Create the base session
+        self._session = create_session(
             backend=backend,
             image=image,
             dockerfile=dockerfile,
@@ -114,52 +185,59 @@ class SandboxSession:
             **kwargs,
         )
 
-        # Create a new class that inherits from both the session class and our mixin
-        session.__class__ = type(
-            "SandboxSession",
-            (session.__class__, ContextManagerMixin, SandboxSession),
-            {},
-        )
+        self.enable_plotting = enable_plotting
+        self.enable_file_output = enable_file_output
 
-        return cast("SandboxSession", session)
+    def __enter__(self) -> "ArtifactSandboxSession":
+        """Enter the context manager."""
+        self._session.__enter__()
+        return self
 
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit the context manager."""
+        return self._session.__exit__(exc_type, exc_val, exc_tb)
 
-class ArtifactSandboxSession(Session):
-    """Sandbox session for artifact generation."""
-
-    def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:  # noqa: ANN401
-        """Initialize the artifact sandbox session."""
-        super().__init__(*args, **kwargs)
-
-        self.enable_plotting = kwargs.get("enable_plotting", True)
-        self.enable_file_output = kwargs.get("enable_file_output", True)
+    def __getattr__(self, name: str) -> Any:  # noqa: ANN401
+        """Delegate any other attributes/methods to the underlying session."""
+        return getattr(self._session, name)
 
     def run(self, code: str, libraries: list | None = None) -> ExecutionResult:
-        """Run the code in the sandbox session."""
+        """Run the code in the sandbox session with artifact extraction."""
         if self.enable_plotting:
-            injected_code = self.language_handler.inject_plot_detection_code(code)
+            injected_code = self._session.language_handler.inject_plot_detection_code(
+                code
+            )
         else:
             injected_code = code
 
-        result = super().run(injected_code, libraries)
+        result = self._session.run(injected_code, libraries)
 
         plots, files = [], []
 
         if self.enable_plotting:
-            plots = self.language_handler.extract_plots(
-                self.container,
+            plots = self._session.language_handler.extract_plots(
+                self._session,  # Pass the actual session as the container protocol
                 "/tmp/sandbox_plots",
             )
 
         if self.enable_file_output:
-            files = self.language_handler.extract_files(
-                self.container,
+            files = self._session.language_handler.extract_files(
+                self._session,  # Pass the actual session as the container protocol
                 "/tmp/sandbox_output",
             )
 
         return ExecutionResult(
             exit_code=result.exit_code,
             stdout=result.stdout,
+            stderr=result.stderr,
             plots=plots,
             files=files,
         )
+
+
+SandboxSession = create_session
