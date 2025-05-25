@@ -1,3 +1,4 @@
+import logging
 from typing import ClassVar
 
 from llm_sandbox.const import SupportedLanguage
@@ -25,13 +26,15 @@ class LanguageHandlerFactory:
     }
 
     @classmethod
-    def create_handler(cls, language: str) -> AbstractLanguageHandler:
+    def create_handler(
+        cls, language: str, logger: logging.Logger | None = None
+    ) -> AbstractLanguageHandler:
         """Create handler for specified language."""
         if language.lower() not in cls._handlers:
             raise LanguageNotSupportedError(language)
 
         handler_class = cls._handlers[language.lower()]
-        return handler_class()
+        return handler_class(logger=logger)
 
     @classmethod
     def get_supported_languages(cls) -> list[str]:

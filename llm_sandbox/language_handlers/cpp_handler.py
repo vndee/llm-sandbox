@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from llm_sandbox.artifact import FileOutput, PlotOutput
+from llm_sandbox.artifact import PlotOutput
 
 from .base import AbstractLanguageHandler, LanguageConfig
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 class CppHandler(AbstractLanguageHandler):
     """Handler for C++."""
 
-    def __init__(self) -> None:
+    def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
         """Initialize the C++ handler."""
         config = LanguageConfig(
             name="cpp",
@@ -20,7 +20,7 @@ class CppHandler(AbstractLanguageHandler):
             package_manager="apt-get",
             plot_detection=None,
         )
-        super().__init__(config)
+        super().__init__(config, *args, **kwargs)
 
     def get_execution_commands(self, code_file: str) -> list[str]:
         """Get the execution commands for the C++ handler."""
@@ -42,47 +42,5 @@ class CppHandler(AbstractLanguageHandler):
         """Extract plots from the C++ handler."""
         return []
 
-    def extract_files(
-        self,
-        container: "ContainerProtocol",  # noqa: ARG002
-        output_dir: str,  # noqa: ARG002
-    ) -> list[FileOutput]:
-        """Extract files from the C++ handler."""
-        return []
-
     def safety_check(self, code: str) -> list[str]:
         """Check the code for safety issues."""
-        warnings = []
-
-        # Check for potentially dangerous operations
-        dangerous_operations = [
-            "system(",
-            "exec(",
-            "popen(",
-            "fork(",
-            "exit(",
-            "malloc(",
-            "free(",
-            "delete",
-            "new",
-        ]
-
-        for dangerous in dangerous_operations:
-            if dangerous in code:
-                warnings.append(
-                    f"Potentially dangerous operation detected: {dangerous}"
-                )
-
-        # Check for file system operations
-        file_operations = ["fopen(", "ofstream", "ifstream", "remove(", "rename("]
-        for op in file_operations:
-            if op in code:
-                warnings.append(f"File system operation detected: {op}")
-
-        # Check for network operations
-        network_operations = ["socket(", "connect(", "bind(", "listen("]
-        for op in network_operations:
-            if op in code:
-                warnings.append(f"Network operation detected: {op}")
-
-        return warnings

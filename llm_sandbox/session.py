@@ -146,7 +146,6 @@ class ArtifactSandboxSession:
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         enable_plotting: bool = True,
-        enable_file_output: bool = True,
         **kwargs: Any,  # noqa: ANN401
     ) -> None:
         """Create a new artifact sandbox session.
@@ -162,7 +161,6 @@ class ArtifactSandboxSession:
             runtime_configs: Additional runtime configurations
             workdir: Working directory inside the container
             enable_plotting: Whether to enable plot extraction
-            enable_file_output: Whether to enable file extraction
             **kwargs: Additional keyword arguments
 
         Raises:
@@ -172,7 +170,7 @@ class ArtifactSandboxSession:
 
         """
         # Create the base session
-        self._session = create_session(
+        self._session: Session = create_session(
             backend=backend,
             image=image,
             dockerfile=dockerfile,
@@ -186,7 +184,6 @@ class ArtifactSandboxSession:
         )
 
         self.enable_plotting = enable_plotting
-        self.enable_file_output = enable_file_output
 
     def __enter__(self) -> "ArtifactSandboxSession":
         """Enter the context manager."""
@@ -217,18 +214,12 @@ class ArtifactSandboxSession:
 
         result = self._session.run(injected_code, libraries)
 
-        plots, files = [], []
+        plots = []
 
         if self.enable_plotting:
             plots = self._session.language_handler.extract_plots(
-                self._session,  # Pass the actual session as the container protocol
+                self._session,
                 "/tmp/sandbox_plots",
-            )
-
-        if self.enable_file_output:
-            files = self._session.language_handler.extract_files(
-                self._session,  # Pass the actual session as the container protocol
-                "/tmp/sandbox_output",
             )
 
         return ExecutionResult(
@@ -236,7 +227,6 @@ class ArtifactSandboxSession:
             stdout=result.stdout,
             stderr=result.stderr,
             plots=plots,
-            files=files,
         )
 
 

@@ -5,14 +5,19 @@ import types
 import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import (
     CommandFailedError,
     LibraryInstallationNotSupportedError,
 )
+from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 
-from .artifact import FileOutput, PlotOutput
+from .artifact import PlotOutput
+
+if TYPE_CHECKING:
+    from llm_sandbox.language_handlers.base import AbstractLanguageHandler
 
 
 @dataclass
@@ -50,7 +55,6 @@ class ExecutionResult(ConsoleOutput):
     """Result of code execution in sandbox."""
 
     plots: list[PlotOutput] = field(default_factory=list)
-    files: list[FileOutput] = field(default_factory=list)
 
 
 class Session(ABC):
@@ -70,6 +74,10 @@ class Session(ABC):
         self.runtime_configs = runtime_configs
         self.strict_security = strict_security
         self.logger = logger or logging.getLogger(__name__)
+
+        self.language_handler: AbstractLanguageHandler = (
+            LanguageHandlerFactory.create_handler(self.lang, self.logger)
+        )
 
     def _log(self, message: str, level: str = "info") -> None:
         """Log message if verbose is enabled."""

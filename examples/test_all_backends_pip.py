@@ -1,36 +1,42 @@
-#!/usr/bin/env python3
 """Comprehensive test for pip warnings across all backends."""
+
+import logging
 
 from llm_sandbox import SandboxSession
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-def test_docker_pip():
+logger = logging.getLogger(__name__)
+
+
+def test_docker_pip() -> None:
     """Test Docker backend with virtual environment."""
-    print("=== Testing Docker Backend ===")
+    logger.info("=== Testing Docker Backend ===")
 
     try:
         with SandboxSession(backend="docker", lang="python", verbose=True) as session:
             result = session.run(
                 "print('Docker virtual env test!')", libraries=["urllib3"]
             )
-            print(f"Docker result: {result.stdout.strip()}")
-            print(f"Docker errors: {result.stderr.strip()}")
+            logger.info("Docker result: %s", result.stdout.strip())
+            logger.info("Docker errors: %s", result.stderr.strip())
 
-            # Check for success: either exit_code is 0 or None (streaming mode) and no critical errors
             has_output = "Docker virtual env test!" in result.stdout
             no_critical_errors = (
                 "Error" not in result.stderr and "Failed" not in result.stderr
             )
             success = has_output and no_critical_errors
 
-            print("✅ Docker: SUCCESS" if success else "❌ Docker: FAILED")
-    except Exception as e:
-        print(f"❌ Docker test failed: {e}")
+            logger.info("✅ Docker: SUCCESS" if success else "❌ Docker: FAILED")
+    except Exception:
+        logger.exception("❌ Docker test failed")
 
 
-def test_podman_pip():
+def test_podman_pip() -> None:
     """Test Podman backend with virtual environment."""
-    print("\n=== Testing Podman Backend ===")
+    logger.info("\n=== Testing Podman Backend ===")
 
     try:
         from podman import PodmanClient
@@ -45,8 +51,8 @@ def test_podman_pip():
             result = session.run(
                 "print('Podman virtual env test!')", libraries=["urllib3"]
             )
-            print(f"Podman result: {result.stdout.strip()}")
-            print(f"Podman errors: {result.stderr.strip()}")
+            logger.info("Podman result: %s", result.stdout.strip())
+            logger.info("Podman errors: %s", result.stderr.strip())
 
             # Check for success
             has_output = "Podman virtual env test!" in result.stdout
@@ -55,14 +61,14 @@ def test_podman_pip():
             )
             success = has_output and no_critical_errors
 
-            print("✅ Podman: SUCCESS" if success else "❌ Podman: FAILED")
-    except Exception as e:
-        print(f"❌ Podman test skipped: {e}")
+            logger.info("✅ Podman: SUCCESS" if success else "❌ Podman: FAILED")
+    except Exception:
+        logger.exception("❌ Podman test skipped")
 
 
-def test_kubernetes_pip():
+def test_kubernetes_pip() -> None:
     """Test Kubernetes backend with virtual environment."""
-    print("\n=== Testing Kubernetes Backend ===")
+    logger.info("\n=== Testing Kubernetes Backend ===")
 
     try:
         with SandboxSession(
@@ -71,8 +77,8 @@ def test_kubernetes_pip():
             result = session.run(
                 "print('Kubernetes virtual env test!')", libraries=["urllib3"]
             )
-            print(f"Kubernetes result: {result.stdout.strip()}")
-            print(f"Kubernetes errors: {result.stderr.strip()}")
+            logger.info("Kubernetes result: %s", result.stdout.strip())
+            logger.info("Kubernetes errors: %s", result.stderr.strip())
 
             # Check for success
             has_output = "Kubernetes virtual env test!" in result.stdout
@@ -85,14 +91,16 @@ def test_kubernetes_pip():
                 and no_critical_errors
             )
 
-            print("✅ Kubernetes: SUCCESS" if success else "❌ Kubernetes: FAILED")
-    except Exception as e:
-        print(f"❌ Kubernetes test skipped: {e}")
+            logger.info(
+                "✅ Kubernetes: SUCCESS" if success else "❌ Kubernetes: FAILED"
+            )
+    except Exception:
+        logger.exception("❌ Kubernetes test skipped")
 
 
-def test_custom_user_docker():
+def test_custom_user_docker() -> None:
     """Test Docker with custom user and virtual environment."""
-    print("\n=== Testing Docker Custom User ===")
+    logger.info("\n=== Testing Docker Custom User ===")
 
     try:
         with SandboxSession(
@@ -105,8 +113,8 @@ def test_custom_user_docker():
             result = session.run(
                 "print('Docker custom user virtual env test!')", libraries=["urllib3"]
             )
-            print(f"Docker custom user result: {result.stdout.strip()}")
-            print(f"Docker custom user errors: {result.stderr.strip()}")
+            logger.info("Docker custom user result: %s", result.stdout.strip())
+            logger.info("Docker custom user errors: %s", result.stderr.strip())
 
             # Check for success
             has_output = "Docker custom user virtual env test!" in result.stdout
@@ -115,23 +123,22 @@ def test_custom_user_docker():
             )
             success = has_output and no_critical_errors
 
-            print(
+            logger.info(
                 "✅ Docker Custom User: SUCCESS"
                 if success
                 else "❌ Docker Custom User: FAILED"
             )
-    except Exception as e:
-        print(f"❌ Docker custom user test failed: {e}")
+    except Exception:
+        logger.exception("❌ Docker custom user test failed")
 
 
 if __name__ == "__main__":
-    print("🧪 Comprehensive Virtual Environment Test Across All Backends")
-    print("=" * 60)
+    logger.info("🧪 Comprehensive Virtual Environment Test Across All Backends")
+    logger.info("=" * 60)
 
     test_docker_pip()
     test_podman_pip()
     test_kubernetes_pip()
     test_custom_user_docker()
 
-    print("\n" + "=" * 60)
-    print("🎯 All backend tests completed!")
+    logger.info("🎯 All backend tests completed!")

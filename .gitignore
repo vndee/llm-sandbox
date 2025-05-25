@@ -12,6 +12,8 @@ __pycache__/
 *.svg
 *.csv
 *.json
+plots/
+files/
 
 # C extensions
 *.so

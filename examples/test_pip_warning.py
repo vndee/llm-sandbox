@@ -1,12 +1,19 @@
-#!/usr/bin/env python3
 """Test script to verify pip warnings are suppressed."""
+
+import logging
 
 from llm_sandbox import SandboxSession
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-def test_pip_no_warning():
+logger = logging.getLogger(__name__)
+
+
+def test_pip_no_warning() -> None:
     """Test that pip doesn't show root user warnings."""
-    print("=== Testing Pip Root User Warning Suppression ===")
+    logger.info("=== Testing Pip Root User Warning Suppression ===")
 
     with SandboxSession(lang="python", verbose=True) as session:
         # Test installing a simple package
@@ -17,8 +24,8 @@ def test_pip_no_warning():
                     "requests"
                 ],  # Common package that's likely not pre-installed
             )
-            print(f"Installation result: {result.stdout.strip()}")
-            print(f"Any warnings/errors: {result.stderr.strip()}")
+            logger.info("Installation result: %s", result.stdout.strip())
+            logger.info("Any warnings/errors: %s", result.stderr.strip())
 
             # Verify the package can be imported
             result = session.run("""
@@ -26,15 +33,15 @@ import requests
 print("requests imported successfully!")
 print(f"requests version: {requests.__version__}")
 """)
-            print(f"Import test: {result.stdout.strip()}")
+            logger.info("Import test: %s", result.stdout.strip())
 
-        except Exception as e:
-            print(f"Test failed: {e}")
+        except Exception:
+            logger.exception("Test failed")
 
 
-def test_custom_user_pip():
+def test_custom_user_pip() -> None:
     """Test pip with custom user (should still work)."""
-    print("\n=== Testing Pip with Custom User ===")
+    logger.info("\n=== Testing Pip with Custom User ===")
 
     try:
         with SandboxSession(
@@ -48,14 +55,14 @@ def test_custom_user_pip():
                 "print('Testing non-root package installation...')",
                 libraries=["urllib3"],
             )
-            print(f"Custom user installation: {result.stdout.strip()}")
-            print(f"Any errors: {result.stderr.strip()}")
+            logger.info("Custom user installation: %s", result.stdout.strip())
+            logger.info("Any errors: %s", result.stderr.strip())
 
-    except Exception as e:
-        print(f"Custom user test failed: {e}")
+    except Exception:
+        logger.exception("Custom user test failed")
 
 
 if __name__ == "__main__":
     test_pip_no_warning()
     test_custom_user_pip()
-    print("\n=== Pip warning test completed ===")
+    logger.info("\n=== Pip warning test completed ===")

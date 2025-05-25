@@ -1,9 +1,10 @@
+# ruff: noqa: E501
+
 PYTHON_PLOT_DETECTION_CODE = """
 # Multi-library plot detection setup
 import os
 import sys
 import base64
-import json
 from pathlib import Path
 
 # Setup output directories
@@ -27,24 +28,10 @@ try:
         try:
             fig = plt.gcf()
             if fig and fig.get_axes():
-                # Save in multiple formats
-                for fmt in ['png', 'svg', 'pdf']:
-                    filename = f'/tmp/sandbox_plots/matplotlib_plot_{_plot_counter}.{fmt}'
-                    fig.savefig(filename, format=fmt, dpi=100, bbox_inches='tight')
-
-                # Save metadata
-                metadata = {
-                    'library': 'matplotlib',
-                    'plot_id': _plot_counter,
-                    'title': fig._suptitle.get_text() if fig._suptitle else None,
-                    'size': fig.get_size_inches().tolist(),
-                    'axes_count': len(fig.get_axes())
-                }
-
-                with open(f'/tmp/sandbox_plots/matplotlib_plot_{_plot_counter}_meta.json', 'w') as f:
-                    json.dump(metadata, f)
-
+                # Save as PNG with sequential numbering
                 _plot_counter += 1
+                filename = f'/tmp/sandbox_plots/{_plot_counter:06d}.png'
+                fig.savefig(filename, format='png', dpi=100, bbox_inches='tight')
         except Exception as e:
             print(f"Matplotlib capture error: {e}")
         finally:
@@ -55,13 +42,12 @@ try:
         result = _original_savefig(filename, *args, **kwargs)
 
         try:
-            # Copy to our output directory
+            # Copy to our output directory with sequential numbering
             import shutil
-            base_name = Path(filename).stem
             ext = Path(filename).suffix
-            output_file = f'/tmp/sandbox_plots/matplotlib_saved_{_plot_counter}{ext}'
-            shutil.copy2(filename, output_file)
             _plot_counter += 1
+            output_file = f'/tmp/sandbox_plots/{_plot_counter:06d}{ext}'
+            shutil.copy2(filename, output_file)
         except Exception as e:
             print(f"Matplotlib savefig capture error: {e}")
 
@@ -79,10 +65,26 @@ try:
     import plotly.offline as pyo
     from plotly import io as pio
 
-    _original_write_html = None
-    _original_write_image = None
-
     # Monkey patch Figure methods
+    def _enhanced_show(self, *args, **kwargs):
+        global _plot_counter
+
+        # Call original show method if it exists
+        if hasattr(go.Figure, '_original_show'):
+            result = self._original_show(*args, **kwargs)
+        else:
+            result = None
+
+        try:
+            # Save the figure as HTML with sequential numbering
+            _plot_counter += 1
+            html_file = f'/tmp/sandbox_plots/{_plot_counter:06d}.html'
+            self.write_html(html_file)
+        except Exception as e:
+            print(f"Plotly show capture error: {e}")
+
+        return result
+
     def _enhanced_write_html(self, file, *args, **kwargs):
         global _plot_counter
 
@@ -93,19 +95,11 @@ try:
             result = super(go.Figure, self).write_html(file, *args, **kwargs)
 
         try:
-            # Copy to our output directory
+            # Copy to our output directory with sequential numbering
             import shutil
-            output_file = f'/tmp/sandbox_plots/plotly_plot_{_plot_counter}.html'
-            shutil.copy2(file, output_file)
-
-            # Save as PNG too if possible
-            try:
-                png_file = f'/tmp/sandbox_plots/plotly_plot_{_plot_counter}.png'
-                self.write_image(png_file)
-            except:
-                pass
-
             _plot_counter += 1
+            output_file = f'/tmp/sandbox_plots/{_plot_counter:06d}.html'
+            shutil.copy2(file, output_file)
         except Exception as e:
             print(f"Plotly HTML capture error: {e}")
 
@@ -121,20 +115,22 @@ try:
             result = super(go.Figure, self).write_image(file, *args, **kwargs)
 
         try:
-            # Copy to our output directory
+            # Copy to our output directory with sequential numbering
             import shutil
             ext = Path(file).suffix
-            output_file = f'/tmp/sandbox_plots/plotly_img_{_plot_counter}{ext}'
-            shutil.copy2(file, output_file)
             _plot_counter += 1
+            output_file = f'/tmp/sandbox_plots/{_plot_counter:06d}{ext}'
+            shutil.copy2(file, output_file)
         except Exception as e:
             print(f"Plotly image capture error: {e}")
 
         return result
 
     # Apply patches
+    go.Figure._original_show = getattr(go.Figure, 'show', None)
     go.Figure._original_write_html = go.Figure.write_html
     go.Figure._original_write_image = go.Figure.write_image
+    go.Figure.show = _enhanced_show
     go.Figure.write_html = _enhanced_write_html
     go.Figure.write_image = _enhanced_write_image
 

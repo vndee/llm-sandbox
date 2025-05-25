@@ -1,26 +1,9 @@
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol
 
-from llm_sandbox.artifact import FileOutput, PlotOutput
-from llm_sandbox.base import ConsoleOutput
 from llm_sandbox.exceptions import CommandFailedError, PackageManagerError
-
-if TYPE_CHECKING:
-
-    class ContainerProtocol(Protocol):
-        """Protocol for container objects (Docker, Podman, K8s)."""
-
-        def execute_command(
-            self, command: str, workdir: str | None = None
-        ) -> "ConsoleOutput":
-            """Execute a command in the container."""
-            ...
-
-        def get_archive(self, path: str) -> tuple:
-            """Get archive of files from container."""
-            ...
 
 
 class PlotLibrary(Enum):
@@ -65,9 +48,12 @@ class LanguageConfig:
 class AbstractLanguageHandler(ABC):
     """Abstract base class for language-specific handlers."""
 
-    def __init__(self, config: LanguageConfig) -> None:
+    def __init__(
+        self, config: LanguageConfig, logger: logging.Logger | None = None
+    ) -> None:
         """Initialize the language handler."""
         self.config = config
+        self.logger = logger or logging.getLogger(__name__)
         self.plot_outputs = []
         self.file_outputs = []
 
@@ -88,18 +74,6 @@ class AbstractLanguageHandler(ABC):
     @abstractmethod
     def inject_plot_detection_code(self, code: str) -> str:
         """Inject code to detect and capture plots."""
-
-    @abstractmethod
-    def extract_plots(
-        self, container: "ContainerProtocol", output_dir: str
-    ) -> list[PlotOutput]:
-        """Extract plots from execution."""
-
-    @abstractmethod
-    def extract_files(
-        self, container: "ContainerProtocol", output_dir: str
-    ) -> list[FileOutput]:
-        """Extract files from execution."""
 
     @abstractmethod
     def safety_check(self, code: str) -> list[str]:

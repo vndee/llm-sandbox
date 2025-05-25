@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from llm_sandbox.artifact import FileOutput, PlotOutput
+from llm_sandbox.artifact import PlotOutput
 
 from .base import AbstractLanguageHandler, LanguageConfig
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 class JavaHandler(AbstractLanguageHandler):
     """Handler for Java."""
 
-    def __init__(self) -> None:
+    def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
         """Initialize the Java handler."""
         config = LanguageConfig(
             name="java",
@@ -21,7 +21,7 @@ class JavaHandler(AbstractLanguageHandler):
             plot_detection=None,
             is_support_library_installation=False,
         )
-        super().__init__(config)
+        super().__init__(config, *args, **kwargs)
 
     def get_execution_commands(self, code_file: str) -> list[str]:
         """Get the execution commands for the Java handler."""
@@ -43,49 +43,5 @@ class JavaHandler(AbstractLanguageHandler):
         """Extract plots from the Go handler."""
         return []
 
-    def extract_files(
-        self,
-        container: "ContainerProtocol",  # noqa: ARG002
-        output_dir: str,  # noqa: ARG002
-    ) -> list[FileOutput]:
-        """Extract files from the Go handler."""
-        return []
-
     def safety_check(self, code: str) -> list[str]:
         """Check the code for safety issues."""
-        warnings = []
-
-        # Check for potentially dangerous operations
-        dangerous_operations = [
-            "Runtime.getRuntime()",
-            "ProcessBuilder",
-            "System.exit",
-            "Class.forName",
-            "Method.invoke",
-            "Field.set",
-        ]
-
-        for dangerous in dangerous_operations:
-            if dangerous in code:
-                warnings.append(
-                    f"Potentially dangerous operation detected: {dangerous}"
-                )
-
-        # Check for file system operations
-        file_operations = [
-            "FileWriter",
-            "FileOutputStream",
-            "Files.write",
-            "Files.delete",
-        ]
-        for op in file_operations:
-            if op in code:
-                warnings.append(f"File system operation detected: {op}")
-
-        # Check for network operations
-        network_operations = ["Socket", "ServerSocket", "URL", "HttpURLConnection"]
-        for op in network_operations:
-            if op in code:
-                warnings.append(f"Network operation detected: {op}")
-
-        return warnings

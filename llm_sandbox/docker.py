@@ -21,7 +21,6 @@ from llm_sandbox.exceptions import (
     ImagePullError,
     NotOpenSessionError,
 )
-from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 
 
 class SandboxDockerSession(Session):
@@ -70,8 +69,6 @@ class SandboxDockerSession(Session):
 
         if not image and not dockerfile:
             image = DefaultImage.__dict__[lang.upper()]
-
-        self.language_handler = LanguageHandlerFactory.create_handler(self.lang)
 
         self.client: docker.DockerClient | None = None
 
@@ -162,7 +159,7 @@ class SandboxDockerSession(Session):
 
         self.environment_setup()
 
-    def close(self) -> None:  # noqa: PLR0912, C901
+    def close(self) -> None:  # noqa: PLR0912
         """Close the sandbox session."""
         if self.container:
             if self.commit_container and isinstance(self.image, Image):
@@ -298,7 +295,7 @@ class SandboxDockerSession(Session):
 
         self._ensure_ownership([dest])
 
-    def execute_command(  # noqa: PLR0912, C901
+    def execute_command(  # noqa: PLR0912
         self, command: str, workdir: str | None = None
     ) -> ConsoleOutput:
         """Execute a command in the sandbox session."""
@@ -374,3 +371,11 @@ class SandboxDockerSession(Session):
             stdout=stdout_output,
             stderr=stderr_output,
         )
+
+    def get_archive(self, path: str) -> tuple[bytes, dict]:
+        """Get archive of files from container."""
+        if not self.container:
+            raise NotOpenSessionError
+
+        data, stat = self.container.get_archive(path)
+        return b"".join(data), stat

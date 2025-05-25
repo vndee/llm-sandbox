@@ -17,7 +17,6 @@ from llm_sandbox.exceptions import (
     ImagePullError,
     NotOpenSessionError,
 )
-from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 
 if TYPE_CHECKING:
     from podman.domain.containers import Container
@@ -69,8 +68,6 @@ class SandboxPodmanSession(Session):
 
         if not image and not dockerfile:
             image = DefaultImage.__dict__[lang.upper()]
-
-        self.language_handler = LanguageHandlerFactory.create_handler(self.lang)
 
         self.client: PodmanClient | None = None
         if not client:
@@ -158,15 +155,10 @@ class SandboxPodmanSession(Session):
             **{k: v for k, v in (self.runtime_configs or {}).items() if k != "user"},
         )
         self.container.start()
-        self.execute_commands(
-            [
-                (f"mkdir -p {self.workdir}", None),
-            ]
-        )
 
         self.environment_setup()
 
-    def close(self) -> None:  # noqa: PLR0912, C901
+    def close(self) -> None:  # noqa: PLR0912
         """Close the sandbox session."""
         if self.container:
             if self.commit_container and isinstance(self.image, Image):
@@ -312,7 +304,7 @@ class SandboxPodmanSession(Session):
                     f"chown {current_user} {directory}", user="root"
                 )
 
-    def execute_command(  # noqa: PLR0912, C901
+    def execute_command(  # noqa: PLR0912
         self, command: str, workdir: str | None = None
     ) -> ConsoleOutput:
         """Execute a command in the sandbox session."""
@@ -387,3 +379,11 @@ class SandboxPodmanSession(Session):
             stdout=stdout_output,
             stderr=stderr_output,
         )
+
+    def get_archive(self, path: str) -> tuple[bytes, dict]:
+        """Get archive of files from container."""
+        if not self.container:
+            raise NotOpenSessionError
+
+        data, stat = self.container.get_archive(path)
+        return b"".join(data), stat

@@ -13,7 +13,6 @@ from kubernetes.stream import stream
 from llm_sandbox.base import ConsoleOutput, Session
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.exceptions import NotOpenSessionError
-from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 
 
 class SandboxKubernetesSession(Session):
@@ -49,8 +48,6 @@ class SandboxKubernetesSession(Session):
                             context in custom pod_manifest.
         """
         super().__init__(lang, verbose)
-
-        self.language_handler = LanguageHandlerFactory.create_handler(self.lang)
 
         if not image:
             image = DefaultImage.__dict__[lang.upper()]
@@ -210,11 +207,11 @@ class SandboxKubernetesSession(Session):
         while resp.is_open():
             resp.update(timeout=1)
             if resp.peek_stdout():
-                tar_data.write(
-                    resp.read_stdout().encode()
-                    if isinstance(resp.read_stdout(), str)
-                    else resp.read_stdout()
-                )
+                stdout_chunk = resp.read_stdout()
+                if isinstance(stdout_chunk, str):
+                    tar_data.write(stdout_chunk.encode())
+                else:
+                    tar_data.write(stdout_chunk)
             if resp.peek_stderr():
                 self.logger.error(resp.read_stderr())
 
@@ -309,7 +306,7 @@ class SandboxKubernetesSession(Session):
         self._ensure_ownership([dest_dir])
 
     def execute_command(
-        self, command: str, workdir: str | None = None
+        self, command: str, workdir: str | None = None, *, disable_logging: bool = False
     ) -> ConsoleOutput:
         """Execute a command in the sandbox session."""
         if not self.container:
@@ -337,7 +334,8 @@ class SandboxKubernetesSession(Session):
 
         stdout_output = ""
         stderr_output = ""
-        if self.verbose:
+
+        if self.verbose and not disable_logging:
             self.logger.info("Output:")
 
         while resp.is_open():
@@ -345,13 +343,13 @@ class SandboxKubernetesSession(Session):
             if resp.peek_stdout():
                 chunk = resp.read_stdout()
                 stdout_output += chunk
-                if self.verbose:
+                if self.verbose and not disable_logging:
                     self.logger.info("Stdout: %s", chunk)
 
             if resp.peek_stderr():
                 chunk = resp.read_stderr()
                 stderr_output += chunk
-                if self.verbose:
+                if self.verbose and not disable_logging:
                     self.logger.error("Stderr: %s", chunk)
 
         exit_code = resp.returncode
@@ -361,3 +359,67 @@ class SandboxKubernetesSession(Session):
             stdout=stdout_output,
             stderr=stderr_output,
         )
+
+    def get_archive(self, path: str) -> tuple[bytes, dict]:
+        """Get archive of files from pod."""
+        if not self.container:
+            raise NotOpenSessionError
+
+        if self.verbose:
+            self.logger.info("Getting archive for path: %s", path)
+
+        # First check if the path exists and get its stats
+        stat_command = f"stat -c '%s %Y %n' {path} 2>/dev/null || echo 'NOT_FOUND'"
+        stat_result = self.execute_command(stat_command, disable_logging=True)
+
+        if stat_result.stdout.strip() == "NOT_FOUND" or stat_result.exit_code != 0:
+            # Return empty data if file doesn't exist
+            return b"", {}
+
+        # Parse stat output (size, mtime, name)
+        stat_parts = stat_result.stdout.strip().split(" ", 2)
+        if len(stat_parts) >= 3:
+            file_size = int(stat_parts[0])
+            mtime = int(stat_parts[1])
+            file_name = stat_parts[2]
+        else:
+            file_size = 0
+            mtime = 0
+            file_name = path
+
+        # Use base64 encoding to safely transfer binary data
+        base64_command = f"tar cf - {path} | base64 -w 0"
+        result = self.execute_command(base64_command, disable_logging=True)
+
+        if result.exit_code:
+            if self.verbose:
+                self.logger.error(
+                    "base64 tar command failed with exit code %d: %s",
+                    result.exit_code,
+                    result.stderr,
+                )
+            return b"", {}
+
+        # Decode the base64 data back to binary
+        try:
+            import base64
+
+            tar_data = base64.b64decode(result.stdout.strip())
+        except Exception as e:
+            if self.verbose:
+                self.logger.error("Failed to decode base64 data: %s", e)
+            return b"", {}
+
+        # Create stat dict similar to Docker's format
+        stat_dict = {
+            "name": file_name,
+            "size": file_size,
+            "mtime": mtime,
+            "mode": 0o644,  # Default file mode
+            "linkTarget": "",
+        }
+
+        if self.verbose:
+            self.logger.info("Retrieved archive for %s (%d bytes)", path, len(tar_data))
+
+        return tar_data, stat_dict
