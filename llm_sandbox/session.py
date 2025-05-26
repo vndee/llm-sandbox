@@ -27,23 +27,121 @@ def create_session(
     *args: Any,
     **kwargs: Any,
 ) -> Session:
-    """Create a new sandbox session.
+    r"""Create a new sandbox session for executing code in an isolated environment.
+
+    This function creates a sandbox session that supports multiple programming languages
+    and provides features like package installation, file operations, and secure code execution.
+    For backward compatibility, we also keep a `SandboxSession` alias for this function.
 
     Args:
-    ----
-        backend: Docker, Kubernetes or Podman backend
-        *args: Arguments for the session
-        **kwargs: Keyword arguments for the session
+        backend (SandboxBackend): Container backend to use. Options:
+            - SandboxBackend.DOCKER (default)
+            - SandboxBackend.KUBERNETES
+            - SandboxBackend.PODMAN
+            - SandboxBackend.MICROMAMBA
+        *args: Additional positional arguments passed to the session constructor
+        **kwargs: Additional keyword arguments passed to the session constructor.
+                Common options include:
+                    - lang (str): Programming language ("python", "java", "javascript", "cpp", "go")
+                    - verbose (bool): Enable verbose logging
+                    - keep_template (bool): Keep the container template
+                    - image (str): Custom container image to use
 
     Returns:
-    -------
-        A sandbox session instance
+        Session: A sandbox session instance for the specified backend
 
     Raises:
-    ------
-        DependencyError: If the required dependency for the chosen backend
-                        is not installed
+        MissingDependencyError: If the required dependency for the chosen backend is not installed
         UnsupportedBackendError: If the chosen backend is not supported
+
+    Examples:
+        Python session with package installation:
+        ```python
+        with SandboxSession(lang="python", keep_template=True, verbose=True) as session:
+            # Basic code execution
+            result = session.run("print('Hello, World!')")
+            print(result.stdout)  # Output: Hello, World!
+
+            # Install and use packages
+            result = session.run(
+                "import numpy as np\nprint(np.random.rand())",
+                libraries=["numpy"]
+            )
+
+            # Install additional packages during session
+            session.install(["pandas"])
+            result = session.run("import pandas as pd\nprint(pd.__version__)")
+
+            # Copy files to runtime
+            session.copy_to_runtime("README.md", "/sandbox/data.csv")
+        ```
+
+        Java session:
+        ```python
+        with SandboxSession(lang="java", keep_template=True, verbose=True) as session:
+            result = session.run(\"\"\"
+                public class Main {
+                    public static void main(String[] args) {
+                        System.out.println("Hello, World!");
+                    }
+                }
+            \"\"\")
+        ```
+
+        JavaScript session with npm packages:
+        ```python
+        with SandboxSession(lang="javascript", keep_template=True, verbose=True) as session:
+            # Basic code execution
+            result = session.run("console.log('Hello, World!')")
+
+            # Using npm packages
+            result = session.run(\"\"\"
+                const axios = require('axios');
+                axios.get('https://jsonplaceholder.typicode.com/posts/1')
+                    .then(response => console.log(response.data));
+            \"\"\", libraries=["axios"])
+        ```
+
+        C++ session:
+        ```python
+        with SandboxSession(lang="cpp", keep_template=True, verbose=True) as session:
+            result = session.run(\"\"\"
+                #include <iostream>
+                #include <vector>
+                #include <algorithm>
+                int main() {
+                    std::vector<int> v = {1, 2, 3, 4, 5};
+                    std::reverse(v.begin(), v.end());
+                    for (int i : v) {
+                        std::cout << i << " ";
+                    }
+                    std::cout << std::endl;
+                    return 0;
+                }
+            \"\"\", libraries=["libstdc++"])
+        ```
+
+        Go session with external packages:
+        ```python
+        with SandboxSession(lang="go", keep_template=True, verbose=True) as session:
+            result = session.run(\"\"\"
+                package main
+                import (
+                    "fmt"
+                    "github.com/spyzhov/ajson"
+                )
+                func main() {
+                    json := []byte(`{"price": 100}`)
+                    root, _ := ajson.Unmarshal(json)
+                    nodes, _ := root.JSONPath("$..price")
+                    for _, node := range nodes {
+                        node.SetNumeric(node.MustNumeric() * 1.25)
+                    }
+                    result, _ := ajson.Marshal(root)
+                    fmt.Printf("%s", result)
+                }
+            \"\"\", libraries=["github.com/spyzhov/ajson"])
+        ```
 
     """
     # Check if required dependency is installed
@@ -91,25 +189,95 @@ class ArtifactSandboxSession:
     ) -> None:
         """Create a new artifact sandbox session.
 
+        The ArtifactSandboxSession provides a secure environment for running code that generates artifacts
+        like plots, images, or other files. It supports multiple container backends (Docker, Kubernetes, Podman)
+        and can capture and extract artifacts from the execution.
+
         Args:
-        ----
-            backend: Docker, Kubernetes or Podman backend
-            image: Container image to use
-            dockerfile: Path to Dockerfile
-            lang: Programming language
-            keep_template: Whether to keep the container template
-            commit_container: Whether to commit container changes
-            verbose: Enable verbose logging
-            runtime_configs: Additional runtime configurations
-            workdir: Working directory inside the container
-            enable_plotting: Whether to enable plot extraction
-            **kwargs: Additional keyword arguments
+            backend (SandboxBackend): Container backend to use (Docker, Kubernetes or Podman)
+            image (str): Container image to use (e.g., "vndee/sandbox-python-311-bullseye")
+            dockerfile (str, optional): Path to Dockerfile
+            lang (str): Programming language (e.g., "python")
+            keep_template (bool, optional): Whether to keep the container template
+            commit_container (bool, optional): Whether to commit container changes
+            verbose (bool, optional): Enable verbose logging
+            runtime_configs (dict, optional): Additional runtime configurations
+            workdir (str, optional): Working directory inside the container
+            enable_plotting (bool, optional): Whether to enable plot extraction
+            **kwargs: Additional keyword arguments for specific backends (e.g., client for Podman)
 
         Raises:
-        ------
-            DependencyError: If the required dependency for the chosen backend
-                            is not installed
+            MissingDependencyError: If the required dependency for the chosen backend is not installed
             UnsupportedBackendError: If the chosen backend is not supported
+
+        Examples:
+            Basic usage with Docker backend:
+            ```python
+            from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+            from pathlib import Path
+            import base64
+
+            # Create plots directory
+            Path("plots/docker").mkdir(parents=True, exist_ok=True)
+
+            # Run code that generates plots
+            with ArtifactSandboxSession(
+                lang="python",
+                verbose=True,
+                image="vndee/sandbox-python-311-bullseye",
+                backend=SandboxBackend.DOCKER
+            ) as session:
+                # Example code that generates matplotlib, seaborn, and plotly plots
+                code = '''
+                import matplotlib.pyplot as plt
+                import numpy as np
+
+                # Generate and plot data
+                x = np.linspace(0, 10, 100)
+                y = np.sin(x)
+
+                plt.figure()
+                plt.plot(x, y)
+                plt.title('Simple Sine Wave')
+                plt.show()
+                '''
+
+                result = session.run(code)
+                print(f"Captured {len(result.plots)} plots")
+
+                # Save captured plots
+                for i, plot in enumerate(result.plots):
+                    plot_path = Path("plots/docker") / f"{i + 1:06d}.{plot.format.value}"
+                    with plot_path.open("wb") as f:
+                        f.write(base64.b64decode(plot.content_base64))
+            ```
+            Using Podman backend:
+            ```python
+            from podman import PodmanClient
+
+            # Initialize Podman client
+            podman_client = PodmanClient(base_url="unix:///path/to/podman.sock")
+
+            with ArtifactSandboxSession(
+                client=podman_client,  # Podman specific
+                lang="python",
+                verbose=True,
+                image="vndee/sandbox-python-311-bullseye",
+                backend=SandboxBackend.PODMAN
+            ) as session:
+                result = session.run(code)
+            ```
+
+            Using Kubernetes backend:
+            ```python
+            with ArtifactSandboxSession(
+                lang="python",
+                verbose=True,
+                image="vndee/sandbox-python-311-bullseye",
+                backend=SandboxBackend.KUBERNETES
+            ) as session:
+                result = session.run(code)
+            ```
 
         """
         # Create the base session
@@ -147,7 +315,100 @@ class ArtifactSandboxSession:
         return getattr(self._session, name)
 
     def run(self, code: str, libraries: list | None = None) -> ExecutionResult:
-        """Run the code in the sandbox session with artifact extraction."""
+        """Run code in the sandbox session and extract any generated artifacts.
+
+        This method executes the provided code in an isolated environment and captures any
+        generated artifacts (e.g., plots, figures). When plotting is enabled, it automatically
+        injects plot detection code and extracts the generated plots.
+
+        Args:
+            code (str): The code to execute. Can include plotting commands from matplotlib,
+                        seaborn, plotly, or other visualization libraries.
+            libraries (list | None, optional): Additional libraries to install before running
+                                                the code. Defaults to None.
+
+        Returns:
+            ExecutionResult: An object containing:
+                - exit_code (int): The exit code of the execution
+                - stdout (str): Standard output from the code execution
+                - stderr (str): Standard error from the code execution
+                - plots (list[Plot]): List of captured plots, each containing:
+                    - content_base64 (str): Base64 encoded plot data
+                    - format (PlotFormat): Format of the plot (e.g., 'png', 'svg')
+
+        Examples:
+            Basic plotting example:
+            ```python
+            with ArtifactSandboxSession(
+                lang="python",
+                verbose=True,
+                image="vndee/sandbox-python-311-bullseye"
+            ) as session:
+                code = '''
+                import matplotlib.pyplot as plt
+                import numpy as np
+
+                x = np.linspace(0, 10, 100)
+                y = np.sin(x)
+                plt.plot(x, y)
+                plt.title('Sine Wave')
+                plt.show()
+                '''
+                result = session.run(code)
+                print(f"Generated {len(result.plots)} plots")
+            ```
+
+            Multiple plot types and libraries:
+            ```python
+            code = '''
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            import plotly.express as px
+            import pandas as pd
+            import numpy as np
+
+            # Matplotlib plot
+            plt.figure(figsize=(10, 6))
+            x = np.linspace(0, 10, 100)
+            plt.plot(x, np.sin(x))
+            plt.title('Matplotlib: Sine Wave')
+            plt.show()
+
+            # Seaborn plot
+            data = pd.DataFrame({
+                'x': np.random.randn(100),
+                'y': np.random.randn(100)
+            })
+            sns.scatterplot(data=data, x='x', y='y')
+            plt.title('Seaborn: Scatter Plot')
+            plt.show()
+
+            # Plotly plot
+            fig = px.line(data, x='x', y='y', title='Plotly: Line Plot')
+            fig.show()
+            '''
+
+            result = session.run(code, libraries=['plotly'])
+
+            # Save the generated plots
+            for i, plot in enumerate(result.plots):
+                with open(f'plot_{i}.{plot.format.value}', 'wb') as f:
+                    f.write(base64.b64decode(plot.content_base64))
+            ```
+
+            Installing additional libraries:
+            ```python
+            code = '''
+            import torch
+            import torch.nn as nn
+            print(f"PyTorch version: {torch.__version__}")
+            '''
+
+            result = session.run(code, libraries=['torch'])
+            print(result.stdout)
+            ```
+
+        """
         if self.enable_plotting:
             injected_code = self._session.language_handler.inject_plot_detection_code(code)
         else:

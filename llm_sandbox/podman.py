@@ -20,44 +20,67 @@ from llm_sandbox.exceptions import (
 
 
 class SandboxPodmanSession(Session):
-    """Sandbox session for Podman."""
+    r"""Sandbox session implemented using Podman containers.
+
+    This class provides a sandboxed environment for code execution by leveraging Podman.
+    It handles Podman image management (pulling, building from Dockerfile/Containerfile),
+    container creation and lifecycle, code execution, library installation, and file
+    operations within the Podman container. It is designed to be a drop-in replacement
+    for the Docker-based session where Podman is the preferred container runtime.
+    """
 
     def __init__(
         self,
         client: PodmanClient | None = None,
         image: str | None = None,
-        dockerfile: str | None = None,
+        dockerfile: str | None = None,  # Can be a Containerfile
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         commit_container: bool = False,
         verbose: bool = False,
-        mounts: list | None = None,
+        mounts: list | None = None,  # Type hint for mounts can be more specific if known, e.g., list[dict]
         stream: bool = True,
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
-        """Create a new sandbox session.
+        r"""Initialize a new Podman-based sandbox session.
 
-        :param client: Podman client, if not provided, a new client will be created
-                        based on local podman context
-        :param image: Podman image to use
-        :param dockerfile: Path to the Dockerfile, if image is not provided
-        :param lang: Language of the code
-        :param keep_template: if True, the image and container
-                                will not be removed after the session ends
-        :param commit_container: if True, the podman container will be commited
-                                after the session ends
-        :param verbose: if True, print messages
-        :param mounts: List of mounts to be mounted to the container
-        :param stream: if True, the output will be streamed (enabling this option
-                        prevents obtaining an exit code of run command)
-        :param runtime_configs: Additional configurations for the container,
-                                i.e. resources limits (cpu_count, mem_limit),
-                                user ("1000:1000"), etc. By default runs as root user
-                                for maximum compatibility.
-        :param workdir: Working directory inside the container. Defaults to "/sandbox".
-                        Use "/tmp/sandbox" when running as non-root user.
+        Args:
+            client (PodmanClient | None, optional): An existing Podman client instance.
+                If None, a new client will be created based on the local Podman environment
+                (e.g., Podman socket). Defaults to None.
+            image (str | None, optional): The name of the Podman image to use (e.g., "python:3.11-bullseye").
+                If None and `dockerfile` is also None, a default image for the specified `lang` is used.
+                Defaults to None.
+            dockerfile (str | None, optional): The path to a Dockerfile or Containerfile to build an image from.
+                Cannot be used if `image` is also provided. Defaults to None.
+            lang (str, optional): The programming language of the code to be run (e.g., "python", "java").
+                Determines default image and language-specific handlers. Defaults to SupportedLanguage.PYTHON.
+            keep_template (bool, optional): If True, the Podman image (built or pulled)
+                will not be removed after the session ends. Defaults to False.
+            commit_container (bool, optional): If True, the Podman container's state will be committed
+                to a new image after the session ends. Defaults to False.
+            verbose (bool, optional): If True, print detailed log messages. Defaults to False.
+            mounts (list | None, optional): A list of mount configurations for the container.
+                The exact structure depends on Podman client library expectations (often list of strings or dicts).
+                Defaults to None.
+            stream (bool, optional): If True, the output from `execute_command` will be streamed.
+                Note: Enabling this option might affect how exit codes are retrieved for commands.
+                Defaults to True.
+            runtime_configs (dict | None, optional): Additional configurations for the container runtime,
+                such as resource limits (e.g., `cpu_count`, `mem_limit`) or user (`user="1000:1000"`).
+                By default, containers run as the root user for maximum compatibility.
+                Defaults to None.
+            workdir (str | None, optional): The working directory inside the container.
+                Defaults to "/sandbox". Consider using "/tmp/sandbox" when running as a non-root user.
+            **kwargs: Catches unused keyword arguments passed from `create_session`.
+
+        Raises:
+            ExtraArgumentsError: If both `image` and `dockerfile` are provided.
+            ImagePullError: If pulling the specified Podman image fails.
+            ImageNotFoundError: If the specified image is not found and cannot be pulled or built.
+
         """
         super().__init__(
             lang=lang,
@@ -92,13 +115,35 @@ class SandboxPodmanSession(Session):
         self.runtime_configs: dict | None = runtime_configs
 
     def _ensure_ownership(self, folders: list[str]) -> None:
-        """For non-root users, ensure ownership of the resources."""
+        r"""Ensure correct file ownership for specified folders within the Podman container.
+
+        This is particularly important when the container is configured to run as a non-root user.
+        It changes the ownership of the listed folders to the user specified in `runtime_configs`.
+
+        Args:
+            folders (list[str]): A list of absolute paths to folders within the container.
+
+        """
         current_user = self.runtime_configs.get("user") if self.runtime_configs else None
         if current_user and current_user != "root":
             self.container.exec_run(f"chown -R {current_user} {' '.join(folders)}", user="root")
 
     def open(self) -> None:
-        """Open the sandbox session."""
+        r"""Open the Podman sandbox session.
+
+        This method prepares the Podman environment by:
+        1. Building an image from a Dockerfile/Containerfile if `dockerfile` is provided.
+        2. Pulling an image from a registry if `image` is specified and not found locally.
+        3. Creating and starting a Podman container from the prepared image with specified
+           configurations (mounts, runtime_configs, user).
+        4. Calls `self.environment_setup()` to prepare language-specific settings.
+
+        Raises:
+            ImagePullError: If pulling the specified Podman image fails.
+            ImageNotFoundError: If the specified image is not found and cannot be pulled or built,
+                              or if `client.images.pull` returns an unexpected type.
+
+        """
         warning_str = (
             "Since the `keep_template` flag is set to True, the Podman image will "
             "not be removed after the session ends and remains for future use."
@@ -153,7 +198,15 @@ class SandboxPodmanSession(Session):
         self.environment_setup()
 
     def close(self) -> None:
-        """Close the sandbox session."""
+        r"""Close the Podman sandbox session.
+
+        This method cleans up Podman resources by:
+        1. Committing the container to a new image if `commit_container` is True.
+        2. Stopping and removing the running Podman container.
+        3. Removing the Podman image if `is_create_template` is True (image was built or pulled
+           during this session), `keep_template` is False, and the image is not in use by
+           other containers.
+        """
         if self.container:
             if self.commit_container and isinstance(self.image, Image):
                 if self.image.tags:
@@ -192,7 +245,29 @@ class SandboxPodmanSession(Session):
                 )
 
     def run(self, code: str, libraries: list | None = None) -> ConsoleOutput:
-        """Run the code in the sandbox session."""
+        r"""Run the provided code within the Podman sandbox session.
+
+        This method performs the following steps:
+        1. Ensures the session is open (container is running).
+        2. Installs any specified `libraries` using the language-specific handler.
+        3. Writes the `code` to a temporary file on the host.
+        4. Copies this temporary file into the container at the configured `workdir`.
+        5. Retrieves execution commands from the language handler.
+        6. Executes these commands in the container using `execute_commands`.
+
+        Args:
+            code (str): The code string to execute.
+            libraries (list | None, optional): A list of libraries to install before running the code.
+                                           Defaults to None.
+
+        Returns:
+            ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
+
+        Raises:
+            NotOpenSessionError: If the session (container) is not currently open/running.
+            CommandFailedError: If any of the execution commands fail.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 
@@ -209,7 +284,23 @@ class SandboxPodmanSession(Session):
             return self.execute_commands(commands, workdir=self.workdir)  # type: ignore[arg-type]
 
     def copy_from_runtime(self, src: str, dest: str) -> None:
-        """Copy a file from the runtime to the local filesystem."""
+        r"""Copy a file or directory from the Podman container to the local host filesystem.
+
+        The source path `src` is retrieved from the container as a tar archive, which is then
+        extracted to the `dest` path on the host. Basic security filtering is applied to
+        prevent path traversal attacks during extraction.
+
+        Args:
+            src (str): The absolute path to the source file or directory within the container.
+            dest (str): The path on the host filesystem where the content should be copied.
+                      If `dest` is a directory, the content will be placed inside it with its original name.
+                      If `dest` is a file path, the extracted content will be named accordingly.
+
+        Raises:
+            NotOpenSessionError: If the session (container) is not currently open/running.
+            FileNotFoundError: If the `src` path does not exist or is empty in the container.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 
@@ -271,7 +362,26 @@ class SandboxPodmanSession(Session):
     def execute_command(  # noqa: PLR0912, PLR0915
         self, command: str, workdir: str | None = None
     ) -> ConsoleOutput:
-        """Execute a command in the sandbox session."""
+        r"""Execute an arbitrary command directly within the Podman container.
+
+        This method uses Podman's `exec_run` to execute the command. It handles both
+        streamed and non-streamed output based on the `self.stream` attribute, and decodes
+        output chunks appropriately.
+
+        Args:
+            command (str): The command string to execute (e.g., "ls -l", "pip install <package>").
+            workdir (str | None, optional): The working directory within the container where
+                                        the command should be executed. If None, the container's
+                                        default working directory is used. Defaults to None.
+
+        Returns:
+            ConsoleOutput: An object containing the stdout, stderr, and exit code of the command.
+
+        Raises:
+            CommandEmptyError: If the provided `command` string is empty.
+            NotOpenSessionError: If the session (container) is not currently open/running.
+
+        """
         if not command:
             raise CommandEmptyError
 
@@ -365,7 +475,22 @@ class SandboxPodmanSession(Session):
         )
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:
-        """Get archive of files from container."""
+        r"""Retrieve a file or directory from the Podman container as a tar archive.
+
+        This method uses Podman's `get_archive` to fetch the content at the specified `path`.
+
+        Args:
+            path (str): The absolute path to the file or directory within the container.
+
+        Returns:
+            tuple[bytes, dict]: A tuple where the first element is the raw bytes of the
+                                tar archive, and the second element is a dictionary containing
+                                archive metadata (stat info).
+
+        Raises:
+            NotOpenSessionError: If the session (container) is not currently open/running.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 

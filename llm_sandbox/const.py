@@ -1,9 +1,20 @@
+"""Constants used throughout the LLM Sandbox application.
+
+This module defines enumerations and dataclasses for constants such as
+sandbox backend types, supported programming languages, and default
+container image names.
+"""
+
 from dataclasses import dataclass
 from enum import Enum
 
 
 class SandboxBackend(str, Enum):
-    """Sandbox backend."""
+    r"""Enumeration of supported sandbox backend technologies.
+
+    Each value represents a different containerization or virtualization technology
+    that can be used to isolate code execution.
+    """
 
     DOCKER = "docker"
     KUBERNETES = "kubernetes"
@@ -13,7 +24,11 @@ class SandboxBackend(str, Enum):
 
 @dataclass
 class SupportedLanguage:
-    """Supported languages."""
+    r"""Dataclass defining constants for supported programming languages.
+
+    Each attribute represents a language identifier string used by the sandbox
+    to select appropriate language handlers and container images.
+    """
 
     PYTHON = "python"
     JAVA = "java"
@@ -25,7 +40,11 @@ class SupportedLanguage:
 
 @dataclass
 class DefaultImage:
-    """Default images."""
+    r"""Dataclass defining constants for default container images for each language.
+
+    These are the default Docker image names used when a specific image is not
+    provided by the user for a given programming language.
+    """
 
     PYTHON = "python:3.11-bullseye"
     JAVA = "openjdk:11.0.12-jdk-bullseye"

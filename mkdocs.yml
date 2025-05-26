@@ -9,13 +9,27 @@ copyright: Maintained by <a href="https://vndee.com">vndee</a>.
 
 nav:
   - Home: index.md
-  - Modules: modules.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - Configuration: configuration.md
+  - API Reference: modules.md
+  - Contributing: contributing.md
+
 plugins:
   - search
   - mkdocstrings:
       handlers:
         python:
           paths: ["llm_sandbox"]
+          options:
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            show_category_heading: true
+            docstring_style: google
+            show_if_no_docstring: true
+            show_signature_annotations: true
+
 theme:
   name: material
   feature:
@@ -37,6 +51,15 @@ theme:
         name: Switch to light mode
   icon:
     repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
 
 extra:
   social:
@@ -50,3 +73,12 @@ markdown_extensions:
       permalink: true
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html

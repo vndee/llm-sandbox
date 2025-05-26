@@ -17,14 +17,18 @@ from llm_sandbox.exceptions import NotOpenSessionError
 
 
 class SandboxKubernetesSession(Session):
-    """Sandbox session for Kubernetes."""
+    r"""Sandbox session implemented using Kubernetes Pods.
+
+    This class provides a sandboxed environment for code execution by leveraging Kubernetes.
+    It handles Pod creation and lifecycle based on a provided or default manifest,
+    code execution, library installation, and file operations within the Kubernetes Pod.
+    """
 
     def __init__(
         self,
         client: CoreV1Api | None = None,
         image: str | None = None,
         lang: str = SupportedLanguage.PYTHON,
-        keep_template: bool = False,
         verbose: bool = False,
         kube_namespace: str | None = "default",
         env_vars: dict | None = None,
@@ -32,27 +36,36 @@ class SandboxKubernetesSession(Session):
         workdir: str | None = "/sandbox",
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
-        """Create a new sandbox session.
+        r"""Initialize a new Kubernetes-based sandbox session.
 
-        :param client: Kubernetes client, if not provided, a new client will be created
-                    based on local Kubernetes context
-        :param image: Docker image to use
-        :param lang: Language of the code
-        :param keep_template: if True, the image and container will not be removed
-                    after the session ends
-        :param verbose: if True, print messages
-        :param kube_namespace: Kubernetes namespace to use, default is 'default'
-        :param env_vars: Environment variables to use
-        :param pod_manifest: Pod manifest to use (ignores other settings: `image`,
-                            `kube_namespace` and `env_vars`). By default runs as root user
-                            for maximum compatibility. Advanced users can override security
-                            context in custom pod_manifest.
+        Args:
+            client (CoreV1Api | None, optional): An existing Kubernetes `CoreV1Api` client instance.
+                If None, a new client will be created based on the local Kubernetes configuration
+                (e.g., from `~/.kube/config`). Defaults to None.
+            image (str | None, optional): The name of the Docker image to use for the Pod's container
+                (e.g., "python:3.11-bullseye"). If None and `pod_manifest` is not provided with an image,
+                a default image for the specified `lang` is used. Defaults to None.
+            lang (str, optional): The programming language of the code to be run (e.g., "python", "java").
+                Determines default image and language-specific handlers. Defaults to SupportedLanguage.PYTHON.
+            verbose (bool, optional): If True, print detailed log messages. Defaults to False.
+            kube_namespace (str | None, optional): The Kubernetes namespace where the Pod will be created.
+                Defaults to "default". This is overridden if `pod_manifest` specifies a namespace.
+            env_vars (dict | None, optional): A dictionary of environment variables to set in the sandbox
+                container (e.g., `{"MY_VAR": "value"}`). Defaults to None. This is overridden if
+                `pod_manifest` specifies environment variables.
+            pod_manifest (dict | None, optional): A complete Kubernetes Pod manifest (as a dictionary).
+                If provided, this manifest is used directly, overriding `image`, `kube_namespace`, `env_vars`,
+                and default security contexts. Allows for advanced customization of the Pod.
+                If None, a default Pod manifest is generated. Defaults to None.
+            workdir (str | None, optional): The working directory inside the Pod's container.
+                Defaults to "/sandbox".
+            **kwargs: Catches unused keyword arguments.
+
         """
         super().__init__(
             lang=lang,
             verbose=verbose,
             image=image,
-            keep_template=keep_template,
             workdir=workdir,
         )
 
@@ -76,6 +89,16 @@ class SandboxKubernetesSession(Session):
         self._reconfigure_with_pod_manifest()
 
     def _default_pod_manifest(self) -> dict:
+        r"""Generate a default Kubernetes Pod manifest.
+
+        This manifest defines a simple Pod with a single container running the specified
+        `self.image`. It includes basic labels and sets the security context to run as root
+        for broad compatibility. Environment variables from `self.env_vars` are included.
+
+        Returns:
+            dict: A dictionary representing the Kubernetes Pod manifest.
+
+        """
         pod_manifest = {
             "apiVersion": "v1",
             "kind": "Pod",
@@ -110,15 +133,37 @@ class SandboxKubernetesSession(Session):
         return pod_manifest
 
     def _reconfigure_with_pod_manifest(self) -> None:
+        r"""Reconfigure session attributes based on the provided or default pod_manifest.
+
+        Ensures that `self.pod_name` and `self.kube_namespace` are consistent with the
+        metadata specified in the `pod_manifest`.
+        """
         self.pod_name = self.pod_manifest.get("metadata", {}).get("name", self.pod_name)
         self.kube_namespace = self.pod_manifest.get("metadata", {}).get("namespace", self.kube_namespace)
 
     def open(self) -> None:
-        """Open the sandbox session."""
+        r"""Open the Kubernetes sandbox session.
+
+        This method prepares the Kubernetes environment by:
+        1. Creating a Kubernetes Pod based on `self.pod_manifest`.
+        2. Waiting for the Pod to reach the "Running" phase.
+        3. Setting `self.container` to the Pod name.
+        4. Calling `self.environment_setup()` to prepare language-specific settings within the Pod.
+        """
         self._create_kubernetes_pod()
         self.environment_setup()
 
     def _ensure_ownership(self, folders: list[str]) -> None:
+        r"""Ensure correct file ownership for specified folders within the Kubernetes Pod.
+
+        If the Pod is detected to be running as a non-root user, this method attempts
+        to change the ownership of the listed folders to that user and group using `chown`.
+        This is primarily for ensuring writable cache or venv directories.
+
+        Args:
+            folders (list[str]): A list of absolute paths to folders within the Pod.
+
+        """
         # For Kubernetes, check if we're running as root to handle ownership
         # If running as non-root user, the directories should already have correct ownership
         user_check = self.execute_command("id -u")
@@ -131,6 +176,11 @@ class SandboxKubernetesSession(Session):
             ])
 
     def _create_kubernetes_pod(self) -> None:
+        r"""Create the Kubernetes Pod and wait for it to become ready.
+
+        Uses the Kubernetes client to create a namespaced Pod defined by `self.pod_manifest`.
+        It then polls the Pod's status until its phase is "Running".
+        """
         self.client.create_namespaced_pod(namespace=self.kube_namespace, body=self.pod_manifest)
 
         while True:
@@ -142,10 +192,18 @@ class SandboxKubernetesSession(Session):
         self.container = self.pod_name
 
     def close(self) -> None:
-        """Close the sandbox session."""
+        r"""Close the Kubernetes sandbox session.
+
+        This method cleans up Kubernetes resources by deleting the created Pod.
+        """
         self._delete_kubernetes_pod()
 
     def _delete_kubernetes_pod(self) -> None:
+        r"""Delete the Kubernetes Pod associated with this session.
+
+        Uses the Kubernetes client to delete the namespaced Pod identified by
+        `self.pod_name` and `self.kube_namespace`.
+        """
         self.client.delete_namespaced_pod(
             name=self.pod_name,
             namespace=self.kube_namespace,
@@ -153,7 +211,29 @@ class SandboxKubernetesSession(Session):
         )
 
     def run(self, code: str, libraries: list | None = None) -> ConsoleOutput:
-        """Run the code in the sandbox session."""
+        r"""Run the provided code within the Kubernetes Pod.
+
+        This method performs the following steps:
+        1. Ensures the session is open (Pod is running).
+        2. Installs any specified `libraries` using the language-specific handler.
+        3. Writes the `code` to a temporary file on the host system.
+        4. Copies this temporary file into the Pod at the configured `workdir`.
+        5. Retrieves execution commands from the language handler.
+        6. Executes these commands in the Pod using `execute_commands`.
+
+        Args:
+            code (str): The code string to execute.
+            libraries (list | None, optional): A list of libraries to install before running the code.
+                                            Defaults to None.
+
+        Returns:
+            ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
+
+        Raises:
+            NotOpenSessionError: If the session (Pod) is not currently running.
+            CommandFailedError: If any of the execution commands fail.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 
@@ -172,7 +252,23 @@ class SandboxKubernetesSession(Session):
             return self.execute_commands(commands, workdir=self.workdir)  # type: ignore[arg-type]
 
     def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
-        """Copy a file from the runtime."""
+        r"""Copy a file or directory from the Kubernetes Pod to the local host filesystem.
+
+        This method uses `kubectl exec` (via the Kubernetes API stream) to create a tar archive
+        of the `src` path within the Pod, streams it to the host, and then extracts the
+        target file to the `dest` path. Basic security filtering is applied to prevent path
+        traversal attacks during extraction.
+
+        Args:
+            src (str): The absolute path to the source file or directory within the Pod.
+            dest (str): The path on the host filesystem where the content should be copied.
+                        The parent directory of `dest` will be created if it doesn't exist.
+
+        Raises:
+            NotOpenSessionError: If the session (Pod) is not currently running.
+            FileNotFoundError: If the `src` path does not exist or is not found in the archive from the Pod.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 
@@ -234,7 +330,21 @@ class SandboxKubernetesSession(Session):
                 raise FileNotFoundError(src)
 
     def copy_to_runtime(self, src: str, dest: str) -> None:
-        """Copy a file to the runtime."""
+        r"""Copy a file or directory from the local host filesystem to the Kubernetes Pod.
+
+        This method creates a tar archive of the `src` path on the host, then uses `kubectl exec`
+        (via the Kubernetes API stream) to stream this archive into the Pod and extract it at
+        the `dest_dir` (parent directory of `dest`). The destination directory is created if it
+        doesn't exist. File ownership is ensured after copying if a non-root user is detected.
+
+        Args:
+            src (str): The path to the source file or directory on the host system.
+            dest (str): The absolute destination path within the Pod.
+
+        Raises:
+            NotOpenSessionError: If the session (Pod) is not currently running.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 
@@ -292,7 +402,26 @@ class SandboxKubernetesSession(Session):
     def execute_command(
         self, command: str, workdir: str | None = None, *, disable_logging: bool = False
     ) -> ConsoleOutput:
-        """Execute a command in the sandbox session."""
+        r"""Execute an arbitrary command directly within the Kubernetes Pod.
+
+        This method uses `kubectl exec` (via the Kubernetes API stream) to run the command.
+        It captures stdout, stderr, and the exit code of the command.
+
+        Args:
+            command (str): The command string to execute (e.g., "ls -l", "pip install <package>").
+            workdir (str | None, optional): The working directory within the Pod where the command
+                                        should be executed. If provided, the command is wrapped
+                                        with `cd <workdir> && <command>`. Defaults to None.
+            disable_logging (bool, optional): If True, suppress verbose logging for this specific command's
+                                            output. Useful for internal status checks. Defaults to False.
+
+        Returns:
+            ConsoleOutput: An object containing the stdout, stderr, and exit code of the command.
+
+        Raises:
+            NotOpenSessionError: If the session (Pod) is not currently running.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 
@@ -342,7 +471,26 @@ class SandboxKubernetesSession(Session):
         )
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:
-        """Get archive of files from pod."""
+        r"""Retrieve a file or directory from the Kubernetes Pod as a tar archive.
+
+        This method first uses `execute_command` to run `stat` on the `path` within the Pod to get
+        its metadata (size, mtime, name). Then, it runs `tar cf - <path> | base64 -w 0` to get a
+        base64-encoded tar stream of the path's content. This stream is decoded, and a stat-like
+        dictionary is constructed to mimic Docker's `get_archive` behavior.
+
+        Args:
+            path (str): The absolute path to the file or directory within the Pod.
+
+        Returns:
+            tuple[bytes, dict]: A tuple where the first element is the raw bytes of the tar archive,
+                                and the second element is a dictionary containing stat-like metadata
+                                (name, size, mtime, mode, linkTarget). Returns `(b"", {})` if the
+                                path is not found or an error occurs.
+
+        Raises:
+            NotOpenSessionError: If the session (Pod) is not currently running.
+
+        """
         if not self.container:
             raise NotOpenSessionError
 
