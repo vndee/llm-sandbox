@@ -41,6 +41,15 @@ dev = [
     "mkdocs>=1.4.2",
     "mkdocs-material>=8.5.10",
     "mkdocstrings[python]>=0.26.1",
+    "langchain>=0.3.25",
+    "llama-index>=0.12.37",
+    "podman>=5.4.0.1",
+    "kubernetes>=32.0.1",
+    "docker>=7.1.0",
+    "langgraph>=0.4.7",
+    "langchain-openai>=0.3.18",
+    "langchain-core>=0.3.61",
+    "nest-asyncio>=1.6.0",
 ]
 
 [build-system]
@@ -114,3 +123,6 @@ skip_empty = true
 [tool.coverage.run]
 branch = true
 source = ["llm_sandbox"]
+
+[tool.deptry]
+ignore = ["DEP004"]
