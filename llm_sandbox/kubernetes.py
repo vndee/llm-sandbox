@@ -54,9 +54,7 @@ class SandboxKubernetesSession(Session):
 
         if not client:
             if self.verbose:
-                self.logger.info(
-                    "Using local Kubernetes context since client is not provided.."
-                )
+                self.logger.info("Using local Kubernetes context since client is not provided..")
 
             config.load_kube_config()
             self.client = k8s_client.CoreV1Api()
@@ -133,14 +131,10 @@ class SandboxKubernetesSession(Session):
             )
 
     def _create_kubernetes_pod(self) -> None:
-        self.client.create_namespaced_pod(
-            namespace=self.kube_namespace, body=self.pod_manifest
-        )
+        self.client.create_namespaced_pod(namespace=self.kube_namespace, body=self.pod_manifest)
 
         while True:
-            pod = self.client.read_namespaced_pod(
-                name=self.pod_name, namespace=self.kube_namespace
-            )
+            pod = self.client.read_namespaced_pod(name=self.pod_name, namespace=self.kube_namespace)
             if pod.status.phase == "Running":
                 break
             time.sleep(1)
@@ -166,12 +160,8 @@ class SandboxKubernetesSession(Session):
         self.install(libraries)
 
         with tempfile.TemporaryDirectory() as directory_name:
-            code_file = str(
-                Path(directory_name) / f"code.{self.language_handler.file_extension}"
-            )
-            code_dest_file = (
-                f"{self.workdir}/code.{self.language_handler.file_extension}"
-            )
+            code_file = str(Path(directory_name) / f"code.{self.language_handler.file_extension}")
+            code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
 
             with Path.open(code_file, "w", encoding="utf-8") as f:
                 f.write(code)
@@ -181,7 +171,7 @@ class SandboxKubernetesSession(Session):
             commands = self.language_handler.get_execution_commands(code_dest_file)
             return self.execute_commands(commands, workdir=self.workdir)
 
-    def copy_from_runtime(self, src: str, dest: str) -> None:
+    def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         """Copy a file from the runtime."""
         if not self.container:
             raise NotOpenSessionError
@@ -243,11 +233,9 @@ class SandboxKubernetesSession(Session):
                     with Path(dest).open("wb") as f:
                         f.write(file_obj.read())
                 else:
-                    raise FileNotFoundError(
-                        f"Could not extract file content from {src}"
-                    )
+                    raise FileNotFoundError(src)
             else:
-                raise FileNotFoundError(f"File {src} not found in the tar archive")
+                raise FileNotFoundError(src)
 
     def copy_to_runtime(self, src: str, dest: str) -> None:
         """Copy a file to the runtime."""
@@ -373,12 +361,11 @@ class SandboxKubernetesSession(Session):
         stat_result = self.execute_command(stat_command, disable_logging=True)
 
         if stat_result.stdout.strip() == "NOT_FOUND" or stat_result.exit_code != 0:
-            # Return empty data if file doesn't exist
             return b"", {}
 
         # Parse stat output (size, mtime, name)
         stat_parts = stat_result.stdout.strip().split(" ", 2)
-        if len(stat_parts) >= 3:
+        if len(stat_parts) >= 3:  # noqa:PLR2004
             file_size = int(stat_parts[0])
             mtime = int(stat_parts[1])
             file_name = stat_parts[2]
@@ -405,9 +392,9 @@ class SandboxKubernetesSession(Session):
             import base64
 
             tar_data = base64.b64decode(result.stdout.strip())
-        except Exception as e:
+        except Exception:
             if self.verbose:
-                self.logger.error("Failed to decode base64 data: %s", e)
+                self.logger.exception("Failed to decode base64 data")
             return b"", {}
 
         # Create stat dict similar to Docker's format

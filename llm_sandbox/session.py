@@ -11,9 +11,7 @@ from .exceptions import DependencyError, UnsupportedBackendError
 
 def _check_dependency(backend: SandboxBackend) -> None:
     """Check if required dependency is installed for the given backend."""
-    if backend in {SandboxBackend.DOCKER, SandboxBackend.MICROMAMBA} and not find_spec(
-        "docker"
-    ):
+    if backend in {SandboxBackend.DOCKER, SandboxBackend.MICROMAMBA} and not find_spec("docker"):
         msg = (
             "Docker backend requires 'docker' package. "
             "Install it with: pip install llm-sandbox[docker]"
@@ -44,11 +42,12 @@ def create_session(
     verbose: bool = False,
     runtime_configs: dict | None = None,
     workdir: str | None = "/sandbox",
-    **kwargs: Any,  # noqa: ANN401
+    **kwargs: Any,
 ) -> Session:
     """Create a new sandbox session.
 
     Args:
+    ----
         backend: Docker, Kubernetes or Podman backend
         image: Container image to use
         dockerfile: Path to Dockerfile
@@ -61,9 +60,11 @@ def create_session(
         **kwargs: Additional keyword arguments
 
     Returns:
+    -------
         A sandbox session instance
 
     Raises:
+    ------
         DependencyError: If the required dependency for the chosen backend
                         is not installed
         UnsupportedBackendError: If the chosen backend is not supported
@@ -146,11 +147,12 @@ class ArtifactSandboxSession:
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         enable_plotting: bool = True,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: Any,
     ) -> None:
         """Create a new artifact sandbox session.
 
         Args:
+        ----
             backend: Docker, Kubernetes or Podman backend
             image: Container image to use
             dockerfile: Path to Dockerfile
@@ -164,6 +166,7 @@ class ArtifactSandboxSession:
             **kwargs: Additional keyword arguments
 
         Raises:
+        ------
             DependencyError: If the required dependency for the chosen backend
                             is not installed
             UnsupportedBackendError: If the chosen backend is not supported
@@ -199,16 +202,14 @@ class ArtifactSandboxSession:
         """Exit the context manager."""
         return self._session.__exit__(exc_type, exc_val, exc_tb)
 
-    def __getattr__(self, name: str) -> Any:  # noqa: ANN401
+    def __getattr__(self, name: str) -> Any:
         """Delegate any other attributes/methods to the underlying session."""
         return getattr(self._session, name)
 
     def run(self, code: str, libraries: list | None = None) -> ExecutionResult:
         """Run the code in the sandbox session with artifact extraction."""
         if self.enable_plotting:
-            injected_code = self._session.language_handler.inject_plot_detection_code(
-                code
-            )
+            injected_code = self._session.language_handler.inject_plot_detection_code(code)
         else:
             injected_code = code
 

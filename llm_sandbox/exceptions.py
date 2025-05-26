@@ -58,9 +58,7 @@ class NotOpenSessionError(SandboxError):
 
     def __init__(self) -> None:
         """Initialize the NotOpenSessionError."""
-        super().__init__(
-            "Session is not open. Please call open() method before running code."
-        )
+        super().__init__("Session is not open. Please call open() method before running code.")
 
 
 class LibraryInstallationNotSupportedError(SandboxError):
@@ -84,9 +82,7 @@ class CommandFailedError(SandboxError):
 
     def __init__(self, command: str, exit_code: int, output: str) -> None:
         """Initialize the CommandFailedError."""
-        super().__init__(
-            f"Command {command} failed with exit code {exit_code}:\n{output}"
-        )
+        super().__init__(f"Command {command} failed with exit code {exit_code}:\n{output}")
 
 
 class PackageManagerError(SandboxError):

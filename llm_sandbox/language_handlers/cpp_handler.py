@@ -20,7 +20,7 @@ class CppHandler(AbstractLanguageHandler):
             package_manager="apt-get",
             plot_detection=None,
         )
-        super().__init__(config, *args, **kwargs)
+        super().__init__(config, *args, **kwargs)  # type: ignore[arg-type]
 
     def get_execution_commands(self, code_file: str) -> list[str]:
         """Get the execution commands for the C++ handler."""
@@ -42,5 +42,6 @@ class CppHandler(AbstractLanguageHandler):
         """Extract plots from the C++ handler."""
         return []
 
-    def safety_check(self, code: str) -> list[str]:
-        """Check the code for safety issues."""
+    def scan(self, code: str) -> list[str]:
+        """Scan the code for safety issues."""
+        return []

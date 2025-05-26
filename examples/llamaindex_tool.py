@@ -1,6 +1,9 @@
+# ruff: noqa: E501
+
 # Reference: https://python.langchain.com/v0.1/docs/modules/agents/quick_start/
 # Reference: https://python.langchain.com/v0.1/docs/modules/tools/custom_tools/
 
+import logging
 
 import nest_asyncio
 from llama_index.core.agent import FunctionCallingAgentWorker
@@ -11,9 +14,13 @@ from llm_sandbox import SandboxSession
 
 nest_asyncio.apply()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def run_code(lang: str, code: str, libraries: list | None = None) -> str:
     """Run code in a sandboxed environment.
+
     :param lang: The language of the code, must be one of ['python', 'java', 'javascript', 'cpp', 'go', 'ruby'].
     :param code: The code to run.
     :param libraries: The libraries to use, it is optional.
@@ -38,17 +45,13 @@ if __name__ == "__main__":
     response = agent.chat(
         "Write python code to calculate Pi number by Monte Carlo method then run it."
     )
-    print(response)
+    logger.info(response)
 
-    response = agent.chat(
-        "Write python code to calculate the factorial of a number then run it."
-    )
-    print(response)
+    response = agent.chat("Write python code to calculate the factorial of a number then run it.")
+    logger.info(response)
 
-    response = agent.chat(
-        "Write python code to calculate the Fibonacci sequence then run it."
-    )
-    print(response)
+    response = agent.chat("Write python code to calculate the Fibonacci sequence then run it.")
+    logger.info(response)
 
     response = agent.chat("Calculate the sum of the first 10000 numbers.")
-    print(response)
+    logger.info(response)

@@ -4,9 +4,7 @@ import logging
 
 from llm_sandbox import SandboxSession
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +15,12 @@ def test_docker_pip() -> None:
 
     try:
         with SandboxSession(backend="docker", lang="python", verbose=True) as session:
-            result = session.run(
-                "print('Docker virtual env test!')", libraries=["urllib3"]
-            )
+            result = session.run("print('Docker virtual env test!')", libraries=["urllib3"])
             logger.info("Docker result: %s", result.stdout.strip())
             logger.info("Docker errors: %s", result.stderr.strip())
 
             has_output = "Docker virtual env test!" in result.stdout
-            no_critical_errors = (
-                "Error" not in result.stderr and "Failed" not in result.stderr
-            )
+            no_critical_errors = "Error" not in result.stderr and "Failed" not in result.stderr
             success = has_output and no_critical_errors
 
             logger.info("✅ Docker: SUCCESS" if success else "❌ Docker: FAILED")
@@ -48,17 +42,13 @@ def test_podman_pip() -> None:
         with SandboxSession(
             backend="podman", lang="python", verbose=True, client=client
         ) as session:
-            result = session.run(
-                "print('Podman virtual env test!')", libraries=["urllib3"]
-            )
+            result = session.run("print('Podman virtual env test!')", libraries=["urllib3"])
             logger.info("Podman result: %s", result.stdout.strip())
             logger.info("Podman errors: %s", result.stderr.strip())
 
             # Check for success
             has_output = "Podman virtual env test!" in result.stdout
-            no_critical_errors = (
-                "Error" not in result.stderr and "Failed" not in result.stderr
-            )
+            no_critical_errors = "Error" not in result.stderr and "Failed" not in result.stderr
             success = has_output and no_critical_errors
 
             logger.info("✅ Podman: SUCCESS" if success else "❌ Podman: FAILED")
@@ -71,29 +61,21 @@ def test_kubernetes_pip() -> None:
     logger.info("\n=== Testing Kubernetes Backend ===")
 
     try:
-        with SandboxSession(
-            backend="kubernetes", lang="python", verbose=True
-        ) as session:
-            result = session.run(
-                "print('Kubernetes virtual env test!')", libraries=["urllib3"]
-            )
+        with SandboxSession(backend="kubernetes", lang="python", verbose=True) as session:
+            result = session.run("print('Kubernetes virtual env test!')", libraries=["urllib3"])
             logger.info("Kubernetes result: %s", result.stdout.strip())
             logger.info("Kubernetes errors: %s", result.stderr.strip())
 
             # Check for success
             has_output = "Kubernetes virtual env test!" in result.stdout
-            no_critical_errors = (
-                "Error" not in result.stderr and "Failed" not in result.stderr
-            )
+            no_critical_errors = "Error" not in result.stderr and "Failed" not in result.stderr
             success = (
                 (result.exit_code == 0 or result.exit_code is None)
                 and has_output
                 and no_critical_errors
             )
 
-            logger.info(
-                "✅ Kubernetes: SUCCESS" if success else "❌ Kubernetes: FAILED"
-            )
+            logger.info("✅ Kubernetes: SUCCESS" if success else "❌ Kubernetes: FAILED")
     except Exception:
         logger.exception("❌ Kubernetes test skipped")
 
@@ -118,15 +100,11 @@ def test_custom_user_docker() -> None:
 
             # Check for success
             has_output = "Docker custom user virtual env test!" in result.stdout
-            no_critical_errors = (
-                "Error" not in result.stderr and "Failed" not in result.stderr
-            )
+            no_critical_errors = "Error" not in result.stderr and "Failed" not in result.stderr
             success = has_output and no_critical_errors
 
             logger.info(
-                "✅ Docker Custom User: SUCCESS"
-                if success
-                else "❌ Docker Custom User: FAILED"
+                "✅ Docker Custom User: SUCCESS" if success else "❌ Docker Custom User: FAILED"
             )
     except Exception:
         logger.exception("❌ Docker custom user test failed")

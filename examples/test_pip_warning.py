@@ -4,9 +4,7 @@ import logging
 
 from llm_sandbox import SandboxSession
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +18,19 @@ def test_pip_no_warning() -> None:
         try:
             result = session.run(
                 "print('Testing package installation...')",
-                libraries=[
-                    "requests"
-                ],  # Common package that's likely not pre-installed
+                libraries=["requests"],  # Common package that's likely not pre-installed
             )
             logger.info("Installation result: %s", result.stdout.strip())
             logger.info("Any warnings/errors: %s", result.stderr.strip())
 
             # Verify the package can be imported
-            result = session.run("""
+            result = session.run(
+                """
 import requests
 print("requests imported successfully!")
 print(f"requests version: {requests.__version__}")
-""")
+"""
+            )
             logger.info("Import test: %s", result.stdout.strip())
 
         except Exception:

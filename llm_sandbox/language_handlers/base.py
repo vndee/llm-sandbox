@@ -2,6 +2,21 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+
+    class ContainerProtocol(Protocol):
+        """Protocol for container objects (Docker, Podman, K8s)."""
+
+        def execute_command(self, command: str, workdir: str | None = None) -> Any:
+            """Execute a command in the container."""
+            ...
+
+        def get_archive(self, path: str) -> tuple:
+            """Get archive of files from container."""
+            ...
+
 
 from llm_sandbox.exceptions import CommandFailedError, PackageManagerError
 
@@ -48,22 +63,16 @@ class LanguageConfig:
 class AbstractLanguageHandler(ABC):
     """Abstract base class for language-specific handlers."""
 
-    def __init__(
-        self, config: LanguageConfig, logger: logging.Logger | None = None
-    ) -> None:
+    def __init__(self, config: LanguageConfig, logger: logging.Logger | None = None) -> None:
         """Initialize the language handler."""
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
-        self.plot_outputs = []
-        self.file_outputs = []
 
     def get_execution_commands(self, code_file: str) -> list[str]:
         """Get commands to execute code file."""
         if not self.config.execution_commands:
-            raise CommandFailedError(self.config.name)
-        return [
-            command.format(file=code_file) for command in self.config.execution_commands
-        ]
+            raise CommandFailedError(self.config.name, 1, "No execution commands found")
+        return [command.format(file=code_file) for command in self.config.execution_commands]
 
     def get_library_installation_command(self, library: str) -> str:
         """Get command to install library."""
@@ -76,8 +85,8 @@ class AbstractLanguageHandler(ABC):
         """Inject code to detect and capture plots."""
 
     @abstractmethod
-    def safety_check(self, code: str) -> list[str]:
-        """Check the code for safety issues."""
+    def scan(self, code: str) -> list[str]:
+        """Scan the code for safety issues."""
 
     @property
     def name(self) -> str:
@@ -92,11 +101,13 @@ class AbstractLanguageHandler(ABC):
     @property
     def supported_libraries(self) -> list[str]:
         """Get supported libraries for language."""
-        return self.config.supported_libraries
+        return self.config.supported_libraries or []
 
     @property
     def supported_plot_libraries(self) -> list[PlotLibrary]:
         """Get supported plotting libraries."""
+        if not self.config.plot_detection:
+            return []
         return self.config.plot_detection.libraries
 
     @property

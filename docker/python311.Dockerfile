@@ -12,4 +12,3 @@ RUN mkdir -p {/tmp/pip_cache,/tmp/sandbox_output,/tmp/sandbox_plots}
 RUN /tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache
 
 RUN /tmp/venv/bin/pip install numpy pandas matplotlib pillow seaborn scikit-learn scipy scikit-image plotly
-

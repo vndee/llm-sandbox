@@ -7,9 +7,7 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/vndee/llm-sandbox"
 repository = "https://github.com/vndee/llm-sandbox"
-packages = [
-    { include = "llm_sandbox" }
-]
+packages = [{ include = "llm_sandbox" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -33,6 +31,7 @@ llama-index = "^0.10.54.post1"
 matplotlib = "^3.10.3"
 seaborn = "^0.13.2"
 podman = "^5.4.0.1"
+ruff = "^0.11.11"
 
 [build-system]
 requires = ["poetry-core"]

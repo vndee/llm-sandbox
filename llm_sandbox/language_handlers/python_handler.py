@@ -2,31 +2,16 @@ import base64
 import io
 import tarfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.artifact import FileType, PlotOutput
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.language_handlers.artifact_detection import PYTHON_PLOT_DETECTION_CODE
 
-from .base import (
-    AbstractLanguageHandler,
-    LanguageConfig,
-    PlotDetectionConfig,
-    PlotLibrary,
-)
+from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
 
 if TYPE_CHECKING:
-
-    class ContainerProtocol(Protocol):
-        """Protocol for container objects (Docker, Podman, K8s)."""
-
-        def execute_command(self, command: str, workdir: str | None = None) -> Any:
-            """Execute a command in the container."""
-            ...
-
-        def get_archive(self, path: str) -> tuple:
-            """Get archive of files from container."""
-            ...
+    from .base import ContainerProtocol
 
 
 class PythonHandler(AbstractLanguageHandler):
@@ -62,9 +47,7 @@ class PythonHandler(AbstractLanguageHandler):
         """Inject comprehensive plot detection for Python."""
         return self.config.plot_detection.setup_code + "\n\n" + code
 
-    def extract_plots(
-        self, container: "ContainerProtocol", output_dir: str
-    ) -> list[PlotOutput]:
+    def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:
         """Extract plots from Python execution."""
         plots = []
 

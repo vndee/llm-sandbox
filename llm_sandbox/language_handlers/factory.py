@@ -1,5 +1,5 @@
 import logging
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportedError
@@ -16,7 +16,7 @@ from .ruby_handler import RubyHandler
 class LanguageHandlerFactory:
     """Factory for creating language-specific handlers."""
 
-    _handlers: ClassVar[dict[str, type[AbstractLanguageHandler]]] = {
+    _handlers: ClassVar[dict[str, Any]] = {
         SupportedLanguage.PYTHON: PythonHandler,
         SupportedLanguage.JAVASCRIPT: JavaScriptHandler,
         SupportedLanguage.JAVA: JavaHandler,
@@ -34,7 +34,7 @@ class LanguageHandlerFactory:
             raise LanguageNotSupportedError(language)
 
         handler_class = cls._handlers[language.lower()]
-        return handler_class(logger=logger)
+        return handler_class(logger=logger)  # type: ignore[call-arg]
 
     @classmethod
     def get_supported_languages(cls) -> list[str]:
@@ -42,8 +42,6 @@ class LanguageHandlerFactory:
         return list(cls._handlers.keys())
 
     @classmethod
-    def register_handler(
-        cls, language: str, handler_class: type[AbstractLanguageHandler]
-    ) -> None:
+    def register_handler(cls, language: str, handler_class: type[AbstractLanguageHandler]) -> None:
         """Register new language handler."""
         cls._handlers[language.lower()] = handler_class

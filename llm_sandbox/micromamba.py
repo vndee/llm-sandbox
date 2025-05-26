@@ -2,7 +2,6 @@ from typing import Any
 
 import docker
 from docker.types import Mount
-
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.docker import ConsoleOutput, SandboxDockerSession
 
@@ -54,9 +53,7 @@ class MicromambaSession(SandboxDockerSession):
 
         self.environment = environment
 
-    def execute_command(
-        self, command: str | None, workdir: str | None = None
-    ) -> ConsoleOutput:
+    def execute_command(self, command: str | None, workdir: str | None = None) -> ConsoleOutput:
         """Execute a command in the micromamba environment.
 
         :param command: Command to execute

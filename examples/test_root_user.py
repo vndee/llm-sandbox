@@ -4,9 +4,7 @@ import logging
 
 from llm_sandbox import SandboxSession
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +30,7 @@ def cleanup_test_pods() -> None:
             if pod.metadata.name.startswith(("test-non-root", "sandbox-")):
                 logger.info("Cleaning up existing pod: %s", pod.metadata.name)
                 try:
-                    v1.delete_namespaced_pod(
-                        name=pod.metadata.name, namespace="default"
-                    )
+                    v1.delete_namespaced_pod(name=pod.metadata.name, namespace="default")
                 except Exception:
                     logger.exception("Failed to delete pod %s", pod.metadata.name)
 
@@ -48,25 +44,23 @@ def test_default_root_user() -> None:
 
     with SandboxSession(lang="python") as session:
         # Test 1: Check if running as root
-        result = session.run(
-            "import os; print(f'UID: {os.getuid()}, GID: {os.getgid()}')"
-        )
+        result = session.run("import os; print(f'UID: {os.getuid()}, GID: {os.getgid()}')")
         logger.info("Result: %s", result.stdout.strip())
 
         # Test 2: Create directory in root filesystem
-        result = session.run("""
+        result = session.run(
+            """
 import os
 os.makedirs('/test_dir', exist_ok=True)
 with open('/test_dir/test_file.txt', 'w') as f:
     f.write('Hello from root!')
 print('Successfully created file in /test_dir/')
-""")
+"""
+        )
         logger.info("File creation result: %s", result.stdout.strip())
 
         # Test 3: Check if we can access system directories
-        result = session.run(
-            "import os; print('Can access /etc:', os.path.exists('/etc'))"
-        )
+        result = session.run("import os; print('Can access /etc:', os.path.exists('/etc'))")
         logger.info("System access: %s", result.stdout.strip())
 
 
@@ -81,20 +75,20 @@ def test_custom_user() -> None:
             runtime_configs={"user": "1000:1000"},
             workdir="/tmp/sandbox",
         ) as session:
-            result = session.run(
-                "import os; print(f'UID: {os.getuid()}, GID: {os.getgid()}')"
-            )
+            result = session.run("import os; print(f'UID: {os.getuid()}, GID: {os.getgid()}')")
             logger.info("Custom user result: %s", result.stdout.strip())
 
             # Test if we can still write to /tmp
-            result = session.run("""
+            result = session.run(
+                """
 import os
 import tempfile
 with tempfile.NamedTemporaryFile(mode='w', delete=False, dir='/tmp') as f:
     f.write('Hello from user 1000!')
     temp_file = f.name
 print(f'Successfully created file: {temp_file}')
-""")
+"""
+            )
             logger.info("Temp file creation: %s", result.stdout.strip())
 
     except Exception:
@@ -109,7 +103,8 @@ def test_permission_comparison() -> None:
 
     logger.info("As root:")
     with SandboxSession(lang="python") as session:
-        result = session.run("""
+        result = session.run(
+            """
 import os
 try:
     # Try to write to /etc (should work as root)
@@ -127,7 +122,8 @@ try:
     os.rmdir('/root_test_dir')
 except Exception as e:
     print(f"✗ Cannot create directory in /: {e}")
-""")
+"""
+        )
         logger.info(result.stdout.strip())
 
 
@@ -137,19 +133,19 @@ def test_kubernetes_root_user() -> None:
 
     try:
         with SandboxSession(backend="kubernetes", lang="python") as session:
-            result = session.run(
-                "import os; print(f'K8s UID: {os.getuid()}, GID: {os.getgid()}')"
-            )
+            result = session.run("import os; print(f'K8s UID: {os.getuid()}, GID: {os.getgid()}')")
             logger.info("Kubernetes root result: %s", result.stdout.strip())
 
             # Test creating directory in root filesystem
-            result = session.run("""
+            result = session.run(
+                """
 import os
 os.makedirs('/k8s_test_dir', exist_ok=True)
 with open('/k8s_test_dir/test.txt', 'w') as f:
     f.write('Hello from K8s root!')
 print('✓ Successfully created file in /k8s_test_dir/')
-""")
+"""
+            )
             logger.info("K8s file creation: %s", result.stdout.strip())
 
     except Exception:
@@ -206,7 +202,8 @@ def test_kubernetes_custom_security() -> None:
             logger.info("Custom security context result: %s", result.stdout.strip())
 
             # Test file creation with non-root user
-            result = session.run("""
+            result = session.run(
+                """
 import os
 import tempfile
 try:
@@ -216,14 +213,13 @@ try:
     print(f'✓ Successfully created file: {temp_file}')
 except Exception as e:
     print(f'✗ Failed to create file: {e}')
-""")
+"""
+            )
             logger.info("Non-root file creation: %s", result.stdout.strip())
 
     except Exception as e:
         if "AlreadyExists" in str(e):
-            logger.warning(
-                "Pod with similar name already exists, skipping custom security test"
-            )
+            logger.warning("Pod with similar name already exists, skipping custom security test")
         else:
             logger.exception("Kubernetes custom security test skipped")
 
@@ -244,13 +240,15 @@ def test_podman_root_user() -> None:
             logger.info("Podman root result: %s", result.stdout.strip())
 
             # Test creating directory in root filesystem
-            result = session.run("""
+            result = session.run(
+                """
 import os
 os.makedirs('/podman_test_dir', exist_ok=True)
 with open('/podman_test_dir/test.txt', 'w') as f:
     f.write('Hello from Podman root!')
 print('✓ Successfully created file in /podman_test_dir/')
-""")
+"""
+            )
             logger.info("Podman file creation: %s", result.stdout.strip())
 
     except Exception:
@@ -274,19 +272,21 @@ def test_podman_custom_user() -> None:
             client=client,
         ) as session:
             result = session.run(
-                "import os; print(f'Podman Custom UID: {os.getuid()}, GID: {os.getgid()}')"  # noqa: E501
+                "import os; print(f'Podman Custom UID: {os.getuid()}, GID: {os.getgid()}')"
             )
             logger.info("Podman custom user result: %s", result.stdout.strip())
 
             # Test if we can still write to /tmp
-            result = session.run("""
+            result = session.run(
+                """
 import os
 import tempfile
 with tempfile.NamedTemporaryFile(mode='w', delete=False, dir='/tmp') as f:
     f.write('Hello from Podman user 1000!')
     temp_file = f.name
 print(f'Successfully created file: {temp_file}')
-""")
+"""
+            )
             logger.info("Podman temp file creation: %s", result.stdout.strip())
 
     except Exception:

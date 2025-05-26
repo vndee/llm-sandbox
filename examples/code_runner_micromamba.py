@@ -3,9 +3,7 @@ import logging
 import docker
 from llm_sandbox.micromamba import MicromambaSession
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +23,7 @@ def run_python_code() -> None:
         output = session.run("print('Hello, World!')")
         logger.info(output)
 
-        output = session.run(
-            "import numpy as np\nprint(np.random.rand())", libraries=["numpy"]
-        )
+        output = session.run("import numpy as np\nprint(np.random.rand())", libraries=["numpy"])
         logger.info(output)
 
         session.install(["pandas"])

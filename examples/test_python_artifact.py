@@ -6,9 +6,7 @@ from pathlib import Path
 
 from llm_sandbox.session import ArtifactSandboxSession
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 

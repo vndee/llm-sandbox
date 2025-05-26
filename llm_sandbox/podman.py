@@ -72,9 +72,7 @@ class SandboxPodmanSession(Session):
         self.client: PodmanClient | None = None
         if not client:
             if self.verbose:
-                self.logger.info(
-                    "Using local Podman context since client is not provided.."
-                )
+                self.logger.info("Using local Podman context since client is not provided..")
 
             self.client = PodmanClient.from_env()
         else:
@@ -95,13 +93,9 @@ class SandboxPodmanSession(Session):
 
     def _ensure_ownership(self, folders: list[str]) -> None:
         """For non-root users, ensure ownership of the resources."""
-        current_user = (
-            self.runtime_configs.get("user") if self.runtime_configs else None
-        )
+        current_user = self.runtime_configs.get("user") if self.runtime_configs else None
         if current_user and current_user != "root":
-            self.container.exec_run(
-                f"chown -R {current_user} {' '.join(folders)}", user="root"
-            )
+            self.container.exec_run(f"chown -R {current_user} {' '.join(folders)}", user="root")
 
     def open(self) -> None:
         """Open the sandbox session."""
@@ -138,9 +132,7 @@ class SandboxPodmanSession(Session):
                 try:
                     self.image = self.client.images.pull(self.image)
                     if self.verbose:
-                        self.logger.info(
-                            "Successfully pulled image %s", self.image.tags[-1]
-                        )
+                        self.logger.info("Successfully pulled image %s", self.image.tags[-1])
                     self.is_create_template = True
                 except Exception as e:
                     raise ImagePullError(self.image, str(e)) from e
@@ -149,9 +141,7 @@ class SandboxPodmanSession(Session):
             image=self.image.id if isinstance(self.image, Image) else self.image,
             tty=True,
             mounts=self.mounts or [],
-            user=self.runtime_configs.get("user", "root")
-            if self.runtime_configs
-            else "root",
+            user=self.runtime_configs.get("user", "root") if self.runtime_configs else "root",
             **{k: v for k, v in (self.runtime_configs or {}).items() if k != "user"},
         )
         self.container.start()
@@ -173,9 +163,7 @@ class SandboxPodmanSession(Session):
                     # Commit the container with repository and tag
                     self.container.commit(repository=repository, tag=tag)
                     if self.verbose:
-                        self.logger.info(
-                            "Committed container as image %s:%s", repository, tag
-                        )
+                        self.logger.info("Committed container as image %s:%s", repository, tag)
                 except Exception:
                     if self.verbose:
                         self.logger.exception("Failed to commit container")
@@ -194,9 +182,7 @@ class SandboxPodmanSession(Session):
                 if isinstance(self.image, Image)
                 else self.client.images.get(self.image).id
             )
-            image_in_use = any(
-                container.image.id == image_id for container in containers
-            )
+            image_in_use = any(container.image.id == image_id for container in containers)
 
             if not image_in_use:
                 if isinstance(self.image, str):
@@ -224,9 +210,7 @@ class SandboxPodmanSession(Session):
             code_file.write(code.encode("utf-8"))
             code_file.seek(0)
 
-            code_dest_file = (
-                f"{self.workdir}/code.{self.language_handler.file_extension}"
-            )
+            code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
             self.copy_to_runtime(code_file.name, code_dest_file)
 
             commands = self.language_handler.get_execution_commands(code_dest_file)
@@ -238,9 +222,7 @@ class SandboxPodmanSession(Session):
             raise NotOpenSessionError
 
         if self.verbose:
-            self.logger.info(
-                "Copying %s:%s to %s..", self.container.short_id, src, dest
-            )
+            self.logger.info("Copying %s:%s to %s..", self.container.short_id, src, dest)
 
         bits, stat = self.container.get_archive(src)
         if stat["size"] == 0:
@@ -278,12 +260,8 @@ class SandboxPodmanSession(Session):
 
         if self.verbose:
             if is_created_dir:
-                self.logger.info(
-                    "Creating directory %s:%s", self.container.short_id, directory
-                )
-            self.logger.info(
-                "Copying %s to %s:%s..", src, self.container.short_id, dest
-            )
+                self.logger.info("Creating directory %s:%s", self.container.short_id, directory)
+            self.logger.info("Copying %s to %s:%s..", src, self.container.short_id, dest)
 
         tarstream = io.BytesIO()
         with tarfile.open(fileobj=tarstream, mode="w") as tar:
@@ -294,15 +272,11 @@ class SandboxPodmanSession(Session):
 
         # Change ownership to current user if running as non-root
         # This is sufficient because file owners can read/write their own files
-        current_user = (
-            self.runtime_configs.get("user") if self.runtime_configs else None
-        )
+        current_user = self.runtime_configs.get("user") if self.runtime_configs else None
         if current_user and current_user != "root":
             self.container.exec_run(f"chown {current_user} {dest}", user="root")
             if directory:
-                self.container.exec_run(
-                    f"chown {current_user} {directory}", user="root"
-                )
+                self.container.exec_run(f"chown {current_user} {directory}", user="root")
 
     def execute_command(  # noqa: PLR0912
         self, command: str, workdir: str | None = None

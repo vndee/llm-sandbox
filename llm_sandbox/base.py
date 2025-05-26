@@ -37,7 +37,7 @@ class ConsoleOutput:
             Use `stdout` attribute directly instead.
         """
         warnings.warn(
-            "The 'text' property is deprecated and will be removed in a future version. "  # noqa: E501
+            "The 'text' property is deprecated and will be removed in a future version. "
             "Use 'stdout' attribute directly instead.",
             DeprecationWarning,
             stacklevel=2,
@@ -75,8 +75,8 @@ class Session(ABC):
         self.strict_security = strict_security
         self.logger = logger or logging.getLogger(__name__)
 
-        self.language_handler: AbstractLanguageHandler = (
-            LanguageHandlerFactory.create_handler(self.lang, self.logger)
+        self.language_handler: AbstractLanguageHandler = LanguageHandlerFactory.create_handler(
+            self.lang, self.logger
         )
 
     def _log(self, message: str, level: str = "info") -> None:
@@ -95,9 +95,7 @@ class Session(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def run(
-        self, code: str, libraries: list | None = None
-    ) -> ConsoleOutput | ExecutionResult:
+    def run(self, code: str, libraries: list | None = None) -> ConsoleOutput | ExecutionResult:
         """Run the code in the sandbox session."""
         raise NotImplementedError
 
@@ -181,7 +179,7 @@ class Session(ABC):
                 self.execute_commands(
                     [
                         (
-                            "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache",  # noqa: E501
+                            "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache",
                             None,
                         ),
                     ]
