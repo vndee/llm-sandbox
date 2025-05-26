@@ -46,6 +46,6 @@ class JavaHandler(AbstractLanguageHandler):
         """Extract plots from the Go handler."""
         return []
 
-    def scan(self, code: str) -> list[str]:
+    def scan(self, code: str) -> list[str]:  # noqa: ARG002
         """Check the code for safety issues."""
         return []

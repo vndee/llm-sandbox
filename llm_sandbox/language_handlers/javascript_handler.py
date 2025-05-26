@@ -41,8 +41,8 @@ class JavaScriptHandler(AbstractLanguageHandler):
         output_dir: str,
     ) -> list[PlotOutput]:
         """Extract plots from JavaScript execution."""
-        raise NotImplementedError("JavaScript does not support plot extraction yet")
+        raise NotImplementedError
 
-    def scan(self, code: str) -> list[str]:
+    def scan(self, code: str) -> list[str]:  # noqa: ARG002
         """Check the code for safety issues."""
         return []

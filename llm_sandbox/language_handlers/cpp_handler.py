@@ -45,6 +45,6 @@ class CppHandler(AbstractLanguageHandler):
         """Extract plots from the C++ handler."""
         return []
 
-    def scan(self, code: str) -> list[str]:
+    def scan(self, code: str) -> list[str]:  # noqa: ARG002
         """Scan the code for safety issues."""
         return []
