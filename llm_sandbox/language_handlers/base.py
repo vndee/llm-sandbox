@@ -43,10 +43,8 @@ class PlotDetectionConfig:
     """Configuration for plot detection."""
 
     libraries: list[PlotLibrary]
-    output_formats: list[str]
-    detection_patterns: list[str]
-    setup_code: str | None = None
-    cleanup_code: str | None = None
+    setup_code: str
+    cleanup_code: str
 
 
 @dataclass
@@ -57,7 +55,6 @@ class LanguageConfig:
     file_extension: str
     execution_commands: list[str]
     package_manager: str
-    supported_libraries: list[str] | None = None
     is_support_library_installation: bool = True
     plot_detection: PlotDetectionConfig | None = None
 
@@ -105,11 +102,6 @@ class AbstractLanguageHandler(ABC):
         return self.config.file_extension
 
     @property
-    def supported_libraries(self) -> list[str]:
-        """Get supported libraries for language."""
-        return self.config.supported_libraries or []
-
-    @property
     def supported_plot_libraries(self) -> list[PlotLibrary]:
         """Get supported plotting libraries."""
         if not self.config.plot_detection:
@@ -120,3 +112,8 @@ class AbstractLanguageHandler(ABC):
     def is_support_library_installation(self) -> bool:
         """Get if the language supports library installation."""
         return self.config.is_support_library_installation
+
+    @property
+    def is_support_plot_detection(self) -> bool:
+        """Get if the language supports plot detection."""
+        return self.config.plot_detection is not None

@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from llm_sandbox.data import PlotOutput
 
-from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
+from .base import AbstractLanguageHandler, LanguageConfig
 
 if TYPE_CHECKING:
     from .base import ContainerProtocol
@@ -21,13 +21,7 @@ class JavaScriptHandler(AbstractLanguageHandler):
             file_extension="js",
             execution_commands=["node {file}"],
             package_manager="yarn add",
-            plot_detection=PlotDetectionConfig(
-                libraries=[PlotLibrary.CHARTJS, PlotLibrary.D3JS, PlotLibrary.PLOTLY],
-                output_formats=["png", "svg", "html"],
-                detection_patterns=["chart.save(", "d3.select(", "Plotly.newPlot("],
-                cleanup_code="",
-            ),
-            supported_libraries=["chart.js", "d3", "plotly.js", "canvas", "jsdom"],
+            plot_detection=None,
         )
         self.logger = logger or logging.getLogger(__name__)
 

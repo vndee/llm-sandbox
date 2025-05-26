@@ -34,15 +34,8 @@ class PythonHandler(AbstractLanguageHandler):
                     PlotLibrary.PLOTLY,
                     PlotLibrary.SEABORN,
                 ],
-                output_formats=["png", "svg", "pdf", "html"],
-                detection_patterns=[
-                    "plt.show()",
-                    "plt.savefig(",
-                    "fig.write_html(",
-                    "fig.write_image(",
-                ],
                 setup_code=PYTHON_PLOT_DETECTION_CODE,
-                cleanup_code="plt.close('all')",
+                cleanup_code="",
             ),
         )
         self.logger = logger or logging.getLogger(__name__)

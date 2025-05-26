@@ -6,7 +6,7 @@ from typing import Any
 
 from .base import ExecutionResult, Session
 from .const import SandboxBackend, SupportedLanguage
-from .exceptions import MissingDependencyError, UnsupportedBackendError
+from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
 
 
 def _check_dependency(backend: SandboxBackend) -> None:
@@ -336,6 +336,9 @@ class ArtifactSandboxSession:
                     - content_base64 (str): Base64 encoded plot data
                     - format (PlotFormat): Format of the plot (e.g., 'png', 'svg')
 
+        Raises:
+            LanguageNotSupportPlotError: If the language does not support plot detection
+
         Examples:
             Basic plotting example:
             ```python
@@ -410,6 +413,9 @@ class ArtifactSandboxSession:
 
         """
         if self.enable_plotting:
+            if not self._session.language_handler.is_support_plot_detection:
+                raise LanguageNotSupportPlotError(self.config.name)
+
             injected_code = self._session.language_handler.inject_plot_detection_code(code)
         else:
             injected_code = code
