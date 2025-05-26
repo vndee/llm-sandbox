@@ -1,0 +1,52 @@
+site_name: llm-sandbox
+repo_url: https://github.com/vndee/llm-sandbox
+site_url: https://vndee.github.io/llm-sandbox
+site_description: LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated manner using containers.
+site_author: Duy Huynh
+edit_uri: edit/main/docs/
+repo_name: vndee/llm-sandbox
+copyright: Maintained by <a href="https://vndee.com">vndee</a>.
+
+nav:
+  - Home: index.md
+  - Modules: modules.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["llm_sandbox"]
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vndee/llm-sandbox
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/llm-sandbox
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
