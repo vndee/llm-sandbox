@@ -1,43 +1,59 @@
-"""Security scanning functionality for LLM Sandbox."""
+import re
+from enum import IntEnum
 
-from dataclasses import dataclass
-from enum import StrEnum
+from pydantic import BaseModel, Field, field_validator
+
+from llm_sandbox.exceptions import InvalidRegexPatternError
 
 
-class SecurityIssueSeverity(StrEnum):
+class SecurityIssueSeverity(IntEnum):
     """Severity of a security issue."""
 
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
+    SAFE = 0
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
 
 
-@dataclass
-class SecurityIssue:
-    """Represents a security issue found in code."""
+class SecurityPattern(BaseModel):
+    """A security pattern."""
 
-    pattern: str
-    description: str
-    severity: SecurityIssueSeverity
-    line_number: int
+    pattern: str = Field(..., description="The pattern that caused the security issue.")
+    description: str = Field(..., description="The description of the security issue.")
+    severity: SecurityIssueSeverity = Field(..., description="The severity of the security issue.")
+
+    @field_validator("pattern")
+    @classmethod
+    def validate_pattern(cls, v: str) -> str:
+        """Validate that the pattern is a valid regex pattern."""
+        try:
+            re.compile(v)
+        except re.error as e:
+            raise InvalidRegexPatternError(v) from e
+        return v
 
 
-class SecurityRuleset:
-    """Ruleset for security scanning.
+class DangerousModule(BaseModel):
+    """A dangerous module."""
 
-    This can be load from the default ruleset or a custom ruleset
-    which is defined by the user.
-    """
+    name: str = Field(..., description="The name of the module.")
+    description: str = Field(..., description="The description of the module.")
+    severity: SecurityIssueSeverity = Field(..., description="The severity of the module.")
 
-    def __init__(self, file_path: str | None = None) -> None:
-        """Initialize the security ruleset."""
-        if not file_path:
-            self._set_default_ruleset()
-        else:
-            self._load_ruleset(file_path)
 
-    def _set_default_ruleset(self) -> None:
-        """Set the default ruleset."""
+class SecurityPolicy(BaseModel):
+    """A security policy."""
 
-    def _load_ruleset(self, file_path: str) -> None:
-        """Load the ruleset from a file."""
+    safety_level: SecurityIssueSeverity = Field(
+        default=SecurityIssueSeverity.SAFE, description="The safety level of the policy."
+    )
+    patterns: list[SecurityPattern] = Field(..., description="The security patterns in the code.")
+    dangerous_modules: list[DangerousModule] = Field(..., description="The dangerous modules.")
+
+    def add_pattern(self, pattern: SecurityPattern) -> None:
+        """Add a security pattern to the policy."""
+        self.patterns.append(pattern)
+
+    def add_dangerous_module(self, module: DangerousModule) -> None:
+        """Add a dangerous module to the policy."""
+        self.dangerous_modules.append(module)

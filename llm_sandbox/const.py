@@ -6,10 +6,10 @@ container image names.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class SandboxBackend(str, Enum):
+class SandboxBackend(StrEnum):
     r"""Enumeration of supported sandbox backend technologies.
 
     Each value represents a different containerization or virtualization technology
@@ -22,8 +22,7 @@ class SandboxBackend(str, Enum):
     MICROMAMBA = "micromamba"
 
 
-@dataclass
-class SupportedLanguage:
+class SupportedLanguage(StrEnum):
     r"""Dataclass defining constants for supported programming languages.
 
     Each attribute represents a language identifier string used by the sandbox

@@ -119,3 +119,27 @@ class LanguageNotSupportPlotError(SandboxError):
     def __init__(self, lang: str) -> None:
         """Initialize the LanguageNotSupportPlotError."""
         super().__init__(f"Language {lang} does not support plot detection")
+
+
+class InvalidRegexPatternError(SandboxError):
+    """Raised when a regex pattern is invalid."""
+
+    def __init__(self, pattern: str) -> None:
+        """Initialize the InvalidRegexPatternError."""
+        super().__init__(f"Invalid regex pattern: {pattern}")
+
+
+class LanguageHandlerNotInitializedError(SandboxError):
+    """Raised when the language handler is not initialized."""
+
+    def __init__(self, language: str) -> None:
+        """Initialize the exception."""
+        super().__init__(f"Language handler for {language} is not initialized.")
+
+
+class SecurityViolationError(SandboxError):
+    """Exception raised when a security policy is violated."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize the SecurityViolationError."""
+        super().__init__(message)

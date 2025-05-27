@@ -1,5 +1,5 @@
 import logging
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportedError
@@ -15,12 +15,12 @@ from .python_handler import PythonHandler
 class LanguageHandlerFactory:
     """Factory for creating language-specific handlers."""
 
-    _handlers: ClassVar[dict[str, type[AbstractLanguageHandler]]] = {
-        SupportedLanguage.PYTHON: PythonHandler,
-        SupportedLanguage.JAVASCRIPT: JavaScriptHandler,
-        SupportedLanguage.JAVA: JavaHandler,
-        SupportedLanguage.CPP: CppHandler,
-        SupportedLanguage.GO: GoHandler,
+    _handlers: ClassVar[dict[str, Any]] = {
+        str(SupportedLanguage.PYTHON): PythonHandler,
+        str(SupportedLanguage.JAVASCRIPT): JavaScriptHandler,
+        str(SupportedLanguage.JAVA): JavaHandler,
+        str(SupportedLanguage.CPP): CppHandler,
+        str(SupportedLanguage.GO): GoHandler,
     }
 
     @classmethod
@@ -30,7 +30,11 @@ class LanguageHandlerFactory:
             raise LanguageNotSupportedError(language)
 
         handler_class = cls._handlers[language.lower()]
-        return handler_class(logger=logger)
+        if not issubclass(handler_class, AbstractLanguageHandler):
+            msg = f"Handler class {handler_class} is not a subclass of AbstractLanguageHandler"
+            raise TypeError(msg)
+
+        return handler_class(logger=logger)  # type: ignore[no-any-return]
 
     @classmethod
     def get_supported_languages(cls) -> list[str]:

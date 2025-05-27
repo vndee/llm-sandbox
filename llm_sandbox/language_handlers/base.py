@@ -54,7 +54,7 @@ class LanguageConfig:
     name: str
     file_extension: str
     execution_commands: list[str]
-    package_manager: str
+    package_manager: str | None
     is_support_library_installation: bool = True
     plot_detection: PlotDetectionConfig | None = None
 
@@ -84,12 +84,12 @@ class AbstractLanguageHandler(ABC):
         """Inject code to detect and capture plots."""
 
     @abstractmethod
-    def scan(self, code: str) -> list[str]:
-        """Scan the code for safety issues."""
-
-    @abstractmethod
     def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:
         """Extract plots from the code."""
+
+    @abstractmethod
+    def get_import_patterns(self, module: str) -> str:
+        """Get the regex patterns for import statements."""
 
     @property
     def name(self) -> str:

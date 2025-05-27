@@ -1,6 +1,8 @@
 import logging
+import re
 from typing import TYPE_CHECKING
 
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
 
 from .base import AbstractLanguageHandler, LanguageConfig
@@ -14,27 +16,18 @@ class GoHandler(AbstractLanguageHandler):
 
     def __init__(self, logger: logging.Logger | None = None) -> None:
         """Initialize the Go handler."""
-        super().__init__()
+        super().__init__(logger)
 
         self.config = LanguageConfig(
-            name="go",
+            name=SupportedLanguage.GO,
             file_extension="go",
             execution_commands=["go run {file}"],
             package_manager="go get",
             plot_detection=None,
         )
-        self.logger = logger or logging.getLogger(__name__)
-
-    def get_execution_commands(self, code_file: str) -> list[str]:
-        """Get the execution commands for the Go handler."""
-        return [f"go run {code_file}"]
-
-    def get_library_installation_command(self, library: str) -> str:
-        """Get the library installation command for the Go handler."""
-        return f"go get {library}"
 
     def inject_plot_detection_code(self, code: str) -> str:
-        """Inject plot detection code for the Go handler."""
+        """Go does not support plot detection directly in this manner."""
         return code
 
     def extract_plots(
@@ -42,9 +35,34 @@ class GoHandler(AbstractLanguageHandler):
         container: "ContainerProtocol",  # noqa: ARG002
         output_dir: str,  # noqa: ARG002
     ) -> list[PlotOutput]:
-        """Extract plots from the Go handler."""
+        """Go does not support plot extraction in this manner."""
         return []
 
-    def scan(self, code: str) -> list[str]:
-        """Check the code for safety issues."""
-        raise NotImplementedError
+    def get_import_patterns(self, module: str) -> str:
+        """Get the regex patterns for Go language import statements.
+
+        Regex to match import statements for the given module/package.
+        Covers:
+            import "module"
+            import (
+                "module"
+                alias "module"
+            )
+        Handles variations in whitespace and comments.
+        Negative lookbehind and lookahead to avoid matching comments or parts of other words.
+
+        Args:
+            module (str): The name of the module (package) to get import patterns for.
+                        Can be a path like "fmt" or "github.com/user/repo".
+
+        Returns:
+            str: The regex patterns for import statements.
+
+        """
+        escaped_module = re.escape(module)
+        # Matches: import "module"  OR  import alias "module" (potentially inside import block)
+        # The lookbehind (?<![\w\d_]) and lookahead (?![\w\d_]) ensure "module" is not part of a larger identifier.
+        return (
+            rf'(?:^|\s)import\s+(?:\(\s*(?:\w+\s+)?"(?:[^"]*?/)'
+            rf'?{escaped_module}"(?:\s*//[^\n]*)?|\w*\s*"(?:[^"]*?/)?{escaped_module}")(?=["\s\(\)]|$)'
+        )

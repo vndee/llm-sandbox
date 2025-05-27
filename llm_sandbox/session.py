@@ -4,6 +4,8 @@ from importlib.util import find_spec
 from types import TracebackType
 from typing import Any
 
+from llm_sandbox.security import SecurityPolicy
+
 from .base import ExecutionResult, Session
 from .const import SandboxBackend, SupportedLanguage
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
@@ -185,6 +187,7 @@ class ArtifactSandboxSession:
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         enable_plotting: bool = True,
+        security_policy: SecurityPolicy | None = None,
         **kwargs: Any,
     ) -> None:
         """Create a new artifact sandbox session.
@@ -204,6 +207,7 @@ class ArtifactSandboxSession:
             runtime_configs (dict, optional): Additional runtime configurations
             workdir (str, optional): Working directory inside the container
             enable_plotting (bool, optional): Whether to enable plot extraction
+            security_policy (SecurityPolicy, optional): Security policy to enforce
             **kwargs: Additional keyword arguments for specific backends (e.g., client for Podman)
 
         Raises:
@@ -291,6 +295,7 @@ class ArtifactSandboxSession:
             verbose=verbose,
             runtime_configs=runtime_configs,
             workdir=workdir,
+            security_policy=security_policy,
             **kwargs,
         )
 

@@ -184,7 +184,7 @@ class SandboxDockerSession(Session):
             tty=True,
             mounts=self.mounts or [],
             user=self.runtime_configs.get("user", "root") if self.runtime_configs else "root",
-            **{k: v for k, v in (self.runtime_configs or {}).items() if k != "user"},
+            **self.runtime_configs or {},
         )
 
         self.environment_setup()

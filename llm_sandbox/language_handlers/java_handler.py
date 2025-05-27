@@ -1,6 +1,8 @@
 import logging
+import re
 from typing import TYPE_CHECKING
 
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
 
 from .base import AbstractLanguageHandler, LanguageConfig
@@ -14,28 +16,19 @@ class JavaHandler(AbstractLanguageHandler):
 
     def __init__(self, logger: logging.Logger | None = None) -> None:
         """Initialize the Java handler."""
-        super().__init__()
+        super().__init__(logger)
 
         self.config = LanguageConfig(
-            name="java",
+            name=SupportedLanguage.JAVA,
             file_extension="java",
             execution_commands=["java {file}"],
             package_manager="mvn",
             plot_detection=None,
             is_support_library_installation=False,
         )
-        self.logger = logger or logging.getLogger(__name__)
-
-    def get_execution_commands(self, code_file: str) -> list[str]:
-        """Get the execution commands for the Java handler."""
-        return [f"java {code_file}"]
-
-    def get_library_installation_command(self, library: str) -> str:
-        """Get the library installation command for the Java handler."""
-        return f"mvn install:install-file -Dfile={library}"
 
     def inject_plot_detection_code(self, code: str) -> str:
-        """Inject plot detection code for the Java handler."""
+        """Java does not support plot detection directly in this manner."""
         return code
 
     def extract_plots(
@@ -43,9 +36,30 @@ class JavaHandler(AbstractLanguageHandler):
         container: "ContainerProtocol",  # noqa: ARG002
         output_dir: str,  # noqa: ARG002
     ) -> list[PlotOutput]:
-        """Extract plots from the Go handler."""
+        """Java does not support plot extraction in this manner."""
         return []
 
-    def scan(self, code: str) -> list[str]:  # noqa: ARG002
-        """Check the code for safety issues."""
-        return []
+    def get_import_patterns(self, module: str) -> str:
+        """Get the regex patterns for import statements.
+
+        Regex to match import statements for the given module/package.
+        Covers:
+            import module.Class;
+            import module.*;
+        Handles variations in whitespace.
+        Negative lookbehind and lookahead to avoid matching comments or parts of other words.
+
+        Args:
+            module (str): The name of the module (package) to get import patterns for.
+                        Can be a full path like com.example.Mypackage
+
+        Returns:
+            str: The regex patterns for import statements.
+
+        """
+        # Java packages can have dots, need to escape them for regex
+        # Module can be something like "java.util" or "com.google.common.collect"
+        # We want to match "import java.util.List;" or "import java.util.*;"
+        # or "import com.google.common.collect.Lists;" or "import com.google.common.collect.*;"
+        escaped_module = re.escape(module)
+        return rf"(?:^|\s)import\s+{escaped_module}(?:\.\*|\.\w+|\w*);(?=[\s\S]|$)"

@@ -1,14 +1,20 @@
 """Base session functionality for LLM Sandbox."""
 
 import logging
+import re
 import types
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import ConsoleOutput, ExecutionResult
-from llm_sandbox.exceptions import CommandFailedError, LibraryInstallationNotSupportedError
+from llm_sandbox.exceptions import (
+    CommandFailedError,
+    LanguageHandlerNotInitializedError,
+    LibraryInstallationNotSupportedError,
+)
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
+from llm_sandbox.security import SecurityPattern, SecurityPolicy
 
 if TYPE_CHECKING:
     from llm_sandbox.language_handlers.base import AbstractLanguageHandler
@@ -33,6 +39,7 @@ class Session(ABC):
         keep_template: bool = False,
         logger: logging.Logger | None = None,
         workdir: str | None = "/sandbox",
+        security_policy: SecurityPolicy | None = None,
     ) -> None:
         r"""Initialize the sandbox session.
 
@@ -47,6 +54,8 @@ class Session(ABC):
                                                         logger is created. Defaults to None.
             workdir (str | None, optional): The working directory inside the container.
                                                 Defaults to "/sandbox".
+            security_policy (SecurityPolicy | None, optional): The security policy to apply to the container.
+                                                    Defaults to None.
 
         Raises:
             CommandFailedError: If an internal command fails during session initialization.
@@ -60,6 +69,7 @@ class Session(ABC):
         self.keep_template = keep_template
         self.logger = logger or logging.getLogger(__name__)
         self.workdir = workdir
+        self.security_policy = security_policy
 
         self.language_handler: AbstractLanguageHandler = LanguageHandlerFactory.create_handler(self.lang, self.logger)
 
@@ -310,6 +320,64 @@ class Session(ABC):
                     ("go mod init sandbox", self.workdir),
                     ("go mod tidy", self.workdir),
                 ])
+
+    def _check_security_policy(self, code: str) -> tuple[bool, list[SecurityPattern]]:
+        r"""Check the security policy.
+
+        Args:
+            code (str): The code to check.
+
+        Returns:
+            tuple[bool, list[SecurityPattern]]: A tuple containing a boolean indicating if the code is safe
+                                                and a list of security patterns that were violated.
+
+        """
+        if not self.security_policy:
+            return True, []
+
+        if not self.language_handler:
+            raise LanguageHandlerNotInitializedError(self.lang)
+
+        if self.security_policy.dangerous_modules and not self.security_policy.patterns:
+            for module in self.security_policy.dangerous_modules:
+                self.security_policy.add_pattern(
+                    SecurityPattern(
+                        pattern=self.language_handler.get_import_patterns(module.name),
+                        description=module.description,
+                        severity=module.severity,
+                    )
+                )
+
+        if self.security_policy.patterns:
+            violations: list[SecurityPattern] = []
+            for pattern_obj in self.security_policy.patterns:
+                if pattern_obj.pattern:
+                    try:
+                        if re.search(pattern_obj.pattern, code):
+                            if pattern_obj.severity >= self.security_policy.safety_level:
+                                violations.append(pattern_obj)
+                                return False, violations
+
+                            violations.append(pattern_obj)
+                    except re.error as e:
+                        self._log(
+                            f"Security alert: Invalid regex pattern '{pattern_obj.pattern}'. Error: {e}",
+                            level="error",
+                        )
+
+        return True, []
+
+    def is_safe(self, code: str) -> tuple[bool, list[SecurityPattern]]:
+        r"""Check if the code is safe.
+
+        Args:
+            code (str): The code to check.
+
+        Returns:
+            tuple[bool, list[SecurityPattern]]: A tuple containing a boolean indicating if the code is safe
+
+        """
+        return self._check_security_policy(code)
 
     def __enter__(self) -> "Session":
         r"""Enter the runtime context for the session (invokes `open()`).

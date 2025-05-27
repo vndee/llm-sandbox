@@ -135,13 +135,13 @@ class SandboxPodmanSession(Session):
         1. Building an image from a Dockerfile/Containerfile if `dockerfile` is provided.
         2. Pulling an image from a registry if `image` is specified and not found locally.
         3. Creating and starting a Podman container from the prepared image with specified
-           configurations (mounts, runtime_configs, user).
+            configurations (mounts, runtime_configs, user).
         4. Calls `self.environment_setup()` to prepare language-specific settings.
 
         Raises:
             ImagePullError: If pulling the specified Podman image fails.
             ImageNotFoundError: If the specified image is not found and cannot be pulled or built,
-                              or if `client.images.pull` returns an unexpected type.
+                                or if `client.images.pull` returns an unexpected type.
 
         """
         warning_str = (
@@ -191,7 +191,7 @@ class SandboxPodmanSession(Session):
             tty=True,
             mounts=self.mounts or [],
             user=self.runtime_configs.get("user", "root") if self.runtime_configs else "root",
-            **{k: v for k, v in (self.runtime_configs or {}).items() if k != "user"},
+            **self.runtime_configs or {},
         )
         self.container.start()
 
@@ -204,8 +204,8 @@ class SandboxPodmanSession(Session):
         1. Committing the container to a new image if `commit_container` is True.
         2. Stopping and removing the running Podman container.
         3. Removing the Podman image if `is_create_template` is True (image was built or pulled
-           during this session), `keep_template` is False, and the image is not in use by
-           other containers.
+            during this session), `keep_template` is False, and the image is not in use by
+            other containers.
         """
         if self.container:
             if self.commit_container and isinstance(self.image, Image):
@@ -258,7 +258,7 @@ class SandboxPodmanSession(Session):
         Args:
             code (str): The code string to execute.
             libraries (list | None, optional): A list of libraries to install before running the code.
-                                           Defaults to None.
+                                            Defaults to None.
 
         Returns:
             ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
@@ -293,8 +293,8 @@ class SandboxPodmanSession(Session):
         Args:
             src (str): The absolute path to the source file or directory within the container.
             dest (str): The path on the host filesystem where the content should be copied.
-                      If `dest` is a directory, the content will be placed inside it with its original name.
-                      If `dest` is a file path, the extracted content will be named accordingly.
+                        If `dest` is a directory, the content will be placed inside it with its original name.
+                        If `dest` is a file path, the extracted content will be named accordingly.
 
         Raises:
             NotOpenSessionError: If the session (container) is not currently open/running.

@@ -1,6 +1,8 @@
 import logging
+import re
 from typing import TYPE_CHECKING
 
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
 
 from .base import AbstractLanguageHandler, LanguageConfig
@@ -10,20 +12,19 @@ if TYPE_CHECKING:
 
 
 class CppHandler(AbstractLanguageHandler):
-    """Handler for C++."""
+    """Handler for C++ language."""
 
     def __init__(self, logger: logging.Logger | None = None) -> None:
         """Initialize the C++ handler."""
-        super().__init__()
+        super().__init__(logger)
 
         self.config = LanguageConfig(
-            name="cpp",
+            name=SupportedLanguage.CPP,
             file_extension="cpp",
-            execution_commands=["g++ {file}"],
-            package_manager="apt-get",
+            execution_commands=["g++ -std=c++17 {file} -o /tmp/a.out && /tmp/a.out"],
+            package_manager="apt-get install",
             plot_detection=None,
         )
-        self.logger = logger or logging.getLogger(__name__)
 
     def get_execution_commands(self, code_file: str) -> list[str]:
         """Get the execution commands for the C++ handler."""
@@ -48,3 +49,26 @@ class CppHandler(AbstractLanguageHandler):
     def scan(self, code: str) -> list[str]:  # noqa: ARG002
         """Scan the code for safety issues."""
         return []
+
+    def get_import_patterns(self, module: str) -> str:
+        """Get the regex patterns for import statements.
+
+        Regex to match #include directives for the given module.
+        Covers:
+            #include <module>
+            #include "module"
+        Handles variations in whitespace.
+        Negative lookbehind and lookahead to avoid matching comments or parts of other words.
+
+        Args:
+            module (str): The name of the module to get the import patterns for.
+
+        Returns:
+            str: The regex patterns for import statements.
+
+        """
+        # For C++, module often refers to header files.
+        # The pattern handles <header.h> or "header.h"
+        # It also considers variations with .h, .hpp, or no extension if specified in module string
+        module_name = re.escape(module)
+        return rf'(?:^|\s)#include\s*(?:<{module_name}>|"{module_name}")(?=[\s;(#]|//|/\*|$)'

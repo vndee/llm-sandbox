@@ -9,8 +9,7 @@ from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import FileType, PlotOutput
 from llm_sandbox.exceptions import LanguageNotSupportPlotError
 from llm_sandbox.language_handlers.artifact_detection import PYTHON_PLOT_DETECTION_CODE
-
-from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
+from llm_sandbox.language_handlers.base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
 
 if TYPE_CHECKING:
     from .base import ContainerProtocol
@@ -123,6 +122,26 @@ class PythonHandler(AbstractLanguageHandler):
 
         return None
 
-    def scan(self, code: str) -> list[str]:  # noqa: ARG002
-        """Check the code for safety issues."""
-        return []
+    def get_import_patterns(self, module: str) -> str:
+        """Get the regex patterns for import statements.
+
+        Regex to match various import styles for the given module
+        Covers:
+            import module
+            import module as alias
+            from module import ...
+            from module.submodule import ... (if module is specified like module.submodule)
+        Handles variations in whitespace.
+        Negative lookbehind and lookahead to avoid matching comments or parts of other words.
+
+        Args:
+            module (str): The name of the module to get the import patterns for.
+
+        Returns:
+            str: The regex patterns for import statements.
+
+        """
+        return (
+            rf"(?:^|\s)(?:import\s+{module}(?:\s+as\s+\w+)?|from\s+{module}\s+import\s+(?:\*|\w+(?:\s+as\s+\w+)"
+            rf"?(?:,\s*\w+(?:\s+as\s+\w+)?)*))(?=[\s;(#]|$)"
+        )
