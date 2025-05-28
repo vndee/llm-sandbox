@@ -5,15 +5,9 @@ malicious or dangerous code execution in the sandbox environment.
 """
 
 import logging
-from typing import List
 
 from llm_sandbox import SandboxSession
-from llm_sandbox.security import (
-    SecurityIssueSeverity,
-    SecurityPattern,
-    DangerousModule,
-    SecurityPolicy,
-)
+from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -21,9 +15,10 @@ logger = logging.getLogger(__name__)
 
 def create_basic_security_policy() -> SecurityPolicy:
     """Create a basic security policy for demonstration.
-    
+
     Returns:
         SecurityPolicy: A basic security policy with common dangerous patterns.
+
     """
     patterns = [
         SecurityPattern(
@@ -52,7 +47,7 @@ def create_basic_security_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     dangerous_modules = [
         DangerousModule(
             name="socket",
@@ -70,7 +65,7 @@ def create_basic_security_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.MEDIUM,
         patterns=patterns,
@@ -80,9 +75,10 @@ def create_basic_security_policy() -> SecurityPolicy:
 
 def create_strict_security_policy() -> SecurityPolicy:
     """Create a strict security policy for high-security environments.
-    
+
     Returns:
         SecurityPolicy: A strict security policy with comprehensive protections.
+
     """
     patterns = [
         # File system operations
@@ -119,7 +115,7 @@ def create_strict_security_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     dangerous_modules = [
         DangerousModule(
             name="os",
@@ -152,7 +148,7 @@ def create_strict_security_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.HIGH,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.LOW,  # Very strict - block even low-severity issues
         patterns=patterns,
@@ -162,9 +158,10 @@ def create_strict_security_policy() -> SecurityPolicy:
 
 def create_permissive_security_policy() -> SecurityPolicy:
     """Create a permissive security policy for development environments.
-    
+
     Returns:
         SecurityPolicy: A permissive security policy that only blocks high-severity issues.
+
     """
     patterns = [
         SecurityPattern(
@@ -178,7 +175,7 @@ def create_permissive_security_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.MEDIUM,
         ),
     ]
-    
+
     dangerous_modules = [
         DangerousModule(
             name="shutil",
@@ -186,7 +183,7 @@ def create_permissive_security_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.HIGH,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.HIGH,  # Only block high-severity issues
         patterns=patterns,
@@ -197,36 +194,36 @@ def create_permissive_security_policy() -> SecurityPolicy:
 def test_safe_code() -> None:
     """Test safe code that should pass all security policies."""
     logger.info("=== Testing Safe Code ===")
-    
+
     safe_codes = [
         "print('Hello, World!')",
         "import math\nprint(math.sqrt(16))",
         "data = [1, 2, 3, 4, 5]\nprint(sum(data))",
         "import json\ndata = {'key': 'value'}\nprint(json.dumps(data))",
     ]
-    
+
     policies = {
         "Basic": create_basic_security_policy(),
         "Strict": create_strict_security_policy(),
         "Permissive": create_permissive_security_policy(),
     }
-    
+
     for policy_name, policy in policies.items():
-        logger.info(f"\nTesting with {policy_name} Policy:")
-        
+        logger.info("\nTesting with %s Policy:", policy_name)
+
         with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
             for i, code in enumerate(safe_codes, 1):
                 is_safe, violations = session.is_safe(code)
-                logger.info(f"  Safe Code {i}: {'✅ SAFE' if is_safe else '❌ BLOCKED'}")
+                logger.info("  Safe Code %s: %s", i, "✅ SAFE" if is_safe else "❌ BLOCKED")
                 if violations:
                     for violation in violations:
-                        logger.info(f"    - {violation.description} (Severity: {violation.severity.name})")
+                        logger.info("    - %s (Severity: %s)", violation.description, violation.severity.name)
 
 
 def test_dangerous_code() -> None:
     """Test dangerous code that should be blocked by security policies."""
     logger.info("\n=== Testing Dangerous Code ===")
-    
+
     dangerous_codes = [
         "import os\nos.system('rm -rf /')",  # System command execution
         "import subprocess\nsubprocess.run(['ls', '-la'])",  # Subprocess execution
@@ -237,65 +234,61 @@ def test_dangerous_code() -> None:
         "import os\nos.remove('/important/file')",  # File deletion
         "import ctypes\nctypes.cdll.LoadLibrary('libc.so.6')",  # Foreign function calls
     ]
-    
+
     policies = {
         "Basic": create_basic_security_policy(),
         "Strict": create_strict_security_policy(),
         "Permissive": create_permissive_security_policy(),
     }
-    
+
     for policy_name, policy in policies.items():
-        logger.info(f"\nTesting with {policy_name} Policy:")
-        
+        logger.info("\nTesting with %s Policy:", policy_name)
+
         with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
             for i, code in enumerate(dangerous_codes, 1):
                 is_safe, violations = session.is_safe(code)
-                logger.info(f"  Dangerous Code {i}: {'❌ BLOCKED' if not is_safe else '⚠️  ALLOWED'}")
+                logger.info("  Dangerous Code %s: %s", i, "❌ BLOCKED" if not is_safe else "⚠️  ALLOWED")
                 if violations:
                     for violation in violations:
-                        logger.info(f"    - {violation.description} (Severity: {violation.severity.name})")
+                        logger.info("    - %s (Severity: %s)", violation.description, violation.severity.name)
 
 
 def test_edge_cases() -> None:
     """Test edge cases and complex scenarios."""
     logger.info("\n=== Testing Edge Cases ===")
-    
+
     edge_cases = [
         # Comments should not trigger security alerts
         "# import os\nprint('This is safe')",
-        
         # String literals should not trigger alerts
         "print('The import os statement is dangerous')",
-        
         # Multi-line imports
         "from urllib.parse import (\n    quote,\n    unquote\n)\nprint(quote('hello world'))",
-        
         # Complex import aliases
         "import os as operating_system\nprint('This should be blocked')",
-        
         # Nested function calls
         "def safe_function():\n    return 'safe'\nprint(safe_function())",
     ]
-    
+
     policy = create_basic_security_policy()
-    
+
     with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
         for i, code in enumerate(edge_cases, 1):
             is_safe, violations = session.is_safe(code)
-            logger.info(f"  Edge Case {i}: {'✅ SAFE' if is_safe else '❌ BLOCKED'}")
-            logger.info(f"    Code: {repr(code[:50])}...")
+            logger.info("  Edge Case %s: %s", i, "✅ SAFE" if is_safe else "❌ BLOCKED")
+            logger.info("    Code: %s...", code[:50])
             if violations:
                 for violation in violations:
-                    logger.info(f"    - {violation.description} (Severity: {violation.severity.name})")
+                    logger.info("    - %s (Severity: %s)", violation.description, violation.severity.name)
 
 
 def test_dynamic_policy_modification() -> None:
     """Test dynamic modification of security policies."""
     logger.info("\n=== Testing Dynamic Policy Modification ===")
-    
+
     # Start with a basic policy
     policy = create_basic_security_policy()
-    
+
     # Add a new pattern dynamically
     new_pattern = SecurityPattern(
         pattern=r"\bprint\s*\(.*['\"]secret['\"].*\)",
@@ -303,7 +296,7 @@ def test_dynamic_policy_modification() -> None:
         severity=SecurityIssueSeverity.MEDIUM,
     )
     policy.add_pattern(new_pattern)
-    
+
     # Add a new dangerous module
     new_module = DangerousModule(
         name="pickle",
@@ -311,28 +304,28 @@ def test_dynamic_policy_modification() -> None:
         severity=SecurityIssueSeverity.MEDIUM,
     )
     policy.add_dangerous_module(new_module)
-    
+
     test_codes = [
         "print('This is normal')",
         "print('This contains secret information')",
         "import pickle\ndata = pickle.loads(b'malicious_data')",
     ]
-    
+
     with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
         for i, code in enumerate(test_codes, 1):
             is_safe, violations = session.is_safe(code)
-            logger.info(f"  Test Code {i}: {'✅ SAFE' if is_safe else '❌ BLOCKED'}")
+            logger.info("  Test Code %s: %s", i, "✅ SAFE" if is_safe else "❌ BLOCKED")
             if violations:
                 for violation in violations:
-                    logger.info(f"    - {violation.description} (Severity: {violation.severity.name})")
+                    logger.info("    - %s (Severity: %s)", violation.description, violation.severity.name)
 
 
 def test_severity_levels() -> None:
     """Test different severity levels and their effects."""
     logger.info("\n=== Testing Severity Levels ===")
-    
+
     test_code = "import socket\neval('print(1)')\nos.system('echo test')"
-    
+
     # Test with different safety levels
     safety_levels = [
         SecurityIssueSeverity.SAFE,
@@ -340,29 +333,29 @@ def test_severity_levels() -> None:
         SecurityIssueSeverity.MEDIUM,
         SecurityIssueSeverity.HIGH,
     ]
-    
+
     base_policy = create_basic_security_policy()
-    
+
     for level in safety_levels:
-        logger.info(f"\nTesting with safety level: {level.name}")
+        logger.info("\nTesting with safety level: %s", level.name)
         policy = SecurityPolicy(
             safety_level=level,
             patterns=base_policy.patterns,
             dangerous_modules=base_policy.dangerous_modules,
         )
-        
+
         with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
             is_safe, violations = session.is_safe(test_code)
-            logger.info(f"  Result: {'✅ SAFE' if is_safe else '❌ BLOCKED'}")
-            logger.info(f"  Violations found: {len(violations)}")
+            logger.info("  Result: %s", "✅ SAFE" if is_safe else "❌ BLOCKED")
+            logger.info("  Violations found: %s", len(violations))
             for violation in violations:
-                logger.info(f"    - {violation.description} (Severity: {violation.severity.name})")
+                logger.info("    - %s (Severity: %s)", violation.description, violation.severity.name)
 
 
 def test_real_world_scenarios() -> None:
     """Test real-world scenarios that might be encountered."""
     logger.info("\n=== Testing Real-World Scenarios ===")
-    
+
     scenarios = {
         "Data Science - Safe": """
 import pandas as pd
@@ -372,7 +365,6 @@ import matplotlib.pyplot as plt
 data = pd.DataFrame({'x': [1, 2, 3], 'y': [4, 5, 6]})
 print(data.describe())
 """,
-        
         "Web Scraping - Suspicious": """
 import requests
 import os
@@ -381,7 +373,6 @@ url = 'https://example.com'
 response = requests.get(url)
 os.environ['SECRET_KEY'] = response.text
 """,
-        
         "File Processing - Dangerous": """
 import os
 import shutil
@@ -391,7 +382,6 @@ for root, dirs, files in os.walk('/home'):
         if file.endswith('.txt'):
             os.remove(os.path.join(root, file))
 """,
-        
         "Machine Learning - Safe": """
 import sklearn
 from sklearn.linear_model import LinearRegression
@@ -402,24 +392,24 @@ model = LinearRegression()
 joblib.dump(model, 'model.pkl')
 """,
     }
-    
+
     policy = create_basic_security_policy()
-    
+
     with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
         for scenario_name, code in scenarios.items():
             is_safe, violations = session.is_safe(code)
-            logger.info(f"\n  Scenario: {scenario_name}")
-            logger.info(f"  Result: {'✅ SAFE' if is_safe else '❌ BLOCKED'}")
+            logger.info("\n  Scenario: %s", scenario_name)
+            logger.info("  Result: %s", "✅ SAFE" if is_safe else "❌ BLOCKED")
             if violations:
-                logger.info(f"  Violations ({len(violations)}):")
+                logger.info("  Violations (%s):", len(violations))
                 for violation in violations:
-                    logger.info(f"    - {violation.description} (Severity: {violation.severity.name})")
+                    logger.info("    - %s (Severity: %s)", violation.description, violation.severity.name)
 
 
 if __name__ == "__main__":
     logger.info("LLM Sandbox Security Policy Examples")
     logger.info("====================================")
-    
+
     try:
         test_safe_code()
         test_dangerous_code()
@@ -427,9 +417,9 @@ if __name__ == "__main__":
         test_dynamic_policy_modification()
         test_severity_levels()
         test_real_world_scenarios()
-        
+
         logger.info("\n🎉 All security policy tests completed successfully!")
-        
-    except Exception as e:
-        logger.error(f"Error during testing: {e}")
+
+    except Exception:
+        logger.exception("Error during testing")
         raise

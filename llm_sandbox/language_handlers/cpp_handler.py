@@ -72,3 +72,34 @@ class CppHandler(AbstractLanguageHandler):
         # It also considers variations with .h, .hpp, or no extension if specified in module string
         module_name = re.escape(module)
         return rf'(?:^|\s)#include\s*(?:<{module_name}>|"{module_name}")(?=[\s;(#]|//|/\*|$)'
+
+    def filter_comments(self, code: str) -> str:
+        """Filter out C++ comments from code.
+
+        Handles:
+        - Single line comments starting with //
+        - Multi-line comments between /* and */
+        - Preserves empty lines for readability
+
+        Args:
+            code (str): The code to filter comments from.
+
+        Returns:
+            str: The code with comments removed.
+
+        """
+        # First remove multi-line comments
+        code = re.sub(r"/\*[\s\S]*?\*/", "", code)
+
+        # Then handle single-line comments
+        filtered_lines = []
+        for line in code.split("\n"):
+            # Remove inline comments
+            line = re.sub(r"//.*$", "", line)
+            # Keep the line if it has non-whitespace content
+            if line.strip():
+                filtered_lines.append(line)
+            else:
+                # Preserve empty lines for readability
+                filtered_lines.append("")
+        return "\n".join(filtered_lines)

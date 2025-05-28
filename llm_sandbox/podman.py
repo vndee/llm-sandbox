@@ -17,6 +17,7 @@ from llm_sandbox.exceptions import (
     ImagePullError,
     NotOpenSessionError,
 )
+from llm_sandbox.security import SecurityPolicy
 
 
 class SandboxPodmanSession(Session):
@@ -42,6 +43,7 @@ class SandboxPodmanSession(Session):
         stream: bool = True,
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
+        security_policy: SecurityPolicy | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
         r"""Initialize a new Podman-based sandbox session.
@@ -88,6 +90,7 @@ class SandboxPodmanSession(Session):
             image=image,
             keep_template=keep_template,
             workdir=workdir,
+            security_policy=security_policy,
         )
         self.dockerfile = dockerfile
         if self.image and self.dockerfile:

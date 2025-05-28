@@ -63,3 +63,34 @@ class JavaHandler(AbstractLanguageHandler):
         # or "import com.google.common.collect.Lists;" or "import com.google.common.collect.*;"
         escaped_module = re.escape(module)
         return rf"(?:^|\s)import\s+{escaped_module}(?:\.\*|\.\w+|\w*);(?=[\s\S]|$)"
+
+    def filter_comments(self, code: str) -> str:
+        """Filter out Java comments from code.
+
+        Handles:
+        - Single line comments starting with //
+        - Multi-line comments between /* and */
+        - Preserves empty lines for readability
+
+        Args:
+            code (str): The code to filter comments from.
+
+        Returns:
+            str: The code with comments removed.
+
+        """
+        # First remove multi-line comments
+        code = re.sub(r"/\*[\s\S]*?\*/", "", code)
+
+        # Then handle single-line comments
+        filtered_lines = []
+        for line in code.split("\n"):
+            # Remove inline comments
+            line = re.sub(r"//.*$", "", line)
+            # Keep the line if it has non-whitespace content
+            if line.strip():
+                filtered_lines.append(line)
+            else:
+                # Preserve empty lines for readability
+                filtered_lines.append("")
+        return "\n".join(filtered_lines)

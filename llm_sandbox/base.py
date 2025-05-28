@@ -12,6 +12,7 @@ from llm_sandbox.exceptions import (
     CommandFailedError,
     LanguageHandlerNotInitializedError,
     LibraryInstallationNotSupportedError,
+    SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.security import SecurityPattern, SecurityPolicy
@@ -269,6 +270,12 @@ class Session(ABC):
         if not self.language_handler.is_support_library_installation:
             raise LibraryInstallationNotSupportedError(self.lang)
 
+        if self.security_policy:
+            for library in libraries:
+                if self.security_policy.dangerous_modules and library in self.security_policy.dangerous_modules:
+                    msg = f"Library {library} is not allowed to be installed"
+                    raise SecurityViolationError(msg)
+
         library_installation_commands: list[str | tuple[str, str | None]] = [
             (
                 self.language_handler.get_library_installation_command(library),
@@ -332,6 +339,9 @@ class Session(ABC):
                                                 and a list of security patterns that were violated.
 
         """
+        print("self.security_policy", self.security_policy)
+        print("self.security_policy.patterns", self.security_policy.patterns)
+        print("self.security_policy.dangerous_modules", self.security_policy.dangerous_modules)
         if not self.security_policy:
             return True, []
 
@@ -350,10 +360,12 @@ class Session(ABC):
 
         if self.security_policy.patterns:
             violations: list[SecurityPattern] = []
+            filtered_code = self.language_handler.filter_comments(code)
+
             for pattern_obj in self.security_policy.patterns:
                 if pattern_obj.pattern:
                     try:
-                        if re.search(pattern_obj.pattern, code):
+                        if re.search(pattern_obj.pattern, filtered_code):
                             if pattern_obj.severity >= self.security_policy.safety_level:
                                 violations.append(pattern_obj)
                                 return False, violations

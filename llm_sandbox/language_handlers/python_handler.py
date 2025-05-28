@@ -1,6 +1,7 @@
 import base64
 import io
 import logging
+import re
 import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -145,3 +146,34 @@ class PythonHandler(AbstractLanguageHandler):
             rf"(?:^|\s)(?:import\s+{module}(?:\s+as\s+\w+)?|from\s+{module}\s+import\s+(?:\*|\w+(?:\s+as\s+\w+)"
             rf"?(?:,\s*\w+(?:\s+as\s+\w+)?)*))(?=[\s;(#]|$)"
         )
+
+    def filter_comments(self, code: str) -> str:
+        """Filter out Python comments from code.
+
+        Handles:
+        - Single line comments starting with #
+        - Inline comments after code
+        - Preserves empty lines for readability
+
+        Args:
+            code (str): The code to filter comments from.
+
+        Returns:
+            str: The code with comments removed.
+
+        """
+        # First remove multi-line comments
+        code = re.sub(r"'''[\s\S]*?'''", "", code)
+        code = re.sub(r'"""[\s\S]*?"""', "", code)
+
+        filtered_lines = []
+        for line in code.split("\n"):
+            # Remove inline comments
+            line = re.sub(r"#.*$", "", line)
+            # Keep the line if it has non-whitespace content
+            if line.strip():
+                filtered_lines.append(line)
+            else:
+                # Preserve empty lines for readability
+                filtered_lines.append("")
+        return "\n".join(filtered_lines)

@@ -14,6 +14,7 @@ from kubernetes.stream import stream
 from llm_sandbox.base import ConsoleOutput, Session
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.exceptions import NotOpenSessionError
+from llm_sandbox.security import SecurityPolicy
 
 
 class SandboxKubernetesSession(Session):
@@ -34,6 +35,7 @@ class SandboxKubernetesSession(Session):
         env_vars: dict | None = None,
         pod_manifest: dict | None = None,
         workdir: str | None = "/sandbox",
+        security_policy: SecurityPolicy | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
         r"""Initialize a new Kubernetes-based sandbox session.
@@ -67,6 +69,7 @@ class SandboxKubernetesSession(Session):
             verbose=verbose,
             image=image,
             workdir=workdir,
+            security_policy=security_policy,
         )
 
         if not image:

@@ -91,6 +91,18 @@ class AbstractLanguageHandler(ABC):
     def get_import_patterns(self, module: str) -> str:
         """Get the regex patterns for import statements."""
 
+    @abstractmethod
+    def filter_comments(self, code: str) -> str:
+        """Filter out comments from code in a language-specific way.
+
+        Args:
+            code (str): The code to filter comments from.
+
+        Returns:
+            str: The code with comments removed.
+
+        """
+
     @property
     def name(self) -> str:
         """Get name of the language."""
