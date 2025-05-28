@@ -37,10 +37,7 @@ Execute code in multiple programming languages with automatic dependency managem
 - **Go** - Module support and compilation
 
 ### 🔌 LLM Framework Integration
-Seamlessly integrate with popular LLM frameworks:
-- **LangChain** - Custom tools and agents
-- **LangGraph** - Graph-based workflows
-- **LlamaIndex** - Data-augmented applications
+Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, LlamaIndex, OpenAI, and more.
 
 ### 📊 Advanced Features
 - **Artifact Extraction**: Automatically capture plots and visualizations
@@ -190,6 +187,8 @@ plt.show()
 ```
 
 ## 🔧 Configuration
+
+### Basic Configuration
 
 ```python
 from llm_sandbox import SandboxSession
@@ -374,17 +373,45 @@ functions = [
 ]
 ```
 
-## 🏗️ Architecture
+## ��️ Architecture
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   LLM Client    │───▶│  LLM Sandbox    │───▶│ Container       │
-│                 │    │                 │    │ Backend         │
-│ • OpenAI        │    │ • Security      │    │                 │
-│ • Anthropic     │    │ • Isolation     │    │ • Docker        │
-│ • Local LLMs    │    │ • Multi-lang    │    │ • Kubernetes    │
-│ • LangChain     │    │ • Artifacts     │    │ • Podman        │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+```mermaid
+graph LR
+    A[LLM Client] --> B[LLM Sandbox]
+    B --> C[Container Backend]
+
+    A1[OpenAI] --> A
+    A2[Anthropic] --> A
+    A3[Local LLMs] --> A
+    A4[LangChain] --> A
+    A5[LangGraph] --> A
+    A6[LlamaIndex] --> A
+
+    B1[Security Policies] --> B
+    B2[Code Isolation] --> B
+    B3[Multi-Language Support] --> B
+    B4[Artifact Management] --> B
+
+    C --> C1[Docker]
+    C --> C2[Kubernetes]
+    C --> C3[Podman]
+
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#e8f5e8
+    style A1 fill:#fff3e0
+    style A2 fill:#fff3e0
+    style A3 fill:#fff3e0
+    style A4 fill:#fff3e0
+    style A5 fill:#fff3e0
+    style A6 fill:#fff3e0
+    style B1 fill:#fce4ec
+    style B2 fill:#fce4ec
+    style B3 fill:#fce4ec
+    style B4 fill:#fce4ec
+    style C1 fill:#e0f2f1
+    style C2 fill:#e0f2f1
+    style C3 fill:#e0f2f1
 ```
 
 ## 📚 Documentation
@@ -419,18 +446,6 @@ uv run pre-commit run -a
 # Run tests
 make test
 ```
-
-## 🔐 Security
-
-LLM Sandbox is designed with security as a top priority:
-
-- **Container Isolation**: All code runs in isolated containers
-- **Resource Limits**: Configurable CPU, memory, and time limits
-- **Network Controls**: Disable or restrict network access
-- **File System**: Read-only file systems and controlled mounts
-- **Security Policies**: Custom policies for code validation
-
-For detailed security information, see our [Security Guide](https://vndee.github.io/llm-sandbox/security/).
 
 ## 📄 License
 
