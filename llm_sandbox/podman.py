@@ -2,10 +2,9 @@ import io
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from podman import PodmanClient
-from podman.domain.containers import Container
 from podman.domain.images import Image
 from podman.errors import ImageNotFound
 
@@ -19,6 +18,9 @@ from llm_sandbox.exceptions import (
     NotOpenSessionError,
 )
 from llm_sandbox.security import SecurityPolicy
+
+if TYPE_CHECKING:
+    from podman.domain.containers import Container
 
 
 class SandboxPodmanSession(Session):
@@ -132,9 +134,8 @@ class SandboxPodmanSession(Session):
 
         """
         current_user = self.runtime_configs.get("user") if self.runtime_configs else None
-        if current_user and current_user != "root":
-            if self.container:
-                self.container.exec_run(f"chown -R {current_user} {' '.join(folders)}", user="root")
+        if current_user and current_user != "root" and self.container:
+            self.container.exec_run(f"chown -R {current_user} {' '.join(folders)}", user="root")
 
     def open(self) -> None:
         r"""Open the Podman sandbox session.
@@ -191,8 +192,8 @@ class SandboxPodmanSession(Session):
                     if self.verbose:
                         self.logger.info("Successfully pulled image %s", self.docker_image.tags[-1])
                     self.is_create_template = True
-                except ImageNotFoundError as e:
-                    raise e
+                except ImageNotFoundError:
+                    raise
                 except Exception as e:
                     raise ImagePullError(self.image, str(e)) from e
 

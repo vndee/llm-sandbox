@@ -34,10 +34,6 @@ class CppHandler(AbstractLanguageHandler):
         """Get the library installation command for the C++ handler."""
         return f"apt-get install {library}"
 
-    def inject_plot_detection_code(self, code: str) -> str:
-        """Inject plot detection code for the C++ handler."""
-        return code
-
     def run_with_artifacts(
         self,
         container: "ContainerProtocol",
@@ -67,21 +63,9 @@ class CppHandler(AbstractLanguageHandler):
             tuple: (execution_result, empty_list_of_plots)
 
         """
-        # C++ doesn't support plot extraction yet
+        self.logger.warning("C++ does not support plot extraction yet")
         result = container.run(code, libraries)
         return result, []
-
-    def extract_plots(
-        self,
-        container: "ContainerProtocol",  # noqa: ARG002
-        output_dir: str,  # noqa: ARG002
-    ) -> list[PlotOutput]:
-        """Extract plots from the C++ handler."""
-        return []
-
-    def scan(self, code: str) -> list[str]:  # noqa: ARG002
-        """Scan the code for safety issues."""
-        return []
 
     def get_import_patterns(self, module: str) -> str:
         """Get the regex patterns for import statements.

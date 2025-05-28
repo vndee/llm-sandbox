@@ -84,13 +84,34 @@ class AbstractLanguageHandler(ABC):
             raise PackageManagerError(self.config.name)
         return f"{self.config.package_manager} {library}"
 
-    @abstractmethod
     def inject_plot_detection_code(self, code: str) -> str:
-        """Inject code to detect and capture plots."""
+        """Inject code to detect and capture plots.
 
-    @abstractmethod
-    def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:
-        """Extract plots from the code."""
+        Subclasses should override this method to provide custom plot detection code.
+
+        Args:
+            code: The code to inject plot detection code into.
+
+        Returns:
+            The code with plot detection code injected.
+
+        """
+        return code
+
+    def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:  # noqa: ARG002
+        """Extract plots from the code.
+
+        Subclasses should override this method to provide custom plot extraction logic.
+
+        Args:
+            container: The container protocol instance to run code in
+            output_dir: Directory where plots should be saved
+
+        Returns:
+            list[PlotOutput]: List of plot outputs
+
+        """
+        return []
 
     def run_with_artifacts(
         self,

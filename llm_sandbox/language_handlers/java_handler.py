@@ -60,17 +60,9 @@ class JavaHandler(AbstractLanguageHandler):
             tuple: (execution_result, empty_list_of_plots)
 
         """
-        # Java doesn't support plot extraction yet
+        self.logger.warning("Java does not support plot extraction yet")
         result = container.run(code, libraries)
         return result, []
-
-    def extract_plots(
-        self,
-        container: "ContainerProtocol",  # noqa: ARG002
-        output_dir: str,  # noqa: ARG002
-    ) -> list[PlotOutput]:
-        """Java does not support plot extraction in this manner."""
-        return []
 
     def get_import_patterns(self, module: str) -> str:
         """Get the regex patterns for import statements.

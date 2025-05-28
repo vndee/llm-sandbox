@@ -25,10 +25,6 @@ class RubyHandler(AbstractLanguageHandler):
             plot_detection=None,
         )
 
-    def inject_plot_detection_code(self, code: str) -> str:
-        """Ruby does not support plot detection."""
-        return code
-
     def run_with_artifacts(
         self,
         container: "ContainerProtocol",
@@ -58,13 +54,9 @@ class RubyHandler(AbstractLanguageHandler):
             tuple: (execution_result, empty_list_of_plots)
 
         """
-        # Ruby doesn't support plot extraction yet
+        self.logger.warning("Ruby does not support plot extraction yet")
         result = container.run(code, libraries)
         return result, []
-
-    def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:  # noqa: ARG002
-        """Ruby does not support plot extraction."""
-        return []
 
     def get_import_patterns(self, module: str) -> str:
         """Get the regex patterns for import statements.
@@ -73,10 +65,11 @@ class RubyHandler(AbstractLanguageHandler):
         Covers:
             require 'module'
             require "module"
+            require 'module/submodule'  # For bundler-style requires
             require_relative 'module'
             require_relative "module"
         Handles variations in whitespace and optional parentheses.
-        Negative lookbehind and lookahead to avoid matching comments or parts of other words.
+        Uses negative lookbehind to avoid matching inside string literals.
 
         Args:
             module (str): The name of the module to get the import patterns for.
@@ -85,7 +78,11 @@ class RubyHandler(AbstractLanguageHandler):
             str: The regex patterns for import statements.
 
         """
-        return r"(?:^|\s)(?:require|require_relative)\s*\(\s*\[\'\"]" + re.escape(module) + r"\[\'\"\]\s*\);?"
+        escaped_module = re.escape(module)
+        # Pattern matches require/require_relative with negative lookbehind for string context
+        # (?<![^\\s]") avoids matching when preceded by a quote (not preceded by whitespace + quote)
+        # The module can be followed by / for submodules (bundler-style)
+        return rf"(?<![^\s\"'])(?:^|\s)(?:require|require_relative)\s*\(?\s*['\"](?:{escaped_module}(?:/[^'\"]*)?)['\"]"
 
     @staticmethod
     def get_multiline_comment_patterns() -> str:

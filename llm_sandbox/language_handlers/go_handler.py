@@ -26,10 +26,6 @@ class GoHandler(AbstractLanguageHandler):
             plot_detection=None,
         )
 
-    def inject_plot_detection_code(self, code: str) -> str:
-        """Go does not support plot detection directly in this manner."""
-        return code
-
     def run_with_artifacts(
         self,
         container: "ContainerProtocol",
@@ -59,17 +55,9 @@ class GoHandler(AbstractLanguageHandler):
             tuple: (execution_result, empty_list_of_plots)
 
         """
-        # Go doesn't support plot extraction yet
+        self.logger.warning("Go does not support plot extraction yet")
         result = container.run(code, libraries)
         return result, []
-
-    def extract_plots(
-        self,
-        container: "ContainerProtocol",  # noqa: ARG002
-        output_dir: str,  # noqa: ARG002
-    ) -> list[PlotOutput]:
-        """Go does not support plot extraction in this manner."""
-        return []
 
     def get_import_patterns(self, module: str) -> str:
         """Get the regex patterns for Go language import statements.
@@ -77,12 +65,14 @@ class GoHandler(AbstractLanguageHandler):
         Regex to match import statements for the given module/package.
         Covers:
             import "module"
+            import alias "module"
+            import . "module"
+            import _ "module"
             import (
                 "module"
                 alias "module"
             )
         Handles variations in whitespace and comments.
-        Negative lookbehind and lookahead to avoid matching comments or parts of other words.
 
         Args:
             module (str): The name of the module (package) to get import patterns for.
@@ -93,12 +83,18 @@ class GoHandler(AbstractLanguageHandler):
 
         """
         escaped_module = re.escape(module)
-        # Matches: import "module"  OR  import alias "module" (potentially inside import block)
-        # The lookbehind (?<![\w\d_]) and lookahead (?![\w\d_]) ensure "module" is not part of a larger identifier.
-        return (
-            rf'(?:^|\s)import\s+(?:\(\s*(?:\w+\s+)?"(?:[^"]*?/)'
-            rf'?{escaped_module}"(?:\s*//[^\n]*)?|\w*\s*"(?:[^"]*?/)?{escaped_module}")(?=["\s\(\)]|$)'
+
+        # Pattern for single import: import [alias] "module"
+        # Alias can be identifier, dot, or underscore
+        single_import = rf'import\s+(?:[a-zA-Z_][a-zA-Z0-9_]*\s+|[._]\s+)?"(?:[^"]*?/)?{escaped_module}"'
+
+        # Pattern for import block: import ( ... "module" ... )
+        # This matches the module within an import block, with optional alias
+        block_import = (
+            rf'import\s*\(\s*(?:[^)]*?(?:[a-zA-Z_][a-zA-Z0-9_]*\s+|[._]\s+)?"(?:[^"]*?/)?{escaped_module}"[^)]*?)\s*\)'
         )
+
+        return rf"(?:{single_import}|{block_import})"
 
     @staticmethod
     def get_multiline_comment_patterns() -> str:
