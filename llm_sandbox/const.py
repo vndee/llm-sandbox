@@ -8,7 +8,7 @@ container image names.
 import sys
 from dataclasses import dataclass
 
-if sys.version_info >= (3, 11):  # noqa: UP036
+if sys.version_info >= (3, 11):
     from enum import StrEnum
 else:
     from typing_extensions import StrEnum
