@@ -54,41 +54,20 @@ class RubyHandler(AbstractLanguageHandler):
         """
         return r"(?:^|\s)(?:require|require_relative)\s*\(\s*\[\'\"]" + re.escape(module) + r"\[\'\"\]\s*\);?"
 
-    def filter_comments(self, code: str) -> str:
-        """Filter out Ruby comments from code.
+    @staticmethod
+    def get_multiline_comment_patterns() -> str:
+        """Get the regex patterns for multiline comments.
 
-        Handles:
-        - Single line comments starting with #
-        - Multi-line comments between =begin and =end
-        - Preserves empty lines for readability
-
-        Args:
-            code (str): The code to filter comments from.
-
-        Returns:
-            str: The code with comments removed.
-
+        Regex to match multiline comments.
+        Handles variations in whitespace.
         """
-        # First remove multi-line comments (=begin to =end)
-        code = re.sub(r"=begin[\s\S]*?=end", "", code)
+        return r"=begin[\s\S]*?=end"
 
-        # Then handle single-line comments
-        filtered_lines = []
-        for line in code.split("\n"):
-            # Remove inline comments
-            line = re.sub(r"#.*$", "", line)
-            # Keep the line if it has non-whitespace content
-            if line.strip():
-                filtered_lines.append(line)
-            else:
-                # Preserve empty lines for readability
-                filtered_lines.append("")
-        return "\n".join(filtered_lines)
+    @staticmethod
+    def get_inline_comment_patterns() -> str:
+        """Get the regex patterns for inline comments.
 
-    def get_execution_commands(self, code_file: str) -> list[str]:
-        """Get the execution commands for the Ruby handler."""
-        return [f"ruby {code_file}"]
-
-    def get_library_installation_command(self, library: str) -> str:
-        """Get the library installation command for the Ruby handler."""
-        return f"gem install {library}"
+        Regex to match inline comments.
+        Handles variations in whitespace.
+        """
+        return r"#.*$"

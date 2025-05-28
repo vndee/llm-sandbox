@@ -1,4 +1,5 @@
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -91,7 +92,16 @@ class AbstractLanguageHandler(ABC):
     def get_import_patterns(self, module: str) -> str:
         """Get the regex patterns for import statements."""
 
+    @staticmethod
     @abstractmethod
+    def get_multiline_comment_patterns() -> str:
+        """Get the regex patterns for multiline comment."""
+
+    @staticmethod
+    @abstractmethod
+    def get_inline_comment_patterns() -> str:
+        """Get the regex for inline comment patterns."""
+
     def filter_comments(self, code: str) -> str:
         """Filter out comments from code in a language-specific way.
 
@@ -102,6 +112,21 @@ class AbstractLanguageHandler(ABC):
             str: The code with comments removed.
 
         """
+        # First remove multi-line comments
+        code = re.sub(self.get_multiline_comment_patterns(), "", code)
+
+        # Then handle single-line comments
+        filtered_lines = []
+        for line in code.split("\n"):
+            # Remove inline comments
+            clean_line = re.sub(self.get_inline_comment_patterns(), "", line)
+            # Keep the line if it has non-whitespace content
+            if clean_line.strip():
+                filtered_lines.append(clean_line)
+            else:
+                # Preserve empty lines for readability
+                filtered_lines.append("")
+        return "\n".join(filtered_lines)
 
     @property
     def name(self) -> str:

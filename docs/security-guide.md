@@ -124,7 +124,7 @@ with SandboxSession(lang="python", security_policy=policy) as session:
     # Check if code is safe before execution
     code = "import os\nos.system('ls')"
     is_safe, violations = session.is_safe(code)
-    
+
     if is_safe:
         result = session.run(code)
         print(result)
@@ -196,14 +196,14 @@ patterns = [
         description="os.system() calls",
         severity=SecurityIssueSeverity.HIGH,
     ),
-    
+
     # Subprocess execution
     SecurityPattern(
         pattern=r"\bsubprocess\.(run|call|Popen|check_output)\s*\(",
         description="Subprocess execution",
         severity=SecurityIssueSeverity.HIGH,
     ),
-    
+
     # Shell command execution
     SecurityPattern(
         pattern=r"\bos\.(popen|spawn)\w*\s*\(",
@@ -223,14 +223,14 @@ patterns = [
         description="Dynamic code evaluation",
         severity=SecurityIssueSeverity.MEDIUM,
     ),
-    
+
     # exec() function
     SecurityPattern(
         pattern=r"\bexec\s*\(",
         description="Dynamic code execution",
         severity=SecurityIssueSeverity.MEDIUM,
     ),
-    
+
     # compile() function
     SecurityPattern(
         pattern=r"\bcompile\s*\(",
@@ -250,14 +250,14 @@ patterns = [
         description="File write operations",
         severity=SecurityIssueSeverity.MEDIUM,
     ),
-    
+
     # File deletion
     SecurityPattern(
         pattern=r"\bos\.(remove|unlink|rmdir)\s*\(",
         description="File deletion operations",
         severity=SecurityIssueSeverity.HIGH,
     ),
-    
+
     # Directory operations
     SecurityPattern(
         pattern=r"\bshutil\.(rmtree|move|copytree)\s*\(",
@@ -277,7 +277,7 @@ patterns = [
         description="Raw socket creation",
         severity=SecurityIssueSeverity.MEDIUM,
     ),
-    
+
     # Server socket binding
     SecurityPattern(
         pattern=r"\b\w+\.bind\s*\(",
@@ -399,7 +399,7 @@ def update_security_patterns(policy: SecurityPolicy):
         description="Dynamic import with shell execution",
         severity=SecurityIssueSeverity.HIGH,
     ))
-    
+
     return policy
 ```
 
@@ -408,7 +408,7 @@ def update_security_patterns(policy: SecurityPolicy):
 ```python
 with SandboxSession(lang="python", security_policy=policy, verbose=True) as session:
     is_safe, violations = session.is_safe(code)
-    
+
     if not is_safe:
         # Log security violations
         logger.warning(f"Security policy blocked code execution:")
@@ -502,7 +502,7 @@ python -m pytest tests/test_security_features.py -v
 # Enable verbose logging
 with SandboxSession(lang="python", security_policy=policy, verbose=True) as session:
     is_safe, violations = session.is_safe(code)
-    
+
     # Print detailed violation information
     for violation in violations:
         print(f"Pattern: {violation.pattern}")

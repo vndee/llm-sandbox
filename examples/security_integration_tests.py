@@ -69,14 +69,14 @@ class SecurityTestRunner:
                                 result_msg += f"  Output: {output.stdout[:100]}...\n"
                         else:
                             result_msg += "  Execution successful\n"
-                    except Exception as e:
+                    except (RuntimeError, OSError, ValueError) as e:
                         result_msg += f"  Execution failed: {e!s}\n"
                         test_passed = False
 
                 self.test_results.append((test_name, test_passed, result_msg))
                 return test_passed, result_msg
 
-        except Exception as e:
+        except (RuntimeError, OSError, ValueError, ConnectionError) as e:
             error_msg = f"Test: {test_name} - ERROR: {e!s}"
             self.test_results.append((test_name, False, error_msg))
             return False, error_msg
@@ -369,7 +369,8 @@ def run_real_world_attack_scenarios() -> None:
         ),
         (
             "Process Information Gathering",
-            "import subprocess\nresult = subprocess.run(['ps', 'aux'], capture_output=True, text=True)\nprint(result.stdout)",
+            "import subprocess\nresult = subprocess.run(['ps', 'aux'], "
+            "capture_output=True, text=True)\nprint(result.stdout)",
             False,
         ),
     ]

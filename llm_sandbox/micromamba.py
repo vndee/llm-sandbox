@@ -5,6 +5,7 @@ from docker.types import Mount
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.docker import ConsoleOutput, SandboxDockerSession
+from llm_sandbox.security import SecurityPolicy
 
 
 class MicromambaSession(SandboxDockerSession):
@@ -35,6 +36,7 @@ class MicromambaSession(SandboxDockerSession):
         stream: bool = True,
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
+        security_policy: SecurityPolicy | None = None,
         **kwargs: dict[str, Any],  # For any other unforeseen or future parent args
     ) -> None:
         r"""Initialize a new Micromamba-enabled sandbox session.
@@ -64,6 +66,8 @@ class MicromambaSession(SandboxDockerSession):
                 Inherited from `SandboxDockerSession`. Defaults to None.
             workdir (str | None, optional): The working directory inside the container.
                 Inherited from `SandboxDockerSession`. Defaults to "/sandbox".
+            security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
+                Inherited from `SandboxDockerSession`. Defaults to None.
             **kwargs: Additional keyword arguments to pass to the `SandboxDockerSession` parent constructor.
 
         """
@@ -79,6 +83,7 @@ class MicromambaSession(SandboxDockerSession):
             stream=stream,
             runtime_configs=runtime_configs,
             workdir=workdir,
+            security_policy=security_policy,
             **kwargs,  # Pass any remaining kwargs
         )
 

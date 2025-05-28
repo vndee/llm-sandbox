@@ -78,8 +78,8 @@ def comprehensive_security_policy() -> SecurityPolicy:
 
 if __name__ == "__main__":
     code = """
-        import os
-        os.system('echo Hello from system')
-        """
+    import os as operating_system
+    print('This should be blocked')
+    """
     session = SandboxSession(lang="python", security_policy=comprehensive_security_policy())
     is_safe, violations = session.is_safe(code)

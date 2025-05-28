@@ -4,24 +4,20 @@ This module provides ready-to-use security policies for different environments
 and risk levels, making it easy to get started with LLM Sandbox security.
 """
 
-from typing import List
+import logging
 
-from llm_sandbox.security import (
-    SecurityIssueSeverity,
-    SecurityPattern,
-    DangerousModule,
-    SecurityPolicy,
-)
+from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 
 def create_development_policy() -> SecurityPolicy:
     """Create a security policy suitable for development environments.
-    
+
     This policy is relatively permissive, allowing most operations while
     blocking only the most dangerous ones.
-    
+
     Returns:
         SecurityPolicy: A development-friendly security policy
+
     """
     patterns = [
         # Only block the most dangerous operations
@@ -41,7 +37,7 @@ def create_development_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.HIGH,
         ),
     ]
-    
+
     dangerous_modules = [
         # Only block modules that can cause immediate system damage
         DangerousModule(
@@ -50,7 +46,7 @@ def create_development_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.HIGH,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.HIGH,  # Only block HIGH severity
         patterns=patterns,
@@ -60,11 +56,12 @@ def create_development_policy() -> SecurityPolicy:
 
 def create_production_policy() -> SecurityPolicy:
     """Create a security policy suitable for production environments.
-    
+
     This policy is strict and blocks many potentially dangerous operations.
-    
+
     Returns:
         SecurityPolicy: A production-ready security policy
+
     """
     patterns = [
         # System command execution
@@ -78,7 +75,6 @@ def create_production_policy() -> SecurityPolicy:
             description="Subprocess execution",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # Dynamic code execution
         SecurityPattern(
             pattern=r"\beval\s*\(",
@@ -90,7 +86,6 @@ def create_production_policy() -> SecurityPolicy:
             description="Dynamic code execution",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        
         # File system operations
         SecurityPattern(
             pattern=r"\bopen\s*\([^)]*['\"][wa]['\"][^)]*\)",
@@ -102,14 +97,12 @@ def create_production_policy() -> SecurityPolicy:
             description="File deletion operations",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # Environment access
         SecurityPattern(
             pattern=r"\bos\.environ",
             description="Environment variable access",
             severity=SecurityIssueSeverity.LOW,
         ),
-        
         # Network operations
         SecurityPattern(
             pattern=r"\bsocket\.socket\s*\(",
@@ -117,7 +110,7 @@ def create_production_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.MEDIUM,
         ),
     ]
-    
+
     dangerous_modules = [
         DangerousModule(
             name="os",
@@ -145,7 +138,7 @@ def create_production_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.MEDIUM,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.LOW,  # Block LOW and above
         patterns=patterns,
@@ -155,12 +148,13 @@ def create_production_policy() -> SecurityPolicy:
 
 def create_educational_policy() -> SecurityPolicy:
     """Create a security policy suitable for educational environments.
-    
+
     This policy allows learning-oriented operations while preventing
     system damage and network abuse.
-    
+
     Returns:
         SecurityPolicy: An education-focused security policy
+
     """
     patterns = [
         # System operations
@@ -174,7 +168,6 @@ def create_educational_policy() -> SecurityPolicy:
             description="Subprocess execution",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # File system damage
         SecurityPattern(
             pattern=r"\bos\.(remove|unlink|rmdir)\s*\(",
@@ -186,14 +179,12 @@ def create_educational_policy() -> SecurityPolicy:
             description="Directory tree deletion",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # Network abuse prevention
         SecurityPattern(
             pattern=r"\bsocket\.socket\s*\([^)]*SOCK_RAW",
             description="Raw socket creation",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        
         # Allow eval/exec but warn about it
         SecurityPattern(
             pattern=r"\beval\s*\(",
@@ -201,7 +192,7 @@ def create_educational_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     dangerous_modules = [
         DangerousModule(
             name="os",
@@ -225,7 +216,7 @@ def create_educational_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
         patterns=patterns,
@@ -235,12 +226,13 @@ def create_educational_policy() -> SecurityPolicy:
 
 def create_data_science_policy() -> SecurityPolicy:
     """Create a security policy suitable for data science environments.
-    
+
     This policy allows data processing and analysis while preventing
     system access and network abuse.
-    
+
     Returns:
         SecurityPolicy: A data science-focused security policy
+
     """
     patterns = [
         # System operations
@@ -254,7 +246,6 @@ def create_data_science_policy() -> SecurityPolicy:
             description="Subprocess execution",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # File system operations (allow reading, restrict writing)
         SecurityPattern(
             pattern=r"\bopen\s*\([^)]*['\"]w['\"][^)]*\)",
@@ -266,14 +257,12 @@ def create_data_science_policy() -> SecurityPolicy:
             description="File deletion operations",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # Network operations (allow HTTP requests, block raw sockets)
         SecurityPattern(
             pattern=r"\bsocket\.socket\s*\(",
             description="Raw socket creation",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        
         # Pickle security (common in data science but risky)
         SecurityPattern(
             pattern=r"\bpickle\.loads?\s*\(",
@@ -281,7 +270,7 @@ def create_data_science_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     dangerous_modules = [
         DangerousModule(
             name="os",
@@ -310,7 +299,7 @@ def create_data_science_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
         patterns=patterns,
@@ -320,12 +309,13 @@ def create_data_science_policy() -> SecurityPolicy:
 
 def create_web_scraping_policy() -> SecurityPolicy:
     """Create a security policy suitable for web scraping environments.
-    
+
     This policy allows HTTP requests and web-related operations while
     preventing system access and file system abuse.
-    
+
     Returns:
         SecurityPolicy: A web scraping-focused security policy
+
     """
     patterns = [
         # System operations
@@ -339,21 +329,18 @@ def create_web_scraping_policy() -> SecurityPolicy:
             description="Subprocess execution",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # File system operations
         SecurityPattern(
             pattern=r"\bos\.(remove|unlink|rmdir)\s*\(",
             description="File deletion operations",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # Allow file writing but monitor it
         SecurityPattern(
             pattern=r"\bopen\s*\([^)]*['\"]w['\"][^)]*\)",
             description="File write operations",
             severity=SecurityIssueSeverity.LOW,
         ),
-        
         # Network abuse prevention
         SecurityPattern(
             pattern=r"\btime\.sleep\s*\(\s*[0-9]*\.?[0-9]+\s*\)",
@@ -361,7 +348,7 @@ def create_web_scraping_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.LOW,
         ),
     ]
-    
+
     dangerous_modules = [
         DangerousModule(
             name="os",
@@ -395,7 +382,7 @@ def create_web_scraping_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.MEDIUM,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
         patterns=patterns,
@@ -405,12 +392,13 @@ def create_web_scraping_policy() -> SecurityPolicy:
 
 def create_minimal_policy() -> SecurityPolicy:
     """Create a minimal security policy with only essential protections.
-    
+
     This policy provides the bare minimum security while allowing
     maximum flexibility.
-    
+
     Returns:
         SecurityPolicy: A minimal security policy
+
     """
     patterns = [
         # Only block the most dangerous operations
@@ -425,7 +413,7 @@ def create_minimal_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.HIGH,
         ),
     ]
-    
+
     dangerous_modules = [
         # Only block modules that can cause immediate system damage
         DangerousModule(
@@ -434,7 +422,7 @@ def create_minimal_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.HIGH,
         ),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.HIGH,  # Only block HIGH severity
         patterns=patterns,
@@ -444,11 +432,12 @@ def create_minimal_policy() -> SecurityPolicy:
 
 def create_strict_policy() -> SecurityPolicy:
     """Create a strict security policy for high-security environments.
-    
+
     This policy blocks almost all potentially dangerous operations.
-    
+
     Returns:
         SecurityPolicy: A strict security policy
+
     """
     patterns = [
         # System operations
@@ -462,35 +451,30 @@ def create_strict_policy() -> SecurityPolicy:
             description="Any subprocess module function call",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # Dynamic code execution
         SecurityPattern(
             pattern=r"\b(eval|exec|compile)\s*\(",
             description="Dynamic code execution functions",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        
         # File operations
         SecurityPattern(
             pattern=r"\bopen\s*\(",
             description="File operations",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        
         # Imports
         SecurityPattern(
             pattern=r"\b__import__\s*\(",
             description="Dynamic imports",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        
         # Attribute access
         SecurityPattern(
             pattern=r"\b(getattr|setattr|delattr)\s*\(",
             description="Dynamic attribute access",
             severity=SecurityIssueSeverity.LOW,
         ),
-        
         # Network operations
         SecurityPattern(
             pattern=r"\bsocket\.[\w]+\s*\(",
@@ -498,23 +482,27 @@ def create_strict_policy() -> SecurityPolicy:
             severity=SecurityIssueSeverity.MEDIUM,
         ),
     ]
-    
+
     dangerous_modules = [
         # Block all potentially dangerous modules
-        DangerousModule("os", "Operating system interface", SecurityIssueSeverity.HIGH),
-        DangerousModule("sys", "System-specific parameters", SecurityIssueSeverity.HIGH),
-        DangerousModule("subprocess", "Subprocess management", SecurityIssueSeverity.HIGH),
-        DangerousModule("ctypes", "Foreign function library", SecurityIssueSeverity.HIGH),
-        DangerousModule("socket", "Network socket operations", SecurityIssueSeverity.MEDIUM),
-        DangerousModule("urllib", "URL handling library", SecurityIssueSeverity.MEDIUM),
-        DangerousModule("requests", "HTTP requests library", SecurityIssueSeverity.MEDIUM),
-        DangerousModule("multiprocessing", "Process-based parallelism", SecurityIssueSeverity.MEDIUM),
-        DangerousModule("threading", "Thread-based parallelism", SecurityIssueSeverity.LOW),
-        DangerousModule("pickle", "Python object serialization", SecurityIssueSeverity.LOW),
-        DangerousModule("marshal", "Internal Python object serialization", SecurityIssueSeverity.LOW),
-        DangerousModule("shelve", "Python object persistence", SecurityIssueSeverity.LOW),
+        DangerousModule(name="os", description="Operating system interface", severity=SecurityIssueSeverity.HIGH),
+        DangerousModule(name="sys", description="System-specific parameters", severity=SecurityIssueSeverity.HIGH),
+        DangerousModule(name="subprocess", description="Subprocess management", severity=SecurityIssueSeverity.HIGH),
+        DangerousModule(name="ctypes", description="Foreign function library", severity=SecurityIssueSeverity.HIGH),
+        DangerousModule(name="socket", description="Network socket operations", severity=SecurityIssueSeverity.MEDIUM),
+        DangerousModule(name="urllib", description="URL handling library", severity=SecurityIssueSeverity.MEDIUM),
+        DangerousModule(name="requests", description="HTTP requests library", severity=SecurityIssueSeverity.MEDIUM),
+        DangerousModule(
+            name="multiprocessing", description="Process-based parallelism", severity=SecurityIssueSeverity.MEDIUM
+        ),
+        DangerousModule(name="threading", description="Thread-based parallelism", severity=SecurityIssueSeverity.LOW),
+        DangerousModule(name="pickle", description="Python object serialization", severity=SecurityIssueSeverity.LOW),
+        DangerousModule(
+            name="marshal", description="Internal Python object serialization", severity=SecurityIssueSeverity.LOW
+        ),
+        DangerousModule(name="shelve", description="Python object persistence", severity=SecurityIssueSeverity.LOW),
     ]
-    
+
     return SecurityPolicy(
         safety_level=SecurityIssueSeverity.LOW,  # Block LOW and above (very strict)
         patterns=patterns,
@@ -536,28 +524,31 @@ SECURITY_PRESETS = {
 
 def get_security_policy(preset_name: str) -> SecurityPolicy:
     """Get a pre-configured security policy by name.
-    
+
     Args:
         preset_name: Name of the preset policy
-        
+
     Returns:
         SecurityPolicy: The requested security policy
-        
+
     Raises:
         ValueError: If preset_name is not recognized
+
     """
     if preset_name not in SECURITY_PRESETS:
         available = ", ".join(SECURITY_PRESETS.keys())
-        raise ValueError(f"Unknown preset '{preset_name}'. Available presets: {available}")
-    
+        msg = f"Unknown preset '{preset_name}'. Available presets: {available}"
+        raise ValueError(msg)
+
     return SECURITY_PRESETS[preset_name]()
 
 
-def list_available_presets() -> List[str]:
+def list_available_presets() -> list[str]:
     """List all available security policy presets.
-    
+
     Returns:
         List[str]: Names of available presets
+
     """
     return list(SECURITY_PRESETS.keys())
 
@@ -565,11 +556,12 @@ def list_available_presets() -> List[str]:
 if __name__ == "__main__":
     """Demonstrate security policy presets."""
     import logging
+
     from llm_sandbox import SandboxSession
-    
+
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    
+
     # Test code samples
     test_codes = [
         "print('Hello, World!')",  # Safe
@@ -577,20 +569,20 @@ if __name__ == "__main__":
         "import os\nos.system('ls')",  # System command
         "eval('2 + 2')",  # Dynamic evaluation
     ]
-    
+
     # Test each preset
     for preset_name in list_available_presets():
-        logger.info(f"\nTesting {preset_name.upper()} policy:")
+        logger.info("\nTesting %s policy:", preset_name.upper())
         policy = get_security_policy(preset_name)
-        
+
         with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
             for i, code in enumerate(test_codes, 1):
                 is_safe, violations = session.is_safe(code)
                 status = "✅ SAFE" if is_safe else "❌ BLOCKED"
-                logger.info(f"  Test {i}: {status} - {code[:30]}...")
-                
+                logger.info("  Test %s: %s - %s...", i, status, code[:30])
+
                 if violations:
                     for violation in violations[:2]:  # Show first 2 violations
-                        logger.info(f"    → {violation.description}")
-    
-    logger.info(f"\nAvailable presets: {', '.join(list_available_presets())}")
+                        logger.info("    → %s", violation.description)
+
+    logger.info("\nAvailable presets: %s", ", ".join(list_available_presets()))

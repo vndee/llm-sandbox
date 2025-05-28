@@ -76,6 +76,8 @@ class SandboxDockerSession(Session):
                 Defaults to None.
             workdir (str | None, optional): The working directory inside the container.
                 Defaults to "/sandbox". Consider using "/tmp/sandbox" when running as a non-root user.
+            security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
+                Defaults to None.
             **kwargs: Catches unused keyword arguments passed from `create_session`.
 
         Raises:

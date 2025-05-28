@@ -1,7 +1,6 @@
 import base64
 import io
 import logging
-import re
 import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -147,33 +146,20 @@ class PythonHandler(AbstractLanguageHandler):
             rf"?(?:,\s*\w+(?:\s+as\s+\w+)?)*))(?=[\s;(#]|$)"
         )
 
-    def filter_comments(self, code: str) -> str:
-        """Filter out Python comments from code.
+    @staticmethod
+    def get_multiline_comment_patterns() -> str:
+        """Get the regex patterns for multiline comments.
 
-        Handles:
-        - Single line comments starting with #
-        - Inline comments after code
-        - Preserves empty lines for readability
-
-        Args:
-            code (str): The code to filter comments from.
-
-        Returns:
-            str: The code with comments removed.
-
+        Regex to match multiline comments.
+        Handles variations in whitespace.
         """
-        # First remove multi-line comments
-        code = re.sub(r"'''[\s\S]*?'''", "", code)
-        code = re.sub(r'"""[\s\S]*?"""', "", code)
+        return r"'''[\s\S]*?'''"
 
-        filtered_lines = []
-        for line in code.split("\n"):
-            # Remove inline comments
-            line = re.sub(r"#.*$", "", line)
-            # Keep the line if it has non-whitespace content
-            if line.strip():
-                filtered_lines.append(line)
-            else:
-                # Preserve empty lines for readability
-                filtered_lines.append("")
-        return "\n".join(filtered_lines)
+    @staticmethod
+    def get_inline_comment_patterns() -> str:
+        """Get the regex patterns for inline comments.
+
+        Regex to match inline comments.
+        Handles variations in whitespace.
+        """
+        return r"#.*$"

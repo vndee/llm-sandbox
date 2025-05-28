@@ -61,6 +61,8 @@ class SandboxKubernetesSession(Session):
                 If None, a default Pod manifest is generated. Defaults to None.
             workdir (str | None, optional): The working directory inside the Pod's container.
                 Defaults to "/sandbox".
+            security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
+                Defaults to None.
             **kwargs: Catches unused keyword arguments.
 
         """

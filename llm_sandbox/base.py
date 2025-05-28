@@ -339,24 +339,36 @@ class Session(ABC):
                                                 and a list of security patterns that were violated.
 
         """
-        print("self.security_policy", self.security_policy)
-        print("self.security_policy.patterns", self.security_policy.patterns)
-        print("self.security_policy.dangerous_modules", self.security_policy.dangerous_modules)
         if not self.security_policy:
             return True, []
 
         if not self.language_handler:
             raise LanguageHandlerNotInitializedError(self.lang)
 
-        if self.security_policy.dangerous_modules and not self.security_policy.patterns:
-            for module in self.security_policy.dangerous_modules:
-                self.security_policy.add_pattern(
-                    SecurityPattern(
-                        pattern=self.language_handler.get_import_patterns(module.name),
-                        description=module.description,
-                        severity=module.severity,
-                    )
+        if self.security_policy.dangerous_modules:
+            # Check if patterns for dangerous modules already exist
+            existing_module_patterns = {
+                pattern.description
+                for pattern in self.security_policy.patterns
+                if any(module.description == pattern.description for module in self.security_policy.dangerous_modules)
+            }
+
+            if existing_module_patterns:
+                self._log(
+                    f"Security alert: Duplicate patterns for dangerous modules: {existing_module_patterns}",
+                    level="warning",
                 )
+
+            for module in self.security_policy.dangerous_modules:
+                # Only add pattern if it doesn't already exist
+                if module.description not in existing_module_patterns:
+                    self.security_policy.add_pattern(
+                        SecurityPattern(
+                            pattern=self.language_handler.get_import_patterns(module.name),
+                            description=module.description,
+                            severity=module.severity,
+                        )
+                    )
 
         if self.security_policy.patterns:
             violations: list[SecurityPattern] = []
