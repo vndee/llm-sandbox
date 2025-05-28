@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from podman import PodmanClient
+from podman.domain.containers import Container
 from podman.domain.images import Image
 from podman.errors import ImageNotFound
 
@@ -118,6 +119,7 @@ class SandboxPodmanSession(Session):
         self.mounts: list | None = mounts
         self.stream: bool = stream
         self.runtime_configs: dict | None = runtime_configs
+        self.container: Container | None = None
 
     def _ensure_ownership(self, folders: list[str]) -> None:
         r"""Ensure correct file ownership for specified folders within the Podman container.
@@ -131,7 +133,8 @@ class SandboxPodmanSession(Session):
         """
         current_user = self.runtime_configs.get("user") if self.runtime_configs else None
         if current_user and current_user != "root":
-            self.container.exec_run(f"chown -R {current_user} {' '.join(folders)}", user="root")
+            if self.container:
+                self.container.exec_run(f"chown -R {current_user} {' '.join(folders)}", user="root")
 
     def open(self) -> None:
         r"""Open the Podman sandbox session.
@@ -188,6 +191,8 @@ class SandboxPodmanSession(Session):
                     if self.verbose:
                         self.logger.info("Successfully pulled image %s", self.docker_image.tags[-1])
                     self.is_create_template = True
+                except ImageNotFoundError as e:
+                    raise e
                 except Exception as e:
                     raise ImagePullError(self.image, str(e)) from e
 

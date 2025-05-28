@@ -71,6 +71,12 @@ class MicromambaSession(SandboxDockerSession):
             **kwargs: Additional keyword arguments to pass to the `SandboxDockerSession` parent constructor.
 
         """
+        self.environment = environment
+
+        # If a dockerfile is provided, image should be None to avoid conflict in parent
+        if dockerfile:
+            image = None
+
         super().__init__(
             client=client,
             image=image,
@@ -86,8 +92,6 @@ class MicromambaSession(SandboxDockerSession):
             security_policy=security_policy,
             **kwargs,  # Pass any remaining kwargs
         )
-
-        self.environment = environment
 
     def execute_command(self, command: str | None, workdir: str | None = None) -> ConsoleOutput:
         r"""Execute a command within the specified Micromamba environment in the Docker container.
