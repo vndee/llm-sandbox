@@ -202,7 +202,7 @@ class SandboxPodmanSession(Session):
             tty=True,
             mounts=self.mounts or [],
             user=self.runtime_configs.get("user", "root") if self.runtime_configs else "root",
-            **self.runtime_configs or {},
+            **{k: v for k, v in self.runtime_configs.items() if k != "user"} if self.runtime_configs else {},
         )
         self.container.start()
 
