@@ -373,11 +373,12 @@ functions = [
 ]
 ```
 
-## 📦 Architecture
+## ��️ Architecture
 
 ```mermaid
 graph LR
     A[LLM Client] --> B[LLM Sandbox]
+    B --> C[Container Backend]
 
     A1[OpenAI] --> A
     A2[Anthropic] --> A
@@ -399,10 +400,6 @@ graph LR
     style A4 fill:#fff3e0
     style A5 fill:#fff3e0
     style A6 fill:#fff3e0
-    style B1 fill:#fce4ec
-    style B2 fill:#fce4ec
-    style B3 fill:#fce4ec
-    style B4 fill:#fce4ec
     style C1 fill:#e0f2f1
     style C2 fill:#e0f2f1
     style C3 fill:#e0f2f1
