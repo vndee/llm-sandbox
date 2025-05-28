@@ -1558,6 +1558,7 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -1602,6 +1603,7 @@ requires-dist = [
     { name = "kubernetes", marker = "extra == 'k8s'", specifier = ">=32.0.1" },
     { name = "podman", marker = "extra == 'podman'", specifier = ">=5.4.0.1" },
     { name = "pydantic", specifier = ">=2.11.5" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0.0" },
 ]
 provides-extras = ["docker", "k8s", "podman"]
 

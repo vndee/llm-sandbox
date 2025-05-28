@@ -17,7 +17,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = ["pydantic>=2.11.5"]
+dependencies = [
+    "pydantic>=2.11.5",
+    "typing_extensions>=4.0.0; python_version<'3.11'",
+]
 
 [project.urls]
 Homepage = "https://vndee.github.io/llm-sandbox/"

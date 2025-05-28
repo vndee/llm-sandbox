@@ -5,8 +5,13 @@ sandbox backend types, supported programming languages, and default
 container image names.
 """
 
+import sys
 from dataclasses import dataclass
-from enum import StrEnum
+
+if sys.version_info >= (3, 11):  # noqa: UP036
+    from enum import StrEnum
+else:
+    from typing_extensions import StrEnum
 
 
 class SandboxBackend(StrEnum):
