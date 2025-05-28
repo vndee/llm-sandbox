@@ -28,7 +28,7 @@ class FileType(Enum):
     HTML = "html"
 
 
-@dataclass
+@dataclass(frozen=True)
 class PlotOutput:
     r"""Represents a plot, chart, or other visual artifact output from code execution.
 
@@ -48,7 +48,7 @@ class PlotOutput:
     dpi: int | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class ConsoleOutput:
     r"""Represents the standard output and standard error from code execution or a command.
 
@@ -92,7 +92,7 @@ class ConsoleOutput:
         return not self.exit_code
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutionResult(ConsoleOutput):
     r"""Represents the comprehensive result of code execution within a sandbox session.
 

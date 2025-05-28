@@ -38,7 +38,7 @@ def create_development_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         # Only block modules that can cause immediate system damage
         DangerousModule(
             name="ctypes",
@@ -48,9 +48,9 @@ def create_development_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.HIGH,  # Only block HIGH severity
+        severity_threshold=SecurityIssueSeverity.HIGH,  # Only block HIGH severity
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -111,7 +111,7 @@ def create_production_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
@@ -140,9 +140,9 @@ def create_production_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.LOW,  # Block LOW and above
+        severity_threshold=SecurityIssueSeverity.LOW,  # Block LOW and above
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -193,7 +193,7 @@ def create_educational_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
@@ -218,9 +218,9 @@ def create_educational_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
+        severity_threshold=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -271,7 +271,7 @@ def create_data_science_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
@@ -301,9 +301,9 @@ def create_data_science_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
+        severity_threshold=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -349,7 +349,7 @@ def create_web_scraping_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
@@ -384,9 +384,9 @@ def create_web_scraping_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
+        severity_threshold=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and above
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -414,7 +414,7 @@ def create_minimal_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         # Only block modules that can cause immediate system damage
         DangerousModule(
             name="ctypes",
@@ -424,9 +424,9 @@ def create_minimal_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.HIGH,  # Only block HIGH severity
+        severity_threshold=SecurityIssueSeverity.HIGH,  # Only block HIGH severity
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -483,7 +483,7 @@ def create_strict_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         # Block all potentially dangerous modules
         DangerousModule(name="os", description="Operating system interface", severity=SecurityIssueSeverity.HIGH),
         DangerousModule(name="sys", description="System-specific parameters", severity=SecurityIssueSeverity.HIGH),
@@ -504,9 +504,9 @@ def create_strict_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.LOW,  # Block LOW and above (very strict)
+        severity_threshold=SecurityIssueSeverity.LOW,  # Block LOW and above (very strict)
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 

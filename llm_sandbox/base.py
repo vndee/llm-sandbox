@@ -272,7 +272,9 @@ class Session(ABC):
 
         if self.security_policy:
             for library in libraries:
-                if self.security_policy.dangerous_modules and library in self.security_policy.dangerous_modules:
+                if self.security_policy.restricted_modules and any(
+                    library == module.name for module in self.security_policy.restricted_modules
+                ):
                     msg = f"Library {library} is not allowed to be installed"
                     raise SecurityViolationError(msg)
 
@@ -345,30 +347,15 @@ class Session(ABC):
         if not self.language_handler:
             raise LanguageHandlerNotInitializedError(self.lang)
 
-        if self.security_policy.dangerous_modules:
-            # Check if patterns for dangerous modules already exist
-            existing_module_patterns = {
-                pattern.description
-                for pattern in self.security_policy.patterns
-                if any(module.description == pattern.description for module in self.security_policy.dangerous_modules)
-            }
-
-            if existing_module_patterns:
-                self._log(
-                    f"Security alert: Duplicate patterns for dangerous modules: {existing_module_patterns}",
-                    level="warning",
-                )
-
-            for module in self.security_policy.dangerous_modules:
-                # Only add pattern if it doesn't already exist
-                if module.description not in existing_module_patterns:
-                    self.security_policy.add_pattern(
-                        SecurityPattern(
-                            pattern=self.language_handler.get_import_patterns(module.name),
-                            description=module.description,
-                            severity=module.severity,
-                        )
+        if self.security_policy.restricted_modules:
+            for module in self.security_policy.restricted_modules:
+                self.security_policy.add_pattern(
+                    SecurityPattern(
+                        pattern=self.language_handler.get_import_patterns(module.name),
+                        description=module.description,
+                        severity=module.severity,
                     )
+                )
 
         if self.security_policy.patterns:
             violations: list[SecurityPattern] = []
@@ -379,8 +366,8 @@ class Session(ABC):
                     try:
                         if re.search(pattern_obj.pattern, filtered_code):
                             if (
-                                self.security_policy.safety_level > SecurityIssueSeverity.SAFE
-                                and pattern_obj.severity >= self.security_policy.safety_level
+                                self.security_policy.severity_threshold > SecurityIssueSeverity.SAFE
+                                and pattern_obj.severity >= self.security_policy.severity_threshold
                             ):
                                 violations.append(pattern_obj)
                                 return False, violations

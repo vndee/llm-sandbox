@@ -48,7 +48,7 @@ def create_basic_security_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="socket",
             description="Network socket operations",
@@ -67,9 +67,9 @@ def create_basic_security_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.MEDIUM,
+        severity_threshold=SecurityIssueSeverity.MEDIUM,
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -116,7 +116,7 @@ def create_strict_security_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
@@ -150,9 +150,9 @@ def create_strict_security_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.LOW,  # Very strict - block even low-severity issues
+        severity_threshold=SecurityIssueSeverity.LOW,  # Very strict - block even low-severity issues
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -176,7 +176,7 @@ def create_permissive_security_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="shutil",
             description="High-level file operations (only blocked for dangerous operations)",
@@ -185,9 +185,9 @@ def create_permissive_security_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.HIGH,  # Only block high-severity issues
+        severity_threshold=SecurityIssueSeverity.HIGH,  # Only block high-severity issues
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -303,7 +303,7 @@ def test_dynamic_policy_modification() -> None:
         description="Potentially unsafe serialization",
         severity=SecurityIssueSeverity.MEDIUM,
     )
-    policy.add_dangerous_module(new_module)
+    policy.add_restricted_module(new_module)
 
     test_codes = [
         "print('This is normal')",
@@ -327,7 +327,7 @@ def test_severity_levels() -> None:
     test_code = "import socket\neval('print(1)')\nos.system('echo test')"
 
     # Test with different safety levels
-    safety_levels = [
+    severity_thresholds = [
         SecurityIssueSeverity.SAFE,
         SecurityIssueSeverity.LOW,
         SecurityIssueSeverity.MEDIUM,
@@ -336,12 +336,12 @@ def test_severity_levels() -> None:
 
     base_policy = create_basic_security_policy()
 
-    for level in safety_levels:
+    for level in severity_thresholds:
         logger.info("\nTesting with safety level: %s", level.name)
         policy = SecurityPolicy(
-            safety_level=level,
+            severity_threshold=level,
             patterns=base_policy.patterns,
-            dangerous_modules=base_policy.dangerous_modules,
+            restricted_modules=base_policy.restricted_modules,
         )
 
         with SandboxSession(lang="python", security_policy=policy, verbose=False) as session:

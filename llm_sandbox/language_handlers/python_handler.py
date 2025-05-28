@@ -1,6 +1,7 @@
 import base64
 import io
 import logging
+import re
 import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -183,8 +184,7 @@ class PythonHandler(AbstractLanguageHandler):
 
         """
         return (
-            rf"(?:^|\s)(?:import\s+{module}(?:\s+as\s+\w+)?|from\s+{module}\s+import\s+(?:\*|\w+(?:\s+as\s+\w+)"
-            rf"?(?:,\s*\w+(?:\s+as\s+\w+)?)*))(?=[\s;(#]|$)"
+            r"\s*(from\s+" + re.escape(module) + r"(?:\s|$|\.|import)|import\s+" + re.escape(module) + r"(?:\s|$|\.))"
         )
 
     @staticmethod

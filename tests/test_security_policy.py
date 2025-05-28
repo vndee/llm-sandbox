@@ -91,7 +91,7 @@ class TestSecurityPattern:
 class TestDangerousModule:
     """Test cases for DangerousModule class."""
 
-    def test_dangerous_module_creation(self) -> None:
+    def test_restricted_module_creation(self) -> None:
         """Test creating a dangerous module."""
         module = DangerousModule(
             name="os",
@@ -122,14 +122,14 @@ class TestSecurityPolicy:
     def test_empty_policy_creation(self) -> None:
         """Test creating an empty security policy."""
         policy = SecurityPolicy(
-            safety_level=SecurityIssueSeverity.MEDIUM,
+            severity_threshold=SecurityIssueSeverity.MEDIUM,
             patterns=[],
-            dangerous_modules=[],
+            restricted_modules=[],
         )
 
-        assert policy.safety_level == SecurityIssueSeverity.MEDIUM
+        assert policy.severity_threshold == SecurityIssueSeverity.MEDIUM
         assert len(policy.patterns) == 0
-        assert len(policy.dangerous_modules) == 0
+        assert len(policy.restricted_modules) == 0
 
     def test_policy_with_patterns_and_modules(self) -> None:
         """Test creating a policy with patterns and modules."""
@@ -150,23 +150,23 @@ class TestSecurityPolicy:
         ]
 
         policy = SecurityPolicy(
-            safety_level=SecurityIssueSeverity.LOW,
+            severity_threshold=SecurityIssueSeverity.LOW,
             patterns=patterns,
-            dangerous_modules=modules,
+            restricted_modules=modules,
         )
 
-        assert policy.safety_level == SecurityIssueSeverity.LOW
+        assert policy.severity_threshold == SecurityIssueSeverity.LOW
         assert len(policy.patterns) == 1
-        assert len(policy.dangerous_modules) == 1
+        assert len(policy.restricted_modules) == 1
         assert policy.patterns[0].description == "Dynamic evaluation"
-        assert policy.dangerous_modules[0].name == "os"
+        assert policy.restricted_modules[0].name == "os"
 
     def test_add_pattern_to_policy(self) -> None:
         """Test adding patterns to a policy dynamically."""
         policy = SecurityPolicy(
-            safety_level=SecurityIssueSeverity.MEDIUM,
+            severity_threshold=SecurityIssueSeverity.MEDIUM,
             patterns=[],
-            dangerous_modules=[],
+            restricted_modules=[],
         )
 
         new_pattern = SecurityPattern(
@@ -180,12 +180,12 @@ class TestSecurityPolicy:
         assert len(policy.patterns) == 1
         assert policy.patterns[0].pattern == r"\bexec\s*\("
 
-    def test_add_dangerous_module_to_policy(self) -> None:
+    def test_add_restricted_module_to_policy(self) -> None:
         """Test adding dangerous modules to a policy dynamically."""
         policy = SecurityPolicy(
-            safety_level=SecurityIssueSeverity.MEDIUM,
+            severity_threshold=SecurityIssueSeverity.MEDIUM,
             patterns=[],
-            dangerous_modules=[],
+            restricted_modules=[],
         )
 
         new_module = DangerousModule(
@@ -194,19 +194,19 @@ class TestSecurityPolicy:
             severity=SecurityIssueSeverity.HIGH,
         )
 
-        policy.add_dangerous_module(new_module)
+        policy.add_restricted_module(new_module)
 
-        assert len(policy.dangerous_modules) == 1
-        assert policy.dangerous_modules[0].name == "subprocess"
+        assert len(policy.restricted_modules) == 1
+        assert policy.restricted_modules[0].name == "subprocess"
 
-    def test_default_safety_level(self) -> None:
+    def test_default_severity_threshold(self) -> None:
         """Test that default safety level is SAFE."""
         policy = SecurityPolicy(
             patterns=[],
-            dangerous_modules=[],
+            restricted_modules=[],
         )
 
-        assert policy.safety_level == SecurityIssueSeverity.SAFE
+        assert policy.severity_threshold == SecurityIssueSeverity.SAFE
 
 
 class TestSecurityPolicyIntegration:
@@ -252,9 +252,9 @@ class TestSecurityPolicyIntegration:
         ]
 
         return SecurityPolicy(
-            safety_level=SecurityIssueSeverity.MEDIUM,
+            severity_threshold=SecurityIssueSeverity.MEDIUM,
             patterns=patterns,
-            dangerous_modules=modules,
+            restricted_modules=modules,
         )
 
     def test_policy_serialization_compatibility(self, sample_policy: SecurityPolicy) -> None:
@@ -262,23 +262,23 @@ class TestSecurityPolicyIntegration:
         # Test that the policy can be converted to dict (for JSON serialization)
         policy_dict = sample_policy.model_dump()
 
-        assert "safety_level" in policy_dict
+        assert "severity_threshold" in policy_dict
         assert "patterns" in policy_dict
-        assert "dangerous_modules" in policy_dict
+        assert "restricted_modules" in policy_dict
         assert len(policy_dict["patterns"]) == 3
-        assert len(policy_dict["dangerous_modules"]) == 3
+        assert len(policy_dict["restricted_modules"]) == 3
 
         # Test reconstruction from dict
         reconstructed_policy = SecurityPolicy.model_validate(policy_dict)
 
-        assert reconstructed_policy.safety_level == sample_policy.safety_level
+        assert reconstructed_policy.severity_threshold == sample_policy.severity_threshold
         assert len(reconstructed_policy.patterns) == len(sample_policy.patterns)
-        assert len(reconstructed_policy.dangerous_modules) == len(sample_policy.dangerous_modules)
+        assert len(reconstructed_policy.restricted_modules) == len(sample_policy.restricted_modules)
 
     def test_policy_modification_chain(self, sample_policy: SecurityPolicy) -> None:
         """Test chaining policy modifications."""
         original_pattern_count = len(sample_policy.patterns)
-        original_module_count = len(sample_policy.dangerous_modules)
+        original_module_count = len(sample_policy.restricted_modules)
 
         # Add new pattern
         new_pattern = SecurityPattern(
@@ -294,14 +294,14 @@ class TestSecurityPolicyIntegration:
             description="Network sockets",
             severity=SecurityIssueSeverity.MEDIUM,
         )
-        sample_policy.add_dangerous_module(new_module)
+        sample_policy.add_restricted_module(new_module)
 
         assert len(sample_policy.patterns) == original_pattern_count + 1
-        assert len(sample_policy.dangerous_modules) == original_module_count + 1
+        assert len(sample_policy.restricted_modules) == original_module_count + 1
 
         # Verify the additions
         assert any(p.pattern == r"\bexec\s*\(" for p in sample_policy.patterns)
-        assert any(m.name == "socket" for m in sample_policy.dangerous_modules)
+        assert any(m.name == "socket" for m in sample_policy.restricted_modules)
 
     def test_severity_filtering(self, sample_policy: SecurityPolicy) -> None:
         """Test filtering patterns by severity level."""
@@ -317,7 +317,9 @@ class TestSecurityPolicyIntegration:
 
     def test_module_severity_filtering(self, sample_policy: SecurityPolicy) -> None:
         """Test filtering modules by severity level."""
-        high_severity_modules = [m for m in sample_policy.dangerous_modules if m.severity >= SecurityIssueSeverity.HIGH]
+        high_severity_modules = [
+            m for m in sample_policy.restricted_modules if m.severity >= SecurityIssueSeverity.HIGH
+        ]
 
         assert len(high_severity_modules) == 2  # os and subprocess
         assert all(m.name in ["os", "subprocess"] for m in high_severity_modules)

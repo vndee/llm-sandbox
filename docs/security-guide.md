@@ -65,9 +65,9 @@ Combines patterns and modules into a comprehensive security policy:
 from llm_sandbox.security import SecurityPolicy, SecurityIssueSeverity
 
 policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and HIGH severity issues
+    severity_threshold=SecurityIssueSeverity.MEDIUM,  # Block MEDIUM and HIGH severity issues
     patterns=[pattern],  # List of SecurityPattern objects
-    dangerous_modules=[module],  # List of DangerousModule objects
+    restricted_modules=[module],  # List of DangerousModule objects
 )
 ```
 
@@ -99,7 +99,7 @@ patterns = [
 ]
 
 # Define dangerous modules
-dangerous_modules = [
+restricted_modules = [
     DangerousModule(
         name="subprocess",
         description="Subprocess execution",
@@ -114,9 +114,9 @@ dangerous_modules = [
 
 # Create security policy
 policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.MEDIUM,
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
     patterns=patterns,
-    dangerous_modules=dangerous_modules,
+    restricted_modules=restricted_modules,
 )
 
 # Use with sandbox session
@@ -139,9 +139,9 @@ with SandboxSession(lang="python", security_policy=policy) as session:
 ```python
 # Start with a basic policy
 policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.MEDIUM,
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
     patterns=[],
-    dangerous_modules=[],
+    restricted_modules=[],
 )
 
 # Add patterns dynamically
@@ -152,7 +152,7 @@ policy.add_pattern(SecurityPattern(
 ))
 
 # Add dangerous modules dynamically
-policy.add_dangerous_module(DangerousModule(
+policy.add_restricted_module(DangerousModule(
     name="pickle",
     description="Potentially unsafe serialization",
     severity=SecurityIssueSeverity.MEDIUM,
@@ -164,23 +164,23 @@ policy.add_dangerous_module(DangerousModule(
 ```python
 # Strict policy - blocks even low-severity issues
 strict_policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.LOW,
+    severity_threshold=SecurityIssueSeverity.LOW,
     patterns=patterns,
-    dangerous_modules=dangerous_modules,
+    restricted_modules=restricted_modules,
 )
 
 # Permissive policy - only blocks high-severity issues
 permissive_policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.HIGH,
+    severity_threshold=SecurityIssueSeverity.HIGH,
     patterns=patterns,
-    dangerous_modules=dangerous_modules,
+    restricted_modules=restricted_modules,
 )
 
 # No restrictions - allows everything
 open_policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.SAFE,
+    severity_threshold=SecurityIssueSeverity.SAFE,
     patterns=patterns,
-    dangerous_modules=dangerous_modules,
+    restricted_modules=restricted_modules,
 )
 ```
 
@@ -364,9 +364,9 @@ Combine multiple security mechanisms:
 ```python
 # Combine patterns and module blocking
 policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.MEDIUM,
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
     patterns=system_command_patterns + file_operation_patterns,
-    dangerous_modules=high_risk_modules + medium_risk_modules,
+    restricted_modules=high_risk_modules + medium_risk_modules,
 )
 ```
 
@@ -375,16 +375,16 @@ policy = SecurityPolicy(
 ```python
 # Development environment - more permissive
 dev_policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.HIGH,
+    severity_threshold=SecurityIssueSeverity.HIGH,
     patterns=critical_patterns_only,
-    dangerous_modules=high_risk_modules,
+    restricted_modules=high_risk_modules,
 )
 
 # Production environment - strict
 prod_policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.LOW,
+    severity_threshold=SecurityIssueSeverity.LOW,
     patterns=all_security_patterns,
-    dangerous_modules=all_dangerous_modules,
+    restricted_modules=all_restricted_modules,
 )
 ```
 
@@ -440,16 +440,16 @@ except InvalidRegexPatternError as e:
 ```python
 # Base policy
 base_policy = SecurityPolicy(
-    safety_level=SecurityIssueSeverity.MEDIUM,
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
     patterns=base_patterns,
-    dangerous_modules=base_modules,
+    restricted_modules=base_modules,
 )
 
 # Extended policy
 extended_policy = SecurityPolicy(
-    safety_level=base_policy.safety_level,
+    severity_threshold=base_policy.severity_threshold,
     patterns=base_policy.patterns + additional_patterns,
-    dangerous_modules=base_policy.dangerous_modules + additional_modules,
+    restricted_modules=base_policy.restricted_modules + additional_modules,
 )
 ```
 

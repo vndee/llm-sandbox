@@ -2,7 +2,7 @@
 
 from .const import SandboxBackend, SupportedLanguage
 from .exceptions import ContainerError, ResourceError, SandboxError, SecurityError, ValidationError
-from .session import ArtifactSandboxSession, SandboxSession
+from .session import ArtifactSandboxSession, SandboxSession, create_session
 
 __all__ = [
     "ArtifactSandboxSession",
@@ -14,4 +14,5 @@ __all__ = [
     "SecurityError",
     "SupportedLanguage",
     "ValidationError",
+    "create_session",
 ]

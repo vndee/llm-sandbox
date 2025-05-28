@@ -99,7 +99,7 @@ def comprehensive_security_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
@@ -128,9 +128,9 @@ def comprehensive_security_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.LOW,
+        severity_threshold=SecurityIssueSeverity.LOW,
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 

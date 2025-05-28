@@ -44,16 +44,23 @@ class DangerousModule(BaseModel):
 class SecurityPolicy(BaseModel):
     """A security policy."""
 
-    safety_level: SecurityIssueSeverity = Field(
-        default=SecurityIssueSeverity.SAFE, description="The safety level of the policy."
+    severity_threshold: SecurityIssueSeverity = Field(
+        default=SecurityIssueSeverity.SAFE,
+        description="The minimum severity level at which security issues will be blocked.",
     )
-    patterns: list[SecurityPattern] = Field(..., description="The security patterns in the code.")
-    dangerous_modules: list[DangerousModule] = Field(..., description="The dangerous modules.")
+    patterns: list[SecurityPattern] | None = Field(default=None, description="The security patterns in the code.")
+    restricted_modules: list[DangerousModule] | None = Field(
+        default=None, description="The modules that are restricted based on their severity level."
+    )
 
     def add_pattern(self, pattern: SecurityPattern) -> None:
         """Add a security pattern to the policy."""
+        if self.patterns is None:
+            self.patterns = []
         self.patterns.append(pattern)
 
-    def add_dangerous_module(self, module: DangerousModule) -> None:
-        """Add a dangerous module to the policy."""
-        self.dangerous_modules.append(module)
+    def add_restricted_module(self, module: DangerousModule) -> None:
+        """Add a restricted module to the policy."""
+        if self.restricted_modules is None:
+            self.restricted_modules = []
+        self.restricted_modules.append(module)

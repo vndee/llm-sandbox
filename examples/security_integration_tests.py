@@ -139,7 +139,7 @@ def create_comprehensive_security_policy() -> SecurityPolicy:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
@@ -168,9 +168,9 @@ def create_comprehensive_security_policy() -> SecurityPolicy:
     ]
 
     return SecurityPolicy(
-        safety_level=SecurityIssueSeverity.MEDIUM,
+        severity_threshold=SecurityIssueSeverity.MEDIUM,
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
 
@@ -258,19 +258,19 @@ print(f'Result: {result}')
 
     base_policy = create_comprehensive_security_policy()
 
-    for safety_level, expected_safe in severity_tests:
+    for severity_threshold, expected_safe in severity_tests:
         policy = SecurityPolicy(
-            safety_level=safety_level,
+            severity_threshold=severity_threshold,
             patterns=base_policy.patterns,
-            dangerous_modules=base_policy.dangerous_modules,
+            restricted_modules=base_policy.restricted_modules,
         )
 
         success, message = runner.run_security_test(
-            f"Severity Level {safety_level.name}", test_code, policy, expected_safe
+            f"Severity Level {severity_threshold.name}", test_code, policy, expected_safe
         )
 
         status = "✅ PASS" if success else "❌ FAIL"
-        logger.info(f"{status} - Safety Level: {safety_level.name}")
+        logger.info(f"{status} - Safety Level: {severity_threshold.name}")
         if not success:
             logger.info(f"  Expected: {expected_safe}, Got: {not expected_safe}")
 
@@ -292,19 +292,19 @@ def run_library_installation_tests() -> None:
         ),
     ]
 
-    dangerous_modules = [
+    restricted_modules = [
         DangerousModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        # Note: requests is not in dangerous_modules, so it should be allowed
+        # Note: requests is not in restricted_modules, so it should be allowed
     ]
 
     policy = SecurityPolicy(
-        safety_level=SecurityIssueSeverity.MEDIUM,
+        severity_threshold=SecurityIssueSeverity.MEDIUM,
         patterns=patterns,
-        dangerous_modules=dangerous_modules,
+        restricted_modules=restricted_modules,
     )
 
     test_cases = [
