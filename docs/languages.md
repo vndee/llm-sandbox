@@ -6,12 +6,11 @@ LLM Sandbox supports multiple programming languages, each with specific features
 
 | Language | Version | Package Manager | Plot Support | Default Image |
 |----------|---------|----------------|--------------|---------------|
-| **Python** | 3.11 | pip | ✅ Full | `python:3.11-bullseye` |
+| **Python** | 3.11 | pip | ✅ Full | `vndee/sandbox-python-311-bullseye` |
 | **JavaScript** | Node 22 | npm | ❌ | `node:22-bullseye` |
 | **Java** | 11 | Maven | ❌ | `openjdk:11.0.12-jdk-bullseye` |
 | **C++** | GCC 11.2 | apt | ❌ | `gcc:11.2.0-bullseye` |
 | **Go** | 1.23.4 | go get | ❌ | `golang:1.23.4-bullseye` |
-| **Ruby** | 3.0.2 | gem | ❌ | `ruby:3.0.2-bullseye` |
 
 ## Python
 
@@ -94,7 +93,7 @@ axes[1, 1].set_title('Bar Chart')
 plt.tight_layout()
 plt.show()
     """)
-    
+
     # Save extracted plots
     for i, plot in enumerate(result.plots):
         with open(f"plot_{i}.png", "wb") as f:
@@ -144,7 +143,7 @@ print(f"Model intercept: {model.intercept_[0]:.4f}")
 print(f"Mean squared error: {mse:.4f}")
 print(f"R² score: {r2:.4f}")
     """, libraries=["pandas", "numpy", "scikit-learn"])
-    
+
     print(result.stdout)
 ```
 
@@ -271,11 +270,11 @@ const https = require('https');
 // Make API request
 https.get('https://api.github.com/users/github', (res) => {
     let data = '';
-    
+
     res.on('data', (chunk) => {
         data += chunk;
     });
-    
+
     res.on('end', () => {
         const user = JSON.parse(data);
         console.log('GitHub user:', user.name);
@@ -304,7 +303,7 @@ const PORT = 3000;
 app.listen(PORT, () => {
     console.log(`Server would run on port ${PORT}`);
     console.log('(Not accessible from outside the sandbox)');
-    
+
     // Gracefully exit after setup
     process.exit(0);
 });
@@ -326,7 +325,7 @@ public class HelloWorld {
     public static void main(String[] args) {
         System.out.println("Java version: " + System.getProperty("java.version"));
         System.out.println("Hello from Java!");
-        
+
         // Modern Java features
         var message = "Using var keyword!";
         System.out.println(message);
@@ -346,12 +345,12 @@ import java.util.*;
 class Person {
     private String name;
     private int age;
-    
+
     public Person(String name, int age) {
         this.name = name;
         this.age = age;
     }
-    
+
     public String toString() {
         return String.format("Person{name='%s', age=%d}", name, age);
     }
@@ -364,16 +363,16 @@ public class Main {
             new Person("Bob", 25),
             new Person("Charlie", 35)
         );
-        
+
         System.out.println("People list:");
         people.forEach(System.out::println);
-        
+
         // Stream API
         double avgAge = people.stream()
             .mapToInt(p -> p.age)
             .average()
             .orElse(0);
-        
+
         System.out.printf("Average age: %.1f%n", avgAge);
     }
 }
@@ -393,27 +392,27 @@ public class CollectionsDemo {
         // List operations
         List<Integer> numbers = new ArrayList<>(Arrays.asList(5, 2, 8, 1, 9, 3));
         System.out.println("Original: " + numbers);
-        
+
         Collections.sort(numbers);
         System.out.println("Sorted: " + numbers);
-        
+
         // Map operations
         Map<String, Integer> scores = new HashMap<>();
         scores.put("Alice", 95);
         scores.put("Bob", 87);
         scores.put("Charlie", 92);
-        
+
         System.out.println("\nScores:");
-        scores.forEach((name, score) -> 
+        scores.forEach((name, score) ->
             System.out.printf("%s: %d%n", name, score)
         );
-        
+
         // Stream operations
         List<Integer> filtered = numbers.stream()
             .filter(n -> n > 5)
             .map(n -> n * 2)
             .collect(Collectors.toList());
-        
+
         System.out.println("\nFiltered and doubled: " + filtered);
     }
 }
@@ -438,11 +437,11 @@ with SandboxSession(lang="cpp") as session:
 int main() {
     std::cout << "C++ Standard: " << __cplusplus << std::endl;
     std::cout << "Hello from C++!" << std::endl;
-    
+
     // Modern C++ features
     auto message = std::string("Using auto keyword!");
     std::cout << message << std::endl;
-    
+
     // Range-based for loop
     std::vector<int> numbers = {1, 2, 3, 4, 5};
     std::cout << "Numbers: ";
@@ -450,7 +449,7 @@ int main() {
         std::cout << n << " ";
     }
     std::cout << std::endl;
-    
+
     return 0;
 }
     """)
@@ -474,29 +473,29 @@ int main() {
     std::cout << "Original: ";
     for (int n : vec) std::cout << n << " ";
     std::cout << std::endl;
-    
+
     // Sort
     std::sort(vec.begin(), vec.end());
     std::cout << "Sorted: ";
     for (int n : vec) std::cout << n << " ";
     std::cout << std::endl;
-    
+
     // Algorithms
     int sum = std::accumulate(vec.begin(), vec.end(), 0);
     std::cout << "Sum: " << sum << std::endl;
-    
+
     // Map
     std::map<std::string, int> scores = {
         {"Alice", 95},
         {"Bob", 87},
         {"Charlie", 92}
     };
-    
+
     std::cout << "\nScores:\n";
     for (const auto& [name, score] : scores) {
         std::cout << name << ": " << score << std::endl;
     }
-    
+
     return 0;
 }
     """)
@@ -542,7 +541,7 @@ import (
 func main() {
     fmt.Printf("Go version: %s\n", runtime.Version())
     fmt.Println("Hello from Go!")
-    
+
     // Go features
     numbers := []int{1, 2, 3, 4, 5}
     sum := 0
@@ -577,12 +576,12 @@ func worker(id int, wg *sync.WaitGroup) {
 
 func main() {
     var wg sync.WaitGroup
-    
+
     for i := 1; i <= 5; i++ {
         wg.Add(1)
         go worker(i, &wg)
     }
-    
+
     wg.Wait()
     fmt.Println("All workers completed")
 }
@@ -607,91 +606,16 @@ func main() {
         "age": 30,
         "city": "New York"
     }`)
-    
+
     root, _ := ajson.Unmarshal(json)
-    
+
     name, _ := root.GetString("name")
     age, _ := root.GetInt("age")
-    
+
     fmt.Printf("Name: %s\n", name)
     fmt.Printf("Age: %d\n", age)
 }
     """, libraries=["github.com/spyzhov/ajson"])
-```
-
-## Ruby
-
-### Overview
-
-Ruby support includes Ruby interpreter with gem package management.
-
-### Basic Usage
-
-```python
-with SandboxSession(lang="ruby") as session:
-    result = session.run("""
-puts "Ruby version: #{RUBY_VERSION}"
-puts "Hello from Ruby!"
-
-# Ruby features
-numbers = [1, 2, 3, 4, 5]
-puts "Numbers: #{numbers.inspect}"
-puts "Sum: #{numbers.sum}"
-puts "Doubled: #{numbers.map { |n| n * 2 }}"
-
-# String manipulation
-text = "hello world"
-puts "Capitalized: #{text.capitalize}"
-puts "Reversed: #{text.reverse}"
-    """)
-    print(result.stdout)
-```
-
-### Object-Oriented Ruby
-
-```python
-with SandboxSession(lang="ruby") as session:
-    result = session.run("""
-class Person
-  attr_accessor :name, :age
-  
-  def initialize(name, age)
-    @name = name
-    @age = age
-  end
-  
-  def to_s
-    "#{@name} (#{@age} years old)"
-  end
-end
-
-class Student < Person
-  attr_accessor :grade
-  
-  def initialize(name, age, grade)
-    super(name, age)
-    @grade = grade
-  end
-  
-  def to_s
-    super + " - Grade: #{@grade}"
-  end
-end
-
-# Create objects
-people = [
-  Person.new("Alice", 30),
-  Student.new("Bob", 20, "A"),
-  Person.new("Charlie", 35)
-]
-
-puts "People:"
-people.each { |person| puts "  - #{person}" }
-
-# Calculate average age
-avg_age = people.map(&:age).sum.to_f / people.size
-puts "\nAverage age: #{'%.1f' % avg_age}"
-    """)
 ```
 
 ## Language Handler Architecture
@@ -714,14 +638,14 @@ class RustHandler(AbstractLanguageHandler):
             package_manager="cargo add",
             is_support_library_installation=True
         )
-    
+
     def get_import_patterns(self, module):
         return rf"use\s+{module}"
-    
+
     @staticmethod
     def get_multiline_comment_patterns():
         return r"/\*[\s\S]*?\*/"
-    
+
     @staticmethod
     def get_inline_comment_patterns():
         return r"//.*$"
@@ -751,11 +675,11 @@ def detect_language(code: str) -> str:
         'go': [r'package\s+main', r'func\s+main\s*\('],
         'ruby': [r'def\s+\w+', r'puts\s+', r'class\s+\w+'],
     }
-    
+
     for lang, lang_patterns in patterns.items():
         if any(re.search(pattern, code) for pattern in lang_patterns):
             return lang
-    
+
     return 'python'  # Default
 
 # Use detected language
@@ -765,19 +689,6 @@ lang = detect_language(code)
 with SandboxSession(lang=lang) as session:
     result = session.run(code)
 ```
-
-## Performance Considerations
-
-### Language Startup Times
-
-| Language | Cold Start | Warm Start | Memory Usage |
-|----------|------------|------------|---------------|
-| Python | ~1s | ~0.1s | ~50MB |
-| JavaScript | ~0.8s | ~0.1s | ~40MB |
-| Java | ~2s | ~0.5s | ~100MB |
-| C++ | ~1.5s | ~0.2s | ~20MB |
-| Go | ~1s | ~0.1s | ~30MB |
-| Ruby | ~1s | ~0.1s | ~40MB |
 
 ### Optimization Tips
 
@@ -799,10 +710,10 @@ with SandboxSession(lang=lang) as session:
    ```python
    # Python: Use slim images
    image="python:3.11-slim"
-   
+
    # Java: Use JDK vs JRE based on needs
    image="openjdk:11-jre-slim"  # For running only
-   
+
    # Go: Use multi-stage builds
    # Build in one stage, run in minimal image
    ```

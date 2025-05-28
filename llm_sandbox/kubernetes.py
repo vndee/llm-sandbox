@@ -45,7 +45,7 @@ class SandboxKubernetesSession(Session):
                 If None, a new client will be created based on the local Kubernetes configuration
                 (e.g., from `~/.kube/config`). Defaults to None.
             image (str | None, optional): The name of the Docker image to use for the Pod's container
-                (e.g., "python:3.11-bullseye"). If None and `pod_manifest` is not provided with an image,
+                (e.g., "vndee/sandbox-python-311-bullseye"). If None and `pod_manifest` is not provided with an image,
                 a default image for the specified `lang` is used. Defaults to None.
             lang (str, optional): The programming language of the code to be run (e.g., "python", "java").
                 Determines default image and language-specific handlers. Defaults to SupportedLanguage.PYTHON.

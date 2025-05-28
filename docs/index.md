@@ -5,14 +5,16 @@
 [![License](https://img.shields.io/github/license/vndee/llm-sandbox)](https://img.shields.io/github/license/vndee/llm-sandbox)
 [![PyPI](https://img.shields.io/pypi/v/llm-sandbox)](https://pypi.org/project/llm-sandbox/)
 [![Python Version](https://img.shields.io/pypi/pyversions/llm-sandbox)](https://pypi.org/project/llm-sandbox/)
+[![CodeFactor](https://www.codefactor.io/repository/github/vndee/llm-sandbox/badge)](https://www.codefactor.io/repository/github/vndee/llm-sandbox)
+[![PyPI Downloads](https://static.pepy.tech/badge/llm-sandbox)](https://pypi.org/project/llm-sandbox/)
 
 ## Welcome to LLM Sandbox
 
-**LLM Sandbox** is a lightweight and portable sandbox environment designed to run Large Language Model (LLM) generated code in a safe and isolated manner using containers. It provides a secure execution environment for AI-generated code while offering flexibility in container backends and comprehensive language support.
+**LLM Sandbox** is a lightweight and portable sandbox environment designed to run Large Language Model (LLM) generated code in a safe and isolated mode. It provides a secure execution environment for AI-generated code while offering flexibility in container backends and comprehensive language support.
 
 <div class="grid cards" markdown>
 
--   :material-shield-check:{ .lg .middle } **Secure Execution**
+-   :material-shield-check:{ .middle } **Secure Execution**
 
     ---
 
@@ -20,23 +22,23 @@
 
     [:octicons-arrow-right-24: Security guide](security.md)
 
--   :material-rocket-launch:{ .lg .middle } **Multiple Backends**
+-   :material-rocket-launch:{ .middle } **Multiple Backends**
 
     ---
 
-    Choose from Docker, Kubernetes, Podman, or Micromamba backends based on your infrastructure needs
+    Choose from Docker, Kubernetes, or Podman backends based on your infrastructure needs
 
     [:octicons-arrow-right-24: Backend options](backends.md)
 
--   :material-code-braces:{ .lg .middle } **Multi-Language Support**
+-   :material-code-braces:{ .middle } **Multi-Language**
 
     ---
 
-    Execute code in Python, JavaScript, Java, C++, Go, and Ruby with automatic dependency management
+    Execute code in Python, JavaScript, Java, C++, and Go with automatic dependency management
 
     [:octicons-arrow-right-24: Language guide](languages.md)
 
--   :material-puzzle:{ .lg .middle } **LLM Integration**
+-   :material-puzzle:{ .middle } **LLM Integration**
 
     ---
 
@@ -58,7 +60,6 @@
 - **Docker**: Most popular and widely supported option
 - **Kubernetes**: Enterprise-grade orchestration for scalable deployments
 - **Podman**: Rootless containers for enhanced security
-- **Micromamba**: Lightweight conda-based environments
 
 ### 📊 Advanced Features
 - **Artifact Extraction**: Automatically capture plots and visualizations
@@ -69,30 +70,10 @@
 ## Quick Example
 
 ```python
-from llm_sandbox import SandboxSession
-
-# Create a sandbox session
-with SandboxSession(lang="python") as session:
-    # Run Python code safely
-    result = session.run("""
-import matplotlib.pyplot as plt
-import numpy as np
-
-# Generate data
-x = np.linspace(0, 10, 100)
-y = np.sin(x)
-
-# Create plot
-plt.figure(figsize=(10, 6))
-plt.plot(x, y)
-plt.title('Sine Wave')
-plt.show()
-
-print('Plot generated successfully!')
-    """)
-    
-    print(result.stdout)  # Output: Plot generated successfully!
+--8<-- "examples/python_simple_artifact.py"
 ```
+
+![Example Plot](assets/example.png)
 
 ## Installation
 
@@ -106,7 +87,7 @@ pip install llm-sandbox
 # For Docker support
 pip install 'llm-sandbox[docker]'
 
-# For Kubernetes support  
+# For Kubernetes support
 pip install 'llm-sandbox[k8s]'
 
 # For Podman support
@@ -129,8 +110,7 @@ LLM Sandbox provides a secure, isolated environment that:
 1. **Isolates code execution** in containers
 2. **Enforces security policies** before execution
 3. **Limits resource usage** to prevent abuse
-4. **Captures outputs safely** including plots and files
-5. **Integrates seamlessly** with LLM frameworks
+4. **Integrates seamlessly** with LLM frameworks
 
 ## Architecture Overview
 
@@ -143,11 +123,9 @@ graph TD
     D --> F[Docker]
     D --> G[Kubernetes]
     D --> H[Podman]
-    D --> I[Micromamba]
     F --> J[Isolated Execution]
     G --> J
     H --> J
-    I --> J
     J --> K[Results & Artifacts]
     K --> A
 ```

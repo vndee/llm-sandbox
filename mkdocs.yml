@@ -5,13 +5,10 @@ repo_name: vndee/llm-sandbox
 site_description: A lightweight and portable sandbox environment for running LLM-generated code safely using containers
 site_author: Duy Huynh
 edit_uri: edit/main/docs/
-copyright: Copyright &copy; 2024 Duy Huynh - Maintained by <a href="https://vndee.com">vndee</a>
+copyright: Copyright &copy; 2024 Duy Huynh - Maintained by <a href="https://blog.duy.dev">vndee</a>
 
 theme:
   name: material
-  custom_dir: docs/overrides
-  favicon: assets/favicon.ico
-  logo: assets/logo.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -126,9 +123,6 @@ markdown_extensions:
       smart_enable: all
   - pymdownx.caret
   - pymdownx.details
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -149,21 +143,21 @@ markdown_extensions:
       custom_fences:
         - name: mermaid
           class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
       combine_header_slug: true
-      slugify: !!python/object/apply:pymdownx.slugs.slugify
-        kwds:
-          case: lower
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.tilde
+  - attr_list
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 extra:
   analytics:
     provider: google
-    property: G-XXXXXXXXXX  # Replace with your Google Analytics ID
+    property: "" # Replace with your Google Analytics ID when needed
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/vndee/llm-sandbox

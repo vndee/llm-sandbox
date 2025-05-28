@@ -2,18 +2,6 @@
 
 LLM Sandbox seamlessly integrates with popular LLM frameworks to provide secure code execution capabilities. This guide covers integration patterns and examples.
 
-## Overview
-
-Supported frameworks:
-
-| Framework | Type | Integration Method | Example Use Case |
-|-----------|------|-------------------|------------------|
-| **LangChain** | Orchestration | Custom Tool | Agent with code execution |
-| **LangGraph** | Workflow | Tool Node | Stateful code execution |
-| **LlamaIndex** | Data Framework | Function Tool | Code-based data processing |
-| **OpenAI** | Direct API | Function Calling | Code generation & execution |
-| **Custom** | Any Framework | Direct Integration | Any LLM application |
-
 ## LangChain Integration
 
 ### Basic Tool Integration
@@ -28,11 +16,11 @@ from llm_sandbox import SandboxSession
 def execute_code(code: str, language: str = "python") -> str:
     """
     Execute code in a secure sandbox environment.
-    
+
     Args:
         code: The code to execute
         language: Programming language (python, javascript, java, cpp, go, ruby)
-    
+
     Returns:
         The execution output
     """
@@ -46,8 +34,8 @@ def execute_code(code: str, language: str = "python") -> str:
 llm = OpenAI(temperature=0)
 tools = [execute_code]
 agent = initialize_agent(
-    tools, 
-    llm, 
+    tools,
+    llm,
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True
 )
@@ -71,13 +59,13 @@ class CodeExecutionInput(BaseModel):
     code: str = Field(description="The code to execute")
     language: str = Field(default="python", description="Programming language")
     libraries: Optional[List[str]] = Field(
-        default=None, 
+        default=None,
         description="Libraries to install before execution"
     )
 
 def execute_code_with_libs(
-    code: str, 
-    language: str = "python", 
+    code: str,
+    language: str = "python",
     libraries: Optional[List[str]] = None
 ) -> str:
     """Execute code with optional library installation"""
@@ -98,8 +86,8 @@ code_tool = StructuredTool.from_function(
 
 # Use in agent
 agent = initialize_agent(
-    [code_tool], 
-    llm, 
+    [code_tool],
+    llm,
     agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True
 )
@@ -161,19 +149,19 @@ from langchain.chains import ConversationChain
 
 class CodeExecutionMemory:
     """Custom memory for code execution history"""
-    
+
     def __init__(self):
         self.executions = []
         self.session = None
-    
+
     def start_session(self, **kwargs):
         self.session = SandboxSession(**kwargs)
         self.session.open()
-    
+
     def execute(self, code: str, libraries: List[str] = None):
         if not self.session:
             self.start_session(lang="python")
-        
+
         result = self.session.run(code, libraries)
         self.executions.append({
             "code": code,
@@ -182,7 +170,7 @@ class CodeExecutionMemory:
             "exit_code": result.exit_code
         })
         return result
-    
+
     def close_session(self):
         if self.session:
             self.session.close()
@@ -233,7 +221,7 @@ def generate_code(state: CodeState) -> CodeState:
     # Use LLM to generate code
     prompt = f"Write Python code for: {state['task']}"
     code = llm.predict(prompt)
-    
+
     return {
         "code": code,
         "messages": [f"Generated code for task: {state['task']}"]
@@ -243,7 +231,7 @@ def execute_code(state: CodeState) -> CodeState:
     """Execute the generated code"""
     with SandboxSession(lang="python") as session:
         result = session.run(state["code"])
-        
+
         return {
             "output": result.stdout,
             "error": result.stderr,
@@ -262,7 +250,7 @@ def check_output(state: CodeState) -> str:
 def fix_code(state: CodeState) -> CodeState:
     """Fix code based on error"""
     prompt = f"""Fix this Python code that has an error:
-    
+
 Code:
 {state['code']}
 
@@ -270,7 +258,7 @@ Error:
 {state['error']}
 """
     fixed_code = llm.predict(prompt)
-    
+
     return {
         "code": fixed_code,
         "iterations": state["iterations"] + 1,
@@ -332,7 +320,7 @@ def run_python_code(code: str, libraries: List[str] = None) -> str:
 
 @tool
 def run_data_analysis(
-    csv_data: str, 
+    csv_data: str,
     analysis_type: str = "summary"
 ) -> str:
     """Run data analysis on CSV data"""
@@ -350,7 +338,7 @@ elif "{analysis_type}" == "correlation":
 else:
     print(df.head())
 """
-    
+
     with SandboxSession(lang="python") as session:
         result = session.run(code, libraries=["pandas"])
         return result.stdout
@@ -383,12 +371,12 @@ def execute_code_with_context(
 ) -> str:
     """
     Execute code with optional context variables.
-    
+
     Args:
         code: Code to execute
         language: Programming language
         context: Dictionary of variables to inject
-    
+
     Returns:
         Execution output
     """
@@ -396,13 +384,13 @@ def execute_code_with_context(
         # Inject context if provided
         if context and language == "python":
             context_code = "\n".join([
-                f"{key} = {repr(value)}" 
+                f"{key} = {repr(value)}"
                 for key, value in context.items()
             ])
             full_code = f"{context_code}\n\n{code}"
         else:
             full_code = code
-        
+
         result = session.run(full_code)
         return result.stdout
 
@@ -437,11 +425,11 @@ from llama_index.core.response_synthesizers import BaseSynthesizer
 
 class CodeExecutionQueryEngine(CustomQueryEngine):
     """Query engine that executes code to answer questions"""
-    
+
     def __init__(self, llm, security_policy=None):
         self.llm = llm
         self.security_policy = security_policy
-    
+
     def custom_query(self, query_str: str) -> str:
         # Generate code to answer the query
         code_prompt = f"""
@@ -450,7 +438,7 @@ Write Python code to answer this question: {query_str}
 The code should print the answer clearly.
 """
         code = self.llm.complete(code_prompt).text
-        
+
         # Execute code safely
         with SandboxSession(
             lang="python",
@@ -461,12 +449,12 @@ The code should print the answer clearly.
                 is_safe, violations = session.is_safe(code)
                 if not is_safe:
                     return f"Code failed security check: {violations}"
-            
+
             result = session.run(code)
-            
+
             if result.exit_code != 0:
                 return f"Execution error: {result.stderr}"
-            
+
             return result.stdout
 
 # Use the query engine
@@ -522,7 +510,7 @@ def create_code_execution_function() -> Dict:
 def handle_function_call(function_call) -> str:
     """Handle the function call from OpenAI"""
     args = json.loads(function_call.arguments)
-    
+
     with SandboxSession(
         lang=args["language"],
         verbose=False
@@ -531,7 +519,7 @@ def handle_function_call(function_call) -> str:
             args["code"],
             libraries=args.get("libraries")
         )
-        
+
         return json.dumps({
             "stdout": result.stdout,
             "stderr": result.stderr,
@@ -557,7 +545,7 @@ if response.choices[0].message.function_call:
     function_result = handle_function_call(
         response.choices[0].message.function_call
     )
-    
+
     # Add function result to conversation
     messages.append(response.choices[0].message)
     messages.append({
@@ -565,13 +553,13 @@ if response.choices[0].message.function_call:
         "name": "execute_code",
         "content": function_result
     })
-    
+
     # Get final response
     final_response = client.chat.completions.create(
         model="gpt-4",
         messages=messages
     )
-    
+
     print(final_response.choices[0].message.content)
 ```
 
@@ -585,7 +573,7 @@ import asyncio
 
 class CodeExecutor(Protocol):
     """Protocol for code execution integration"""
-    
+
     def execute(
         self,
         code: str,
@@ -597,36 +585,34 @@ class CodeExecutor(Protocol):
 
 class SandboxCodeExecutor:
     """Sandbox implementation of CodeExecutor"""
-    
+
     def __init__(self, default_security_policy=None):
         self.default_security_policy = default_security_policy
-    
+
     def execute(
         self,
         code: str,
         language: str = "python",
         libraries: Optional[List[str]] = None,
-        timeout: int = 30,
         security_policy=None,
         **kwargs
     ) -> Dict[str, Any]:
         """
         Execute code in sandbox.
-        
+
         Returns:
             Dictionary with stdout, stderr, exit_code, and plots
         """
         policy = security_policy or self.default_security_policy
-        
+
         try:
             with SandboxSession(
                 lang=language,
                 security_policy=policy,
-                runtime_configs={"timeout": timeout},
                 **kwargs
             ) as session:
                 result = session.run(code, libraries)
-                
+
                 return {
                     "success": result.exit_code == 0,
                     "stdout": result.stdout,
@@ -640,7 +626,7 @@ class SandboxCodeExecutor:
                 "error": str(e),
                 "exit_code": -1
             }
-    
+
     async def execute_async(
         self,
         code: str,
@@ -685,18 +671,18 @@ import time
 
 class CodeExecutionMiddleware:
     """Middleware for code execution with logging, caching, etc."""
-    
+
     def __init__(self):
         self.cache = {}
         self.execution_log = []
-    
+
     def with_logging(self, func: Callable) -> Callable:
         """Log all executions"""
         @functools.wraps(func)
         def wrapper(code: str, **kwargs):
             start_time = time.time()
             result = func(code, **kwargs)
-            
+
             self.execution_log.append({
                 "timestamp": time.time(),
                 "code": code,
@@ -704,25 +690,25 @@ class CodeExecutionMiddleware:
                 "duration": time.time() - start_time,
                 "success": result.get("success", False)
             })
-            
+
             return result
         return wrapper
-    
+
     def with_caching(self, func: Callable) -> Callable:
         """Cache execution results"""
         @functools.wraps(func)
         def wrapper(code: str, **kwargs):
             cache_key = f"{code}:{kwargs}"
-            
+
             if cache_key in self.cache:
                 return self.cache[cache_key]
-            
+
             result = func(code, **kwargs)
             self.cache[cache_key] = result
-            
+
             return result
         return wrapper
-    
+
     def with_retry(self, max_attempts: int = 3) -> Callable:
         """Retry on failure"""
         def decorator(func: Callable) -> Callable:
@@ -732,10 +718,10 @@ class CodeExecutionMiddleware:
                     result = func(code, **kwargs)
                     if result.get("success"):
                         return result
-                    
+
                     if attempt < max_attempts - 1:
                         time.sleep(1)  # Wait before retry
-                
+
                 return result
             return wrapper
         return decorator
@@ -767,13 +753,13 @@ result = execute_with_features(
 ```python
 class RobustCodeExecutor:
     """Robust code executor with comprehensive error handling"""
-    
+
     def execute_safely(self, code: str, **kwargs):
         try:
             # Pre-execution validation
             if not code or not code.strip():
                 return {"error": "Empty code provided"}
-            
+
             # Security check
             with SandboxSession(**kwargs) as session:
                 is_safe, violations = session.is_safe(code)
@@ -784,10 +770,10 @@ class RobustCodeExecutor:
                             v.description for v in violations
                         ]
                     }
-                
+
                 # Execute
                 result = session.run(code)
-                
+
                 # Post-execution validation
                 if result.exit_code != 0:
                     return {
@@ -795,12 +781,12 @@ class RobustCodeExecutor:
                         "stderr": result.stderr,
                         "exit_code": result.exit_code
                     }
-                
+
                 return {
                     "success": True,
                     "output": result.stdout
                 }
-                
+
         except TimeoutError:
             return {"error": "Execution timeout"}
         except MemoryError:
@@ -818,11 +804,11 @@ import queue
 
 class ResourceManagedExecutor:
     """Executor with resource management"""
-    
+
     def __init__(self, max_concurrent=5):
         self.semaphore = threading.Semaphore(max_concurrent)
         self.execution_queue = queue.Queue()
-    
+
     @contextmanager
     def acquire_resources(self):
         """Acquire execution resources"""
@@ -831,7 +817,7 @@ class ResourceManagedExecutor:
             yield
         finally:
             self.semaphore.release()
-    
+
     def execute(self, code: str, **kwargs):
         """Execute with resource management"""
         with self.acquire_resources():
@@ -840,10 +826,9 @@ class ResourceManagedExecutor:
             runtime_configs.update({
                 "cpu_count": 1,
                 "mem_limit": "256m",
-                "timeout": 30
             })
             kwargs["runtime_configs"] = runtime_configs
-            
+
             with SandboxSession(**kwargs) as session:
                 return session.run(code)
 ```
@@ -868,18 +853,18 @@ class ExecutionMetrics:
 
 class MonitoredExecutor:
     """Executor with monitoring capabilities"""
-    
+
     def __init__(self):
         self.metrics: List[ExecutionMetrics] = []
-    
+
     def execute_with_monitoring(self, code: str, **kwargs):
         """Execute code with monitoring"""
         start_time = time.time()
-        
+
         try:
             with SandboxSession(**kwargs) as session:
                 result = session.run(code)
-                
+
                 # Collect metrics
                 metric = ExecutionMetrics(
                     timestamp=start_time,
@@ -888,11 +873,11 @@ class MonitoredExecutor:
                     success=result.exit_code == 0,
                     code_length=len(code)
                 )
-                
+
                 self.metrics.append(metric)
-                
+
                 return result
-                
+
         except Exception as e:
             # Record failure
             metric = ExecutionMetrics(
@@ -904,20 +889,20 @@ class MonitoredExecutor:
             )
             self.metrics.append(metric)
             raise
-    
+
     def get_statistics(self):
         """Get execution statistics"""
         if not self.metrics:
             return {}
-        
+
         success_rate = sum(
             1 for m in self.metrics if m.success
         ) / len(self.metrics)
-        
+
         avg_duration = sum(
             m.duration for m in self.metrics
         ) / len(self.metrics)
-        
+
         return {
             "total_executions": len(self.metrics),
             "success_rate": success_rate,

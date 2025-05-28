@@ -12,7 +12,7 @@ import pytest
 
 from llm_sandbox.exceptions import InvalidRegexPatternError
 from llm_sandbox.language_handlers.python_handler import PythonHandler
-from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 
 class TestSecurityIssueSeverity:
@@ -88,12 +88,12 @@ class TestSecurityPattern:
         assert compiled_pattern is not None
 
 
-class TestDangerousModule:
-    """Test cases for DangerousModule class."""
+class TestRestrictedModule:
+    """Test cases for RestrictedModule class."""
 
     def test_restricted_module_creation(self) -> None:
         """Test creating a dangerous module."""
-        module = DangerousModule(
+        module = RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
@@ -106,9 +106,9 @@ class TestDangerousModule:
     def test_module_with_different_severities(self) -> None:
         """Test modules with different severity levels."""
         modules = [
-            DangerousModule(name="requests", description="HTTP library", severity=SecurityIssueSeverity.LOW),
-            DangerousModule(name="socket", description="Network operations", severity=SecurityIssueSeverity.MEDIUM),
-            DangerousModule(name="subprocess", description="Process execution", severity=SecurityIssueSeverity.HIGH),
+            RestrictedModule(name="requests", description="HTTP library", severity=SecurityIssueSeverity.LOW),
+            RestrictedModule(name="socket", description="Network operations", severity=SecurityIssueSeverity.MEDIUM),
+            RestrictedModule(name="subprocess", description="Process execution", severity=SecurityIssueSeverity.HIGH),
         ]
 
         assert modules[0].severity == SecurityIssueSeverity.LOW
@@ -142,7 +142,7 @@ class TestSecurityPolicy:
         ]
 
         modules = [
-            DangerousModule(
+            RestrictedModule(
                 name="os",
                 description="OS interface",
                 severity=SecurityIssueSeverity.HIGH,
@@ -188,7 +188,7 @@ class TestSecurityPolicy:
             restricted_modules=[],
         )
 
-        new_module = DangerousModule(
+        new_module = RestrictedModule(
             name="subprocess",
             description="Process management",
             severity=SecurityIssueSeverity.HIGH,
@@ -234,17 +234,17 @@ class TestSecurityPolicyIntegration:
         ]
 
         modules = [
-            DangerousModule(
+            RestrictedModule(
                 name="os",
                 description="Operating system interface",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            DangerousModule(
+            RestrictedModule(
                 name="subprocess",
                 description="Subprocess management",
                 severity=SecurityIssueSeverity.HIGH,
             ),
-            DangerousModule(
+            RestrictedModule(
                 name="requests",
                 description="HTTP requests",
                 severity=SecurityIssueSeverity.LOW,
@@ -289,7 +289,7 @@ class TestSecurityPolicyIntegration:
         sample_policy.add_pattern(new_pattern)
 
         # Add new module
-        new_module = DangerousModule(
+        new_module = RestrictedModule(
             name="socket",
             description="Network sockets",
             severity=SecurityIssueSeverity.MEDIUM,

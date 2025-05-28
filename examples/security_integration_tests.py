@@ -9,7 +9,7 @@ import logging
 
 from llm_sandbox import SandboxSession
 from llm_sandbox.data import ConsoleOutput, ExecutionResult
-from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -140,27 +140,27 @@ def create_comprehensive_security_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Subprocess management",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="socket",
             description="Network socket operations",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="urllib",
             description="URL handling library",
             severity=SecurityIssueSeverity.LOW,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="requests",
             description="HTTP requests library",
             severity=SecurityIssueSeverity.LOW,
@@ -293,7 +293,7 @@ def run_library_installation_tests() -> None:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,

@@ -45,7 +45,7 @@ class DefaultImage:
     provided by the user for a given programming language.
     """
 
-    PYTHON = "python:3.11-bullseye"
+    PYTHON = "vndee/sandbox-python-311-bullseye"
     JAVA = "openjdk:11.0.12-jdk-bullseye"
     JAVASCRIPT = "node:22-bullseye"
     CPP = "gcc:11.2.0-bullseye"

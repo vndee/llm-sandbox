@@ -33,7 +33,7 @@ class SecurityPattern(BaseModel):
         return v
 
 
-class DangerousModule(BaseModel):
+class RestrictedModule(BaseModel):
     """A dangerous module."""
 
     name: str = Field(..., description="The name of the module.")
@@ -49,7 +49,7 @@ class SecurityPolicy(BaseModel):
         description="The minimum severity level at which security issues will be blocked.",
     )
     patterns: list[SecurityPattern] | None = Field(default=None, description="The security patterns in the code.")
-    restricted_modules: list[DangerousModule] | None = Field(
+    restricted_modules: list[RestrictedModule] | None = Field(
         default=None, description="The modules that are restricted based on their severity level."
     )
 
@@ -59,7 +59,7 @@ class SecurityPolicy(BaseModel):
             self.patterns = []
         self.patterns.append(pattern)
 
-    def add_restricted_module(self, module: DangerousModule) -> None:
+    def add_restricted_module(self, module: RestrictedModule) -> None:
         """Add a restricted module to the policy."""
         if self.restricted_modules is None:
             self.restricted_modules = []

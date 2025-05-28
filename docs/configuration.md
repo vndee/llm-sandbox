@@ -23,12 +23,11 @@ Supported languages and their identifiers:
 
 | Language | Identifier | Default Image |
 |----------|------------|---------------|
-| Python | `python` | `python:3.11-bullseye` |
+| Python | `python` | `vndee/sandbox-python-311-bullseye` |
 | JavaScript | `javascript` | `node:22-bullseye` |
 | Java | `java` | `openjdk:11.0.12-jdk-bullseye` |
 | C++ | `cpp` | `gcc:11.2.0-bullseye` |
 | Go | `go` | `golang:1.23.4-bullseye` |
-| Ruby | `ruby` | `ruby:3.0.2-bullseye` |
 
 ### Container Images
 
@@ -86,106 +85,193 @@ WORKDIR /sandbox
 
 ## Runtime Configuration
 
-### Resource Limits
+**Important**: Runtime configurations work differently depending on the backend:
 
+### Docker and Podman Backends
+
+For Docker and Podman backends, runtime configuration options are passed as **extra arguments** to the respective Python libraries (`docker-py` and `podman-py`). These are used to configure container creation and execution parameters.
+
+#### Docker Runtime Config
 ```python
-with SandboxSession(
-    lang="python",
-    runtime_configs={
-        # CPU limits
-        "cpu_count": 2,          # Number of CPUs
-        "cpu_shares": 1024,      # CPU shares (relative weight)
-        "cpu_period": 100000,    # CPU CFS period in microseconds
-        "cpu_quota": 50000,      # CPU CFS quota in microseconds
-        
-        # Memory limits
-        "mem_limit": "512m",     # Memory limit (e.g., "512m", "1g")
-        "memswap_limit": "1g",   # Memory + swap limit
-        
-        # Other limits
-        "pids_limit": 100,       # Maximum number of PIDs
-        "timeout": 30,           # Execution timeout in seconds
-    }
-) as session:
-    pass
+# Docker-specific runtime configuration
+runtime_config = {
+    "privileged": False,
+    "memory": "512m",
+    "cpu_period": 100000,
+    "cpu_quota": 50000,
+    "network_mode": "bridge",
+    "volumes": {"/host/path": {"bind": "/container/path", "mode": "ro"}},
+    "environment": {"PYTHONPATH": "/app"},
+    "working_dir": "/workspace"
+}
+
+session = SandboxSession(
+    image="python:3.9",
+    backend="docker",
+    runtime_config=runtime_config
+)
 ```
 
-### User and Permissions
+**Docker Documentation**: See the [Docker SDK for Python documentation](https://docker-py.readthedocs.io/) for complete API reference and available parameters.
+
+#### Podman Runtime Config
+```python
+# Podman-specific runtime configuration
+runtime_config = {
+    "privileged": False,
+    "memory": "512m",
+    "cpu_shares": 512,
+    "network_mode": "bridge",
+    "volumes": {"/host/path": {"bind": "/container/path", "mode": "ro"}},
+    "environment": {"PYTHONPATH": "/app"},
+    "working_dir": "/workspace"
+}
+
+session = SandboxSession(
+    image="python:3.9",
+    backend="podman",
+    runtime_config=runtime_config
+)
+```
+
+**Podman Documentation**: See the [Podman Python SDK documentation](https://podman-py.readthedocs.io/) for complete API reference and available parameters.
+
+### Kubernetes Backend
+
+For Kubernetes, runtime configurations are **not supported** through the `runtime_config` parameter. Instead, users should define their requirements as **Kubernetes Pod manifests** using the `pod_manifest` parameter.
 
 ```python
-# Run as non-root user
-with SandboxSession(
-    lang="python",
-    runtime_configs={
-        "user": "1000:1000",     # UID:GID
+# Kubernetes configuration using pod_manifest parameter
+import uuid
+
+# Generate unique pod name to avoid conflicts
+unique_suffix = str(uuid.uuid4())[:8]
+pod_name = f"sandbox-{unique_suffix}"
+
+# Define custom pod manifest
+pod_manifest = {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": pod_name,
+        "labels": {"app": "sandbox"},
     },
-    workdir="/tmp/sandbox"      # Use writable directory for non-root
-) as session:
-    pass
+    "spec": {
+        "containers": [
+            {
+                "name": "sandbox-container",
+                "image": "python:3.9",
+                "tty": True,
+                "securityContext": {
+                    "runAsUser": 1000,
+                    "runAsGroup": 1000,
+                },
+                "resources": {
+                    "limits": {
+                        "memory": "512Mi",
+                        "cpu": "500m"
+                    },
+                    "requests": {
+                        "memory": "256Mi",
+                        "cpu": "250m"
+                    }
+                }
+            }
+        ],
+        "securityContext": {
+            "runAsUser": 1000,
+            "runAsGroup": 1000,
+        },
+    },
+}
 
-# Run with specific capabilities
-with SandboxSession(
+session = SandboxSession(
+    backend="kubernetes",
     lang="python",
-    runtime_configs={
-        "cap_add": ["SYS_PTRACE"],  # Add capabilities
-        "cap_drop": ["NET_RAW"],    # Drop capabilities
-    }
-) as session:
-    pass
+    image="python:3.9",
+    pod_manifest=pod_manifest,
+    workdir="/tmp/sandbox"  # Use writable directory for non-root
+)
 ```
 
-### Environment Variables
+To configure resources, security context, volumes, and other Pod-level settings in Kubernetes, you should:
+
+1. Create a Pod manifest file or use the Kubernetes Python client directly
+2. Apply resource limits, security policies, and other configurations through Kubernetes APIs
+3. Use ConfigMaps and Secrets for environment configuration
+
+**Kubernetes Documentation**: See the [Kubernetes Python Client documentation](https://kubernetes.readthedocs.io/) and [Kubernetes API reference](https://kubernetes.io/docs/reference/) for Pod configuration options.
+
+## Example Runtime Configurations
+
+### Resource Limits (Docker/Podman)
 
 ```python
-# Docker/Podman backend
-with SandboxSession(
-    lang="python",
-    runtime_configs={
-        "environment": {
-            "API_KEY": "secret",
-            "DEBUG": "true",
-            "CUSTOM_VAR": "value"
-        }
-    }
-) as session:
-    result = session.run("import os; print(os.environ.get('API_KEY'))")
-
-# Kubernetes backend
-with SandboxSession(
-    backend=SandboxBackend.KUBERNETES,
-    lang="python",
-    env_vars={
-        "API_KEY": "secret",
-        "DEBUG": "true"
-    }
-) as session:
-    pass
+# Memory and CPU limits
+runtime_config = {
+    "memory": "1g",           # 1GB memory limit
+    "cpu_period": 100000,     # CPU period in microseconds
+    "cpu_quota": 50000,       # CPU quota (50% of one CPU)
+    "memswap_limit": "2g"     # Memory + swap limit
+}
 ```
 
-### Volume Mounts
+### Network Configuration (Docker/Podman)
 
 ```python
-from docker.types import Mount
-
-# Docker/Podman mounts
-with SandboxSession(
-    lang="python",
-    mounts=[
-        Mount(
-            type="bind",
-            source="/host/data",
-            target="/sandbox/data",
-            read_only=True
-        ),
-        Mount(
-            type="volume",
-            source="myvolume",
-            target="/sandbox/cache"
-        )
-    ]
-) as session:
-    pass
+# Custom network settings
+runtime_config = {
+    "network_mode": "host",        # Use host networking
+    "ports": {"8080/tcp": 8080},   # Port mapping
+    "dns": ["8.8.8.8", "8.8.4.4"] # Custom DNS servers
+}
 ```
+
+### Volume Mounts (Docker/Podman)
+
+```python
+# Volume mounting
+runtime_config = {
+    "volumes": {
+        "/host/data": {"bind": "/data", "mode": "rw"},
+        "/host/config": {"bind": "/config", "mode": "ro"}
+    }
+}
+```
+
+### Environment Variables (Docker/Podman)
+
+```python
+# Environment configuration
+runtime_config = {
+    "environment": {
+        "PYTHONPATH": "/app:/libs",
+        "DEBUG": "true",
+        "API_KEY": "your-api-key"
+    }
+}
+```
+
+### Security Configuration (Docker/Podman)
+
+```python
+# Security settings
+runtime_config = {
+    "privileged": False,
+    "user": "1000:1000",           # Run as specific user/group
+    "cap_drop": ["ALL"],           # Drop all capabilities
+    "cap_add": ["NET_ADMIN"],      # Add specific capabilities
+    "security_opt": ["no-new-privileges:true"]
+}
+```
+
+## Backend-Specific Documentation Links
+
+- **Docker**: [Docker SDK for Python](https://docker-py.readthedocs.io/) - Complete API reference for container configuration
+- **Podman**: [Podman Python SDK](https://podman-py.readthedocs.io/) - Complete API reference for Podman container management
+- **Kubernetes**: [Kubernetes Python Client](https://kubernetes.readthedocs.io/) - Official Kubernetes API client documentation
+
+For detailed parameter lists and advanced configuration options, please refer to the respective documentation links above.
 
 ## Security Configuration
 
@@ -193,9 +279,9 @@ with SandboxSession(
 
 ```python
 from llm_sandbox.security import (
-    SecurityPolicy, 
-    SecurityPattern, 
-    DangerousModule,
+    SecurityPolicy,
+    SecurityPattern,
+    RestrictedModule,
     SecurityIssueSeverity
 )
 
@@ -215,7 +301,7 @@ policy = SecurityPolicy(
         )
     ],
     restricted_modules=[
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Process execution",
             severity=SecurityIssueSeverity.HIGH
@@ -227,121 +313,104 @@ with SandboxSession(lang="python", security_policy=policy) as session:
     pass
 ```
 
-### Using Preset Policies
+For more information, see the [Security Policies](security.md) page.
 
-```python
-from llm_sandbox.security import get_security_policy
+## Custom Client Configuration
 
-# Available presets
-presets = [
-    "minimal",      # Very permissive
-    "development",  # Balanced for development
-    "educational",  # For teaching environments  
-    "production",   # Strict for production
-    "strict",       # Very restrictive
-    "data_science", # Optimized for data analysis
-    "web_scraping"  # For web scraping tasks
-]
+By default, LLM Sandbox uses the standard client initialization for each backend:
 
-# Use a preset
-policy = get_security_policy("production")
-with SandboxSession(lang="python", security_policy=policy) as session:
-    pass
-```
+- Docker: `docker.from_env()`
+- Podman: `PodmanClient()`
+- Kubernetes: Loads from `~/.kube/config`
 
-## Backend-Specific Configuration
+However, you can provide your own client instances to connect to remote servers, custom sockets, or clusters with specific configurations.
 
-### Docker Configuration
+### Docker Remote Connection
 
 ```python
 import docker
 
-# Use custom Docker client
+# Connect to remote Docker daemon
 client = docker.DockerClient(
-    base_url="tcp://docker-host:2375",
+    base_url="tcp://remote-docker-host:2376",
+    tls=True,
     timeout=30
 )
 
 with SandboxSession(
-    backend=SandboxBackend.DOCKER,
-    client=client,
-    lang="python",
-    stream=True,  # Stream command output
-    commit_container=True  # Save container state as new image
+    backend="docker",
+    client=client,  # Use custom client instead of docker.from_env()
+    lang="python"
 ) as session:
     pass
 ```
 
-### Kubernetes Configuration
-
-```python
-from kubernetes import client, config
-
-# Load custom kubeconfig
-config.load_kube_config(config_file="~/.kube/custom-config")
-k8s_client = client.CoreV1Api()
-
-with SandboxSession(
-    backend=SandboxBackend.KUBERNETES,
-    client=k8s_client,
-    lang="python",
-    kube_namespace="sandbox-namespace",
-    pod_manifest={
-        "apiVersion": "v1",
-        "kind": "Pod",
-        "metadata": {
-            "name": "custom-sandbox",
-            "labels": {"app": "sandbox"}
-        },
-        "spec": {
-            "containers": [{
-                "name": "sandbox",
-                "image": "python:3.11",
-                "resources": {
-                    "limits": {
-                        "memory": "512Mi",
-                        "cpu": "500m"
-                    }
-                }
-            }]
-        }
-    }
-) as session:
-    pass
-```
-
-### Podman Configuration
+### Podman Custom Socket
 
 ```python
 from podman import PodmanClient
 
-# Custom Podman client
+# Connect to custom Podman socket
 client = PodmanClient(
     base_url="unix:///run/user/1000/podman/podman.sock",
-    timeout=30
+    timeout=60
 )
 
 with SandboxSession(
-    backend=SandboxBackend.PODMAN,
-    client=client,
-    lang="python",
-    runtime_configs={
-        "userns_mode": "keep-id",  # User namespace mode
-        "security_opt": ["no-new-privileges"]
-    }
+    backend="podman",
+    client=client,  # Use custom client
+    lang="python"
 ) as session:
     pass
 ```
 
-### Micromamba Configuration
+### Kubernetes Remote Cluster
 
 ```python
+from kubernetes import client, config
+
+# Load config from custom file or remote cluster
+config.load_kube_config(
+    config_file="/path/to/custom/kubeconfig",
+    context="remote-cluster-context"
+)
+
+# Or configure for remote cluster programmatically
+configuration = client.Configuration()
+configuration.host = "https://k8s-cluster.example.com:6443"
+configuration.api_key_prefix['authorization'] = 'Bearer'
+configuration.api_key['authorization'] = 'your-token-here'
+
+k8s_client = client.CoreV1Api(client.ApiClient(configuration))
+
 with SandboxSession(
-    backend=SandboxBackend.MICROMAMBA,
+    backend="kubernetes",
+    client=k8s_client,  # Use custom configured client
     lang="python",
-    image="mambaorg/micromamba:latest",
-    environment="myenv"  # Conda environment name
+    kube_namespace="custom-namespace"
 ) as session:
+    pass
+```
+
+### Docker with Custom TLS Configuration
+
+```python
+import docker
+import ssl
+
+# Docker with custom TLS/SSL settings
+tls_config = docker.tls.TLSConfig(
+    client_cert=('/path/to/client-cert.pem', '/path/to/client-key.pem'),
+    ca_cert='/path/to/ca.pem',
+    verify=True
+)
+
+client = docker.DockerClient(
+    base_url="tcp://secure-docker-host:2376",
+    tls=tls_config
+)
+
+with SandboxSession(backend="docker", client=client, lang="python") as session:
     pass
 ```
 
@@ -362,7 +431,7 @@ import matplotlib.pyplot as plt
 plt.plot([1, 2, 3], [1, 4, 9])
 plt.show()
     """)
-    
+
     # Access captured plots
     for plot in result.plots:
         print(f"Plot format: {plot.format}")
@@ -384,10 +453,10 @@ class CustomLanguageHandler(AbstractLanguageHandler):
             execution_commands=["custom-runner {file}"],
             package_manager="custom-pm install"
         )
-    
+
     def get_import_patterns(self, module):
         return rf"import\s+{module}"
-    
+
     # Implement other required methods...
 
 # Register custom handler
@@ -432,7 +501,7 @@ with SandboxSession(
 ) as session:
     # Install packages
     session.install(["numpy", "pandas", "scikit-learn"])
-    
+
     # Run initial setup
     session.run("""
 import numpy as np
@@ -453,15 +522,13 @@ print("Environment ready!")
 dev_config = {
     "cpu_count": 4,
     "mem_limit": "2g",
-    "timeout": 60
-}
+\}
 
 # Production environment
 prod_config = {
     "cpu_count": 1,
     "mem_limit": "256m",
-    "timeout": 10,
-    "pids_limit": 50
+\    "pids_limit": 50
 }
 ```
 
@@ -514,26 +581,16 @@ def create_session_with_fallback(**kwargs):
         SandboxBackend.PODMAN,
         SandboxBackend.KUBERNETES
     ]
-    
+
     for backend in backends:
         try:
             return SandboxSession(backend=backend, **kwargs)
         except Exception as e:
             print(f"Backend {backend} failed: {e}")
             continue
-    
+
     raise RuntimeError("No available backends")
 ```
-
-## Environment Variables Reference
-
-LLM Sandbox respects these environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------||
-| `DOCKER_HOST` | Docker daemon socket | `unix:///var/run/docker.sock` |
-| `KUBECONFIG` | Kubernetes config file | `~/.kube/config` |
-| `PODMAN_SOCKET` | Podman socket path | System default |
 
 ## Next Steps
 

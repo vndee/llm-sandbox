@@ -50,6 +50,8 @@ dev = [
     "langchain-openai>=0.3.18",
     "langchain-core>=0.3.61",
     "nest-asyncio>=1.6.0",
+    "mkdocs-minify-plugin>=0.8.0",
+    "mkdocs-git-revision-date-localized-plugin>=1.4.6",
 ]
 
 [build-system]

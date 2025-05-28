@@ -37,6 +37,7 @@ make install
 ```
 
 This will:
+
 - Create a virtual environment
 - Install all dependencies
 - Install pre-commit hooks
@@ -92,10 +93,10 @@ def test_your_feature():
     """Test description"""
     # Arrange
     feature = YourFeature()
-    
+
     # Act
     result = feature.do_something()
-    
+
     # Assert
     assert result == expected_value
 
@@ -131,27 +132,72 @@ make docs
 
 ### 6. Commit Your Changes
 
-Write meaningful commit messages:
+Write meaningful commit messages following the [Conventional Commits](https://www.conventionalcommits.org/) specification:
 
 ```bash
 # Good
 git commit -m "feat: add support for Ruby language handler"
 git commit -m "fix: resolve memory leak in Docker session cleanup"
 git commit -m "docs: update security policy examples"
+git commit -m "test: add unit tests for Kubernetes backend"
+git commit -m "refactor: simplify session factory logic"
+
+# With scope
+git commit -m "feat(security): add new pattern detection for SQL injection"
+git commit -m "fix(docker): handle container cleanup on session timeout"
+
+# Breaking changes
+git commit -m "feat!: remove deprecated session.execute() method"
+git commit -m "feat(api)!: change SecurityPolicy constructor signature"
 
 # Bad
 git commit -m "fixed stuff"
 git commit -m "updates"
 ```
 
-Commit message format:
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation changes
-- `test:` Test additions/changes
-- `refactor:` Code refactoring
-- `perf:` Performance improvements
-- `chore:` Maintenance tasks
+**Conventional Commit Format:**
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+**Types:**
+
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation only changes
+- `style`: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)
+- `refactor`: A code change that neither fixes a bug nor adds a feature
+- `perf`: A code change that improves performance
+- `test`: Adding missing tests or correcting existing tests
+- `build`: Changes that affect the build system or external dependencies
+- `ci`: Changes to our CI configuration files and scripts
+- `chore`: Other changes that don't modify src or test files
+- `revert`: Reverts a previous commit
+
+**Breaking Changes:**
+- Add `!` after the type/scope to indicate breaking changes
+- Or include `BREAKING CHANGE:` in the footer
+
+**Examples with body and footer:**
+```bash
+git commit -m "feat(lang): add Rust language support
+
+Add comprehensive Rust language handler with cargo support.
+Includes compilation and execution pipeline for .rs files.
+
+Closes #123"
+
+git commit -m "fix(security): prevent code injection in eval patterns
+
+The previous regex pattern allowed certain escape sequences
+that could bypass security restrictions.
+
+BREAKING CHANGE: SecurityPattern.pattern property is now read-only"
+```
 
 ### 7. Push and Create Pull Request
 
@@ -160,6 +206,7 @@ git push origin feature/your-feature-name
 ```
 
 Then create a pull request on GitHub with:
+
 - Clear description of changes
 - Link to related issues
 - Screenshots/examples if applicable
@@ -209,10 +256,10 @@ class RustHandler(AbstractLanguageHandler):
             execution_commands=["rustc {file} -o /tmp/program && /tmp/program"],
             package_manager="cargo add",
         )
-    
+
     def get_import_patterns(self, module: str) -> str:
         return rf"use\s+{module}"
-    
+
     # Implement other required methods...
 ```
 
@@ -264,11 +311,11 @@ class SandboxNewBackendSession(Session):
     def open(self):
         # Implementation
         pass
-    
+
     def close(self):
         # Implementation
         pass
-    
+
     # Implement all abstract methods...
 ```
 
@@ -309,7 +356,7 @@ class TestSecurityPolicies:
     def test_pattern_detection(self):
         # Test implementation
         pass
-    
+
     def test_module_restriction(self):
         # Test implementation
         pass
@@ -333,7 +380,7 @@ from unittest.mock import Mock, patch
 def test_docker_connection(mock_docker):
     mock_client = Mock()
     mock_docker.return_value = mock_client
-    
+
     session = SandboxSession(backend=SandboxBackend.DOCKER)
     # Test implementation
 ```
@@ -347,21 +394,21 @@ Use Google-style docstrings:
 ```python
 def execute_code(code: str, language: str = "python") -> ConsoleOutput:
     """Execute code in a sandboxed environment.
-    
+
     This function creates an isolated container environment and
     executes the provided code safely.
-    
+
     Args:
         code: The source code to execute
         language: Programming language identifier
-        
+
     Returns:
         ConsoleOutput containing stdout, stderr, and exit code
-        
+
     Raises:
         SecurityError: If code violates security policy
         NotOpenSessionError: If session is not initialized
-        
+
     Example:
         >>> result = execute_code("print('Hello')")
         >>> print(result.stdout)
@@ -449,6 +496,7 @@ When contributing security-related features:
 ## Recognition
 
 Contributors are recognized in:
+
 - CONTRIBUTORS.md file
 - GitHub contributors page
 - Release notes

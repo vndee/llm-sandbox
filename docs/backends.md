@@ -11,7 +11,6 @@ Supported backends:
 | **Docker** | Development, single-host | Yes | Limited | High |
 | **Kubernetes** | Production, scalable | Configurable | Full | High |
 | **Podman** | Rootless security | No (rootless) | Limited | High |
-| **Micromamba** | Conda environments | Yes | None | Medium |
 
 ## Docker Backend
 
@@ -162,27 +161,27 @@ with SandboxSession(
         "mem_limit": "512m",
         "memswap_limit": "1g",
         "pids_limit": 100,
-        
+
         # Security options
         "privileged": False,
         "read_only": True,
         "cap_drop": ["ALL"],
         "cap_add": ["DAC_OVERRIDE"],
         "security_opt": ["no-new-privileges"],
-        
+
         # User and group
         "user": "1000:1000",
         "userns_mode": "host",
-        
+
         # Environment
         "environment": {
             "PYTHONUNBUFFERED": "1",
             "CUSTOM_VAR": "value"
         },
-        
+
         # Devices
         "devices": ["/dev/sda:/dev/xvda:rwm"],
-        
+
         # Logging
         "log_config": {
             "type": "json-file",
@@ -199,7 +198,7 @@ with SandboxSession(
    ```python
    # Good
    image="python:3.11.5-slim-bullseye"
-   
+
    # Avoid
    image="python:latest"
    ```
@@ -219,7 +218,7 @@ with SandboxSession(
    # Dockerfile
    FROM python:3.11-slim as builder
    RUN pip install --user numpy pandas
-   
+
    FROM python:3.11-slim
    COPY --from=builder /root/.local /root/.local
    ```
@@ -572,125 +571,11 @@ unit = container.generate_systemd(
    runtime_configs={"userns_mode": "keep-id"}
    ```
 
-## Micromamba Backend
-
-### Overview
-
-Micromamba backend uses conda environments instead of full containers, providing lightweight isolation for Python-focused workloads.
-
-### Installation
-
-```bash
-# Install Micromamba
-curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj bin/micromamba
-
-# Install LLM Sandbox
-pip install 'llm-sandbox[docker]'  # Uses Docker with Micromamba image
-```
-
-### Basic Usage
-
-```python
-from llm_sandbox import SandboxSession, SandboxBackend
-
-with SandboxSession(
-    backend=SandboxBackend.MICROMAMBA,
-    lang="python",
-    image="mambaorg/micromamba:latest",
-    environment="sandbox"  # Conda environment name
-) as session:
-    result = session.run("print('Hello from Micromamba!')")
-    print(result.stdout)
-```
-
-### Custom Environments
-
-```python
-# Create custom Dockerfile with environment
-Dockerfile = """
-FROM mambaorg/micromamba:latest
-
-# Create environment file
-COPY --chown=$MAMBA_USER:$MAMBA_USER environment.yml /tmp/environment.yml
-
-# Create environment
-RUN micromamba create -f /tmp/environment.yml && \
-    micromamba clean --all --yes
-"""
-
-# environment.yml
-environment_yml = """
-name: ml-sandbox
-channels:
-  - conda-forge
-dependencies:
-  - python=3.11
-  - numpy
-  - pandas
-  - scikit-learn
-  - matplotlib
-  - jupyter
-"""
-```
-
-### Micromamba Best Practices
-
-1. **Pre-built environments**
-   ```python
-   # Build image with pre-installed packages
-   dockerfile="./micromamba/Dockerfile"
-   ```
-
-2. **Use conda-forge channel**
-   ```yaml
-   channels:
-     - conda-forge
-     - defaults
-   ```
-
-## Backend Comparison
-
-### Performance Comparison
-
-| Operation | Docker | Kubernetes | Podman | Micromamba |
-|-----------|---------|-----------|---------|------------|
-| Startup Time | ~1s | ~3-5s | ~1s | ~2s |
-| Memory Overhead | Low | Medium | Low | Very Low |
-| Isolation Level | High | High | High | Medium |
-| Network Performance | Native | Good | Native | Native |
-
-### Feature Matrix
-
-| Feature | Docker | Kubernetes | Podman | Micromamba |
-|---------|---------|-----------|---------|------------|
-| Rootless | Optional | Yes | Yes | N/A |
-| Orchestration | Swarm | Native | None | None |
-| Windows Support | Yes | Yes | WSL2 | Yes |
-| macOS Support | Yes | Yes | Limited | Yes |
-| GPU Support | Yes | Yes | Yes | Yes |
-| Multi-arch | Yes | Yes | Yes | Limited |
-
 ### Use Case Recommendations
 
-1. **Development**: Docker or Podman
-   - Fast iteration
-   - Easy debugging
-   - Local testing
-
-2. **Production**: Kubernetes
-   - Scalability
-   - High availability
-   - Enterprise features
-
-3. **Security-Critical**: Podman
-   - Rootless by default
-   - No daemon
-   - SELinux integration
-
-4. **Data Science**: Micromamba
-   - Conda packages
-   - Scientific computing
-   - Lightweight
+1. **Development**: Docker or Podman for fast iteration and easy debugging
+2. **Production**: Kubernetes for scalability and enterprise features
+3. **Security-Critical**: Podman for rootless containers and SELinux integration
 
 ## Multi-Backend Support
 
@@ -704,7 +589,7 @@ def create_session_with_fallback(**kwargs):
         (SandboxBackend.PODMAN, {"client": get_podman_client()}),
         (SandboxBackend.KUBERNETES, {"kube_namespace": "default"}),
     ]
-    
+
     for backend, backend_kwargs in backends:
         try:
             return SandboxSession(
@@ -715,7 +600,7 @@ def create_session_with_fallback(**kwargs):
         except Exception as e:
             print(f"Backend {backend} failed: {e}")
             continue
-    
+
     raise RuntimeError("No available backends")
 ```
 
@@ -727,31 +612,31 @@ import subprocess
 def detect_available_backends():
     """Detect which backends are available"""
     available = []
-    
+
     # Check Docker
     try:
-        subprocess.run(["docker", "--version"], 
+        subprocess.run(["docker", "--version"],
                       capture_output=True, check=True)
         available.append(SandboxBackend.DOCKER)
     except:
         pass
-    
+
     # Check Podman
     try:
-        subprocess.run(["podman", "--version"], 
+        subprocess.run(["podman", "--version"],
                       capture_output=True, check=True)
         available.append(SandboxBackend.PODMAN)
     except:
         pass
-    
+
     # Check Kubernetes
     try:
-        subprocess.run(["kubectl", "version", "--client"], 
+        subprocess.run(["kubectl", "version", "--client"],
                       capture_output=True, check=True)
         available.append(SandboxBackend.KUBERNETES)
     except:
         pass
-    
+
     return available
 ```
 
@@ -795,6 +680,6 @@ systemctl --user start podman.socket
 ## Next Steps
 
 - Learn about [Supported Languages](languages.md)
-- Configure [Security Policies](security.md)  
+- Configure [Security Policies](security.md)
 - Explore [Integration Options](integrations.md)
 - See practical [Examples](examples.md)

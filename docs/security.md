@@ -1,72 +1,102 @@
 # Security Guide
 
-LLM Sandbox provides comprehensive security features to safely execute untrusted code. This guide covers security policies, best practices, and implementation details.
+LLM Sandbox provides comprehensive security features to safely execute untrusted code. This guide covers the security policy system for pre-execution code analysis and best practices.
 
 ## Overview
 
-Security in LLM Sandbox is implemented at multiple levels:
+Security in LLM Sandbox is implemented through multiple layers:
 
-1. **Container Isolation** - Code runs in isolated containers
-2. **Security Policies** - Pre-execution code analysis
-3. **Resource Limits** - Prevent resource exhaustion
-4. **Network Controls** - Limit network access
-5. **File System Restrictions** - Control file access
+1. **Container Isolation** - Code runs in isolated containers (configured via `runtime_config` or pod manifests)
+2. **Security Policies** - Pre-execution regex-based code analysis (this module's focus)
+3. **Resource Limits** - Prevent resource exhaustion (configured via container runtime)
+4. **Network Controls** - Limit network access (configured via container runtime)
+5. **File System Restrictions** - Control file access (configured via container runtime)
 
-## Security Policies
+> **Note**: Container-level security (resource limits, network controls, file system restrictions) is configured through `runtime_config` for Docker/Podman or pod manifests for Kubernetes as described in the [Configuration Guide](configuration.md). This module focuses on the **Security Policy** system for code analysis.
+
+## Security Policy System
+
+### Overview
+
+The security policy system analyzes code **before execution** using regex pattern matching to detect potentially dangerous operations. It provides:
+
+- **Pattern-based detection** of dangerous code constructs
+- **Language-specific module restriction** based on import statements
+- **Severity-based filtering** with configurable thresholds
+- **Comment filtering** to avoid false positives from documentation
 
 ### Understanding Security Policies
-
-Security policies analyze code before execution to detect potentially dangerous patterns:
 
 ```python
 from llm_sandbox.security import (
     SecurityPolicy,
     SecurityPattern,
-    DangerousModule,
+    RestrictedModule,
     SecurityIssueSeverity
 )
 
-# Create a security policy
+# Create a basic security policy
 policy = SecurityPolicy(
     severity_threshold=SecurityIssueSeverity.MEDIUM,
-    patterns=[...],         # Regex patterns to detect
-    restricted_modules=[...]  # Modules to block
+    patterns=[
+        SecurityPattern(
+            pattern=r"os\.system\s*\(",
+            description="System command execution",
+            severity=SecurityIssueSeverity.HIGH
+        )
+    ],
+    restricted_modules=[
+        RestrictedModule(
+            name="os",
+            description="Operating system interface",
+            severity=SecurityIssueSeverity.HIGH
+        )
+    ]
 )
 ```
 
 ### Severity Levels
 
-Security issues are classified by severity:
+Security issues are classified by severity with configurable blocking thresholds:
 
-| Level | Value | Description |
-|-------|-------|-------------|
-| `SAFE` | 0 | No security concerns |
-| `LOW` | 1 | Minor concerns, usually allowed |
-| `MEDIUM` | 2 | Moderate risk, context-dependent |
-| `HIGH` | 3 | High risk, usually blocked |
+| Level | Value | Description | Example Use Case |
+|-------|-------|-------------|------------------|
+| `SAFE` | 0 | No security concerns | Allow everything |
+| `LOW` | 1 | Minor concerns | Development environments |
+| `MEDIUM` | 2 | Moderate risk | Production with controlled access |
+| `HIGH` | 3 | High risk | Strict security requirements |
+
+**Threshold Behavior**: Setting `severity_threshold=SecurityIssueSeverity.MEDIUM` will block MEDIUM, HIGH violations but allow LOW, SAFE patterns.
 
 ### Security Patterns
 
-Define patterns to detect dangerous code:
+Define regex patterns to detect dangerous code constructs:
 
 ```python
-# Detect system command execution
+# System command execution
 SecurityPattern(
-    pattern=r"os\.system\s*\(",
+    pattern=r"\bos\.system\s*\(",
     description="System command execution",
     severity=SecurityIssueSeverity.HIGH
 )
 
-# Detect file write operations
+# Dynamic code evaluation
 SecurityPattern(
-    pattern=r"open\s*\([^)]*['\"][wa]['\"][^)]*\)",
-    description="File write operation",
+    pattern=r"\beval\s*\(",
+    description="Dynamic code evaluation",
     severity=SecurityIssueSeverity.MEDIUM
 )
 
-# Detect network operations
+# File write operations
 SecurityPattern(
-    pattern=r"socket\.socket\s*\(",
+    pattern=r"\bopen\s*\([^)]*['\"][wa]['\"][^)]*\)",
+    description="File write operations",
+    severity=SecurityIssueSeverity.MEDIUM
+)
+
+# Network socket creation
+SecurityPattern(
+    pattern=r"\bsocket\.socket\s*\(",
     description="Raw socket creation",
     severity=SecurityIssueSeverity.MEDIUM
 )
@@ -74,112 +104,86 @@ SecurityPattern(
 
 ### Restricted Modules
 
-Block dangerous modules:
+Block dangerous modules using **language-specific detection**. Simply specify the module name - the language handler automatically generates appropriate patterns to detect various import styles:
 
 ```python
-# High-risk modules
-DangerousModule(
+# Block dangerous system access modules
+RestrictedModule(
     name="os",
     description="Operating system interface",
     severity=SecurityIssueSeverity.HIGH
 )
 
-DangerousModule(
+RestrictedModule(
     name="subprocess",
     description="Process execution",
     severity=SecurityIssueSeverity.HIGH
 )
 
-# Medium-risk modules
-DangerousModule(
+# Block networking modules
+RestrictedModule(
     name="socket",
     description="Network operations",
     severity=SecurityIssueSeverity.MEDIUM
 )
+
+RestrictedModule(
+    name="requests",
+    description="HTTP library",
+    severity=SecurityIssueSeverity.MEDIUM
+)
 ```
 
-## Preset Security Policies
+**How Language-Specific Detection Works**:
 
-LLM Sandbox provides preset policies for common use cases:
+When you specify a restricted module like `"os"`, the language handler automatically generates patterns to detect:
 
-### Minimal Policy
+**For Python**:
 
-Very permissive, only blocks the most dangerous operations:
+- `import os`
+- `import os as operating_system`
+- `from os import system`
+- `from os import system, environ`
+- `from os import system as sys_call`
 
-```python
-from llm_sandbox.security import get_security_policy
+**For JavaScript**:
 
-policy = get_security_policy("minimal")
-# Blocks: os.system with rm -rf /, format commands
-# Allows: Most operations
-```
+- `import os from 'os'`
+- `const os = require('os')`
+- `import { exec } from 'child_process'`
 
-### Development Policy
+**For Other Languages**: Each language handler implements its own import detection patterns appropriate for that language's syntax.
 
-Balanced for development environments:
-
-```python
-policy = get_security_policy("development")
-# Blocks: Direct system commands, dangerous deletions
-# Allows: File operations, network requests
-```
-
-### Production Policy
-
-Strict policy for production use:
-
-```python
-policy = get_security_policy("production")
-# Blocks: System commands, subprocess, file writes, environment access
-# Allows: Computation, read operations
-```
-
-### Educational Policy
-
-Designed for teaching environments:
-
-```python
-policy = get_security_policy("educational")
-# Blocks: System damage, file deletion
-# Allows: Learning operations, warns about eval/exec
-```
-
-### Data Science Policy
-
-Optimized for data analysis:
-
-```python
-policy = get_security_policy("data_science")
-# Blocks: System commands, dangerous operations
-# Allows: Data processing, visualization, HTTP requests
-```
-
-### Strict Policy
-
-Most restrictive policy:
-
-```python
-policy = get_security_policy("strict")
-# Blocks: Almost all system interaction
-# Allows: Pure computation only
-```
-
-## Using Security Policies
+## Creating Security Policies
 
 ### Basic Usage
 
 ```python
 from llm_sandbox import SandboxSession
-from llm_sandbox.security import get_security_policy
+from llm_sandbox.security import SecurityPolicy, RestrictedModule, SecurityIssueSeverity
 
-# Use a preset policy
-policy = get_security_policy("production")
+# Create a simple policy
+policy = SecurityPolicy(
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
+    restricted_modules=[
+        RestrictedModule(
+            name="os",
+            description="Operating system interface",
+            severity=SecurityIssueSeverity.HIGH
+        ),
+        RestrictedModule(
+            name="subprocess",
+            description="Process execution",
+            severity=SecurityIssueSeverity.HIGH
+        )
+    ]
+)
 
 with SandboxSession(lang="python", security_policy=policy) as session:
-    # Check if code is safe
-    code = "print('Hello, World!')"
+    # Check if code is safe before execution
+    code = "import os\nos.system('ls')"
     is_safe, violations = session.is_safe(code)
-    
+
     if is_safe:
         result = session.run(code)
         print(result.stdout)
@@ -192,23 +196,23 @@ with SandboxSession(lang="python", security_policy=policy) as session:
 ### Custom Security Policies
 
 ```python
-# Create custom policy
+# Create comprehensive custom policy
 custom_policy = SecurityPolicy(
-    severity_threshold=SecurityIssueSeverity.LOW,
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
     patterns=[
-        # Block cloud SDK usage
+        # Block cloud SDKs
         SecurityPattern(
-            pattern=r"boto3|google\.cloud|azure",
+            pattern=r"\b(boto3|google\.cloud|azure)\b",
             description="Cloud SDK usage",
             severity=SecurityIssueSeverity.HIGH
         ),
         # Block specific domains
         SecurityPattern(
-            pattern=r"requests\.get\s*\(['\"].*internal\.company\.com",
+            pattern=r"requests\.(get|post)\s*\(['\"].*internal\.company\.com",
             description="Internal network access",
             severity=SecurityIssueSeverity.HIGH
         ),
-        # Warn about external APIs
+        # Monitor external APIs
         SecurityPattern(
             pattern=r"requests\.(get|post)\s*\(",
             description="External API call",
@@ -216,10 +220,15 @@ custom_policy = SecurityPolicy(
         )
     ],
     restricted_modules=[
-        DangerousModule(
+        RestrictedModule(
             name="psutil",
             description="System monitoring",
             severity=SecurityIssueSeverity.MEDIUM
+        ),
+        RestrictedModule(
+            name="ctypes",
+            description="Foreign function library",
+            severity=SecurityIssueSeverity.HIGH
         )
     ]
 )
@@ -228,353 +237,399 @@ custom_policy = SecurityPolicy(
 ### Dynamic Policy Modification
 
 ```python
-# Start with base policy
-policy = get_security_policy("production")
+# Start with base policy and customize
+policy = SecurityPolicy(
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
+    patterns=[],
+    restricted_modules=[]
+)
 
 # Add custom patterns
 policy.add_pattern(SecurityPattern(
-    pattern=r"tensorflow|torch|keras",
+    pattern=r"\b(tensorflow|torch|keras)\b",
     description="ML framework usage",
     severity=SecurityIssueSeverity.LOW
 ))
 
-# Add restricted modules
-policy.add_restricted_module(DangerousModule(
+# Add restricted modules (language handler will generate detection patterns)
+policy.add_restricted_module(RestrictedModule(
     name="cryptography",
     description="Cryptographic operations",
     severity=SecurityIssueSeverity.MEDIUM
 ))
 ```
 
-## Security Best Practices
+## Language-Specific Examples
 
-### 1. Defense in Depth
-
-Combine multiple security layers:
+### Python Security Patterns
 
 ```python
-with SandboxSession(
-    lang="python",
-    # Layer 1: Security policy
-    security_policy=get_security_policy("production"),
-    # Layer 2: Resource limits
-    runtime_configs={
-        "cpu_count": 1,
-        "mem_limit": "256m",
-        "timeout": 10,
-        "pids_limit": 50
-    },
-    # Layer 3: User isolation
-    runtime_configs={"user": "nobody:nogroup"},
-    # Layer 4: Read-only file system
-    mounts=[
-        Mount(type="bind", source="/data", target="/data", read_only=True)
-    ]
-) as session:
-    pass
-```
+# Python-specific dangerous patterns
+python_patterns = [
+    # Dynamic imports
+    SecurityPattern(r"\b__import__\s*\(", "Dynamic imports", SecurityIssueSeverity.MEDIUM),
 
-### 2. Validate All Inputs
+    # Attribute manipulation
+    SecurityPattern(r"\b(getattr|setattr|delattr)\s*\(", "Dynamic attributes", SecurityIssueSeverity.LOW),
 
-```python
-def safe_execute(code: str, max_length: int = 10000):
-    """Execute code with input validation"""
-    
-    # Check code length
-    if len(code) > max_length:
-        raise ValueError("Code too long")
-    
-    # Check for null bytes
-    if '\x00' in code:
-        raise ValueError("Invalid characters in code")
-    
-    # Use strict policy
-    policy = get_security_policy("strict")
-    
-    with SandboxSession(lang="python", security_policy=policy) as session:
-        is_safe, violations = session.is_safe(code)
-        if not is_safe:
-            raise SecurityError(f"Code failed security check: {violations}")
-        
-        return session.run(code)
-```
+    # Pickle operations (deserialization risk)
+    SecurityPattern(r"\bpickle\.(loads?|load)\s*\(", "Pickle deserialization", SecurityIssueSeverity.MEDIUM),
 
-### 3. Monitor and Log
+    # Code execution
+    SecurityPattern(r"\b(eval|exec|compile)\s*\(", "Code execution", SecurityIssueSeverity.HIGH)
+]
 
-```python
-import logging
-from datetime import datetime
-
-class SecurityLogger:
-    def __init__(self):
-        self.logger = logging.getLogger('security')
-    
-    def log_execution(self, code: str, user: str, result: Any):
-        """Log code execution for audit"""
-        self.logger.info({
-            'timestamp': datetime.utcnow().isoformat(),
-            'user': user,
-            'code_hash': hashlib.sha256(code.encode()).hexdigest(),
-            'code_length': len(code),
-            'exit_code': result.exit_code,
-            'execution_time': result.execution_time
-        })
-
-# Use with monitoring
-logger = SecurityLogger()
-
-with SandboxSession(lang="python") as session:
-    result = session.run(code)
-    logger.log_execution(code, user_id, result)
-```
-
-### 4. Escape Output
-
-```python
-import html
-import json
-
-def safe_display_output(result):
-    """Safely display execution results"""
-    return {
-        'stdout': html.escape(result.stdout),
-        'stderr': html.escape(result.stderr),
-        'exit_code': result.exit_code,
-        'safe_json': json.dumps(result.stdout, ensure_ascii=True)
-    }
-```
-
-### 5. Rate Limiting
-
-```python
-from collections import defaultdict
-from time import time
-
-class RateLimiter:
-    def __init__(self, max_requests: int = 10, window: int = 60):
-        self.max_requests = max_requests
-        self.window = window
-        self.requests = defaultdict(list)
-    
-    def allow_request(self, user_id: str) -> bool:
-        now = time()
-        # Clean old requests
-        self.requests[user_id] = [
-            t for t in self.requests[user_id] 
-            if now - t < self.window
-        ]
-        
-        # Check limit
-        if len(self.requests[user_id]) >= self.max_requests:
-            return False
-        
-        self.requests[user_id].append(now)
-        return True
-
-# Use rate limiting
-rate_limiter = RateLimiter(max_requests=5, window=60)
-
-if rate_limiter.allow_request(user_id):
-    with SandboxSession(lang="python") as session:
-        result = session.run(code)
-else:
-    raise Exception("Rate limit exceeded")
-```
-
-## Container Security
-
-### Network Isolation
-
-```python
-# Disable network access (Docker/Podman)
-with SandboxSession(
-    lang="python",
-    runtime_configs={
-        "network_mode": "none"
-    }
-) as session:
-    # Code cannot access network
-    pass
-
-# Custom network (Docker)
-with SandboxSession(
-    lang="python",
-    runtime_configs={
-        "network_mode": "custom_isolated_network"
-    }
-) as session:
-    pass
-```
-
-### File System Security
-
-```python
-# Read-only root filesystem
-with SandboxSession(
-    lang="python",
-    runtime_configs={
-        "read_only": True,
-        "tmpfs": {
-            "/tmp": "size=50m,mode=1777",
-            "/run": "size=10m,mode=0755"
-        }
-    }
-) as session:
-    pass
-```
-
-### Capability Management
-
-```python
-# Drop all capabilities except specific ones
-with SandboxSession(
-    lang="python",
-    runtime_configs={
-        "cap_drop": ["ALL"],
-        "cap_add": ["DAC_OVERRIDE"]  # Only if needed
-    }
-) as session:
-    pass
-```
-
-## Security Patterns Reference
-
-### Common Dangerous Patterns
-
-```python
-DANGEROUS_PATTERNS = [
-    # Command execution
-    (r"os\.system\s*\(", "System command execution"),
-    (r"subprocess\.(run|call|Popen|check_output)\s*\(", "Subprocess execution"),
-    (r"eval\s*\(", "Dynamic code evaluation"),
-    (r"exec\s*\(", "Dynamic code execution"),
-    (r"__import__\s*\(", "Dynamic module import"),
-    
-    # File operations
-    (r"open\s*\([^)]*['\"][wa]['\"][^)]*\)", "File write"),
-    (r"os\.(remove|unlink|rmdir)\s*\(", "File deletion"),
-    (r"shutil\.rmtree\s*\(", "Directory deletion"),
-    
-    # Network operations
-    (r"socket\.socket\s*\(", "Socket creation"),
-    (r"urllib\.request\.urlopen\s*\(", "URL access"),
-    
-    # System information
-    (r"os\.environ", "Environment access"),
-    (r"platform\.(system|release|version)\s*\(", "System info"),
-    
-    # Dangerous builtins
-    (r"compile\s*\(", "Code compilation"),
-    (r"globals\s*\(\)", "Global scope access"),
-    (r"locals\s*\(\)", "Local scope access"),
+# Python-specific restricted modules
+python_modules = [
+    RestrictedModule("os", "Operating system interface", SecurityIssueSeverity.HIGH),
+    RestrictedModule("subprocess", "Process execution", SecurityIssueSeverity.HIGH),
+    RestrictedModule("ctypes", "Foreign function library", SecurityIssueSeverity.HIGH),
+    RestrictedModule("importlib", "Dynamic imports", SecurityIssueSeverity.MEDIUM)
 ]
 ```
 
-### Language-Specific Patterns
+### JavaScript/Node.js Security Patterns
 
-#### Python
 ```python
-# Pickle deserialization (arbitrary code execution)
-(r"pickle\.loads?\s*\(", "Unsafe deserialization")
+# JavaScript-specific patterns (when lang="javascript")
+js_patterns = [
+    # Process access
+    SecurityPattern(r"process\.exit\s*\(", "Process termination", SecurityIssueSeverity.HIGH),
 
-# Code introspection
-(r"inspect\.(getfile|getsource|getmodule)\s*\(", "Code introspection")
+    # Child processes
+    SecurityPattern(r"child_process", "Child process access", SecurityIssueSeverity.HIGH),
 
-# AST manipulation
-(r"ast\.(parse|compile)\s*\(", "AST manipulation")
+    # File system
+    SecurityPattern(r"fs\.(writeFile|unlink)\s*\(", "File system operations", SecurityIssueSeverity.MEDIUM)
+]
+
+# JavaScript-specific restricted modules
+js_modules = [
+    RestrictedModule("fs", "File system access", SecurityIssueSeverity.MEDIUM),
+    RestrictedModule("child_process", "Process execution", SecurityIssueSeverity.HIGH),
+    RestrictedModule("cluster", "Process clustering", SecurityIssueSeverity.HIGH)
+]
 ```
 
-#### JavaScript
-```python
-# Eval and Function constructor
-(r"eval\s*\(", "JavaScript eval")
-(r"new\s+Function\s*\(", "Function constructor")
+> **Note**: Security presets (like `get_security_policy("production")`) will be introduced in future versions and will be language-specific to provide appropriate defaults for each programming language.
 
-# Process access (Node.js)
-(r"process\.exit\s*\(", "Process termination")
-(r"child_process", "Child process access")
+## Advanced Pattern Examples
+
+### Network Security Patterns
+
+```python
+# Monitor and control network operations
+network_patterns = [
+    SecurityPattern(
+        pattern=r"\bsocket\.socket\s*\(",
+        description="Raw socket creation",
+        severity=SecurityIssueSeverity.MEDIUM
+    ),
+    SecurityPattern(
+        pattern=r"\b\w+\.connect\s*\(",
+        description="Network connections",
+        severity=SecurityIssueSeverity.MEDIUM
+    ),
+    SecurityPattern(
+        pattern=r"requests\.(get|post|put|delete)\s*\(",
+        description="HTTP requests",
+        severity=SecurityIssueSeverity.LOW
+    )
+]
 ```
 
-#### Java
-```python
-# Reflection
-(r"Class\.forName\s*\(", "Java reflection")
-(r"Runtime\.getRuntime\(\)\.exec\s*\(", "Runtime execution")
+### File System Security Patterns
 
-# System access
-(r"System\.exit\s*\(", "System exit")
+```python
+# File system operation patterns
+file_patterns = [
+    SecurityPattern(
+        pattern=r"\bopen\s*\([^)]*['\"][wa]['\"][^)]*\)",
+        description="File write operations",
+        severity=SecurityIssueSeverity.MEDIUM
+    ),
+    SecurityPattern(
+        pattern=r"\bos\.(remove|unlink|rmdir)\s*\(",
+        description="File deletion operations",
+        severity=SecurityIssueSeverity.HIGH
+    ),
+    SecurityPattern(
+        pattern=r"\bshutil\.(rmtree|move|copy)\s*\(",
+        description="File system manipulation",
+        severity=SecurityIssueSeverity.MEDIUM
+    )
+]
 ```
 
-## Troubleshooting Security Issues
+## Security Implementation Details
 
-### Common Issues
+### Comment Filtering
 
-1. **False Positives**
-   ```python
-   # Code contains pattern in string/comment
-   code = 'print("Use os.system to run commands")'  # Blocked!
-   
-   # Solution: Adjust pattern or use exceptions
-   ```
-
-2. **Import Detection**
-   ```python
-   # Various import styles
-   import os                    # Detected
-   from os import system        # Detected
-   __import__('os')            # Detected
-   importlib.import_module('os')  # May not be detected
-   ```
-
-3. **Obfuscation Attempts**
-   ```python
-   # Beware of obfuscation
-   getattr(__builtins__, 'eval')  # May bypass simple patterns
-   ```
-
-### Security Testing
+The security scanner filters comments to avoid false positives:
 
 ```python
-def test_security_policy(policy: SecurityPolicy):
+# This comment won't trigger security alerts: import os
+print("This string mentioning 'os.system' won't trigger alerts either")
+
+# But this will be detected:
+import os
+os.system('whoami')
+```
+
+### Pattern Matching Process
+
+1. **Filter Comments**: Remove comments using language-specific handlers
+2. **Generate Module Patterns**: Convert restricted modules to regex patterns via language handlers
+3. **Apply Patterns**: Match all patterns against filtered code
+4. **Severity Check**: Apply severity threshold to determine blocking
+5. **Return Results**: Report safety status and violations
+
+### Example Workflow
+
+```python
+# Code to analyze
+code = """
+import os  # This imports the OS module
+# os.system('commented out') - this won't be detected
+os.system('whoami')  # This will be detected
+"""
+
+# Policy with os module restricted
+policy = SecurityPolicy(
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
+    restricted_modules=[
+        RestrictedModule("os", "OS interface", SecurityIssueSeverity.HIGH)
+    ],
+    patterns=[
+        SecurityPattern(r"os\.system\s*\(", "System commands", SecurityIssueSeverity.HIGH)
+    ]
+)
+
+# Analysis process:
+# 1. Filter comments -> "import os\nos.system('whoami')"
+# 2. Language handler generates pattern for "os" import -> VIOLATION (HIGH)
+# 3. Check os.system pattern -> VIOLATION (HIGH)
+# 4. Result: is_safe=False, violations=[2]
+```
+
+## Best Practices
+
+### 1. Layer Security Policies with Container Controls
+
+```python
+# Combine security policy with container restrictions
+with SandboxSession(
+    lang="python",
+    # Code analysis layer
+    security_policy=custom_policy,
+    # Container restriction layer (see Configuration Guide)
+    runtime_config={
+        "mem_limit": "256m",
+        "cpu_count": 1,
+        "timeout": 30,
+        "user": "nobody:nogroup"
+    }
+) as session:
+    # Double protection: policy blocks + container limits
+    pass
+```
+
+### 2. Use Language-Appropriate Restrictions
+
+```python
+# Python-focused restrictions
+python_policy = SecurityPolicy(
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
+    restricted_modules=[
+        RestrictedModule("os", "Operating system", SecurityIssueSeverity.HIGH),
+        RestrictedModule("subprocess", "Process execution", SecurityIssueSeverity.HIGH),
+        RestrictedModule("ctypes", "Foreign functions", SecurityIssueSeverity.HIGH),
+        RestrictedModule("importlib", "Dynamic imports", SecurityIssueSeverity.MEDIUM),
+        RestrictedModule("pickle", "Serialization", SecurityIssueSeverity.MEDIUM)
+    ]
+)
+
+# JavaScript-focused restrictions (when available)
+javascript_policy = SecurityPolicy(
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
+    restricted_modules=[
+        RestrictedModule("fs", "File system", SecurityIssueSeverity.MEDIUM),
+        RestrictedModule("child_process", "Process execution", SecurityIssueSeverity.HIGH),
+        RestrictedModule("cluster", "Process clustering", SecurityIssueSeverity.HIGH),
+        RestrictedModule("worker_threads", "Threading", SecurityIssueSeverity.MEDIUM)
+    ]
+)
+```
+
+### 3. Test Security Policies
+
+```python
+def test_security_policy(policy: SecurityPolicy, lang: str = "python"):
     """Test security policy effectiveness"""
-    
     test_cases = [
         # Should pass
         ("print('Hello')", True),
         ("x = 1 + 2", True),
-        
-        # Should fail
+
+        # Should fail based on restricted modules
         ("import os; os.system('ls')", False),
-        ("eval('1+1')", False),
-        
+        ("eval('malicious_code')", False),
+
         # Edge cases
         ("# import os", True),  # Comment
-        ("'import os'", True),  # String
+        ("'import os in string'", True),  # String literal
     ]
-    
-    for code, expected_safe in test_cases:
-        with SandboxSession(lang="python", security_policy=policy) as session:
+
+    with SandboxSession(lang=lang, security_policy=policy) as session:
+        for code, expected_safe in test_cases:
             is_safe, _ = session.is_safe(code)
             assert is_safe == expected_safe, f"Failed for: {code}"
 ```
 
-## Security Checklist
+### 4. Monitor and Log Security Events
 
-- [ ] Use appropriate security policy for your use case
-- [ ] Set resource limits (CPU, memory, timeout)
-- [ ] Run containers as non-root user
-- [ ] Disable network access if not needed
-- [ ] Use read-only file systems where possible
-- [ ] Validate and sanitize all inputs
-- [ ] Log all code executions for audit
-- [ ] Implement rate limiting
-- [ ] Escape output before display
-- [ ] Regularly update container images
-- [ ] Monitor for security advisories
+```python
+import logging
+import hashlib
+from datetime import datetime
 
-## Next Steps
+class SecurityAuditor:
+    def __init__(self):
+        self.logger = logging.getLogger('security_audit')
 
-- Explore [Backend Options](backends.md) for platform-specific security
-- Learn about [Configuration](configuration.md) options
-- See [Examples](examples.md) of secure implementations
-- Check the [API Reference](api-reference.md) for detailed documentation
+    def audit_execution(self, code: str, user_id: str, is_safe: bool, violations: list):
+        """Log security events for monitoring"""
+        audit_entry = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'user_id': user_id,
+            'code_hash': hashlib.sha256(code.encode()).hexdigest(),
+            'code_length': len(code),
+            'is_safe': is_safe,
+            'violations': [v.description for v in violations]
+        }
+
+        if violations:
+            self.logger.warning(f"Security violations detected: {audit_entry}")
+        else:
+            self.logger.info(f"Safe code execution: {audit_entry}")
+
+# Usage
+auditor = SecurityAuditor()
+policy = SecurityPolicy(
+    severity_threshold=SecurityIssueSeverity.MEDIUM,
+    restricted_modules=[
+        RestrictedModule("os", "Operating system", SecurityIssueSeverity.HIGH)
+    ]
+)
+
+with SandboxSession(lang="python", security_policy=policy) as session:
+    is_safe, violations = session.is_safe(user_code)
+    auditor.audit_execution(user_code, user_id, is_safe, violations)
+
+    if is_safe:
+        result = session.run(user_code)
+```
+
+### 5. Handle Security Violations Gracefully
+
+```python
+class SecurityViolationError(Exception):
+    def __init__(self, violations: list):
+        self.violations = violations
+        super().__init__(f"Security policy violations: {[v.description for v in violations]}")
+
+def safe_execute(code: str, user_id: str, lang: str = "python") -> ExecutionResult:
+    """Execute code with comprehensive security handling"""
+
+    # Input validation
+    if len(code) > 50000:  # 50KB limit
+        raise ValueError("Code too long")
+
+    if '\x00' in code:
+        raise ValueError("Invalid null bytes in code")
+
+    # Security check
+    policy = SecurityPolicy(
+        severity_threshold=SecurityIssueSeverity.MEDIUM,
+        restricted_modules=[
+            RestrictedModule("os", "Operating system", SecurityIssueSeverity.HIGH),
+            RestrictedModule("subprocess", "Process execution", SecurityIssueSeverity.HIGH)
+        ]
+    )
+
+    with SandboxSession(lang=lang, security_policy=policy) as session:
+        is_safe, violations = session.is_safe(code)
+
+        if not is_safe:
+            # Log security violation
+            logging.warning(f"Security violation by user {user_id}: {[v.description for v in violations]}")
+            raise SecurityViolationError(violations)
+
+        # Execute safely
+        try:
+            result = session.run(code)
+            logging.info(f"Successful execution by user {user_id}")
+            return result
+        except Exception as e:
+            logging.error(f"Execution error for user {user_id}: {e}")
+            raise
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### False Positives in Strings/Comments
+```python
+# Problem: Security scanner detects patterns in strings
+code = 'print("Use os.system() carefully")'  # May be blocked
+
+# Solution: The scanner automatically filters comments and should handle strings
+# If issues persist, adjust patterns to be more specific
+```
+
+#### Import Detection Edge Cases
+```python
+# Detected patterns (via language handler):
+import os                    # ✓ Detected
+from os import system        # ✓ Detected
+import os as operating_sys   # ✓ Detected
+
+# May not be detected (advanced evasion):
+__import__('os')             # Depends on dynamic import patterns
+importlib.import_module('os') # Requires specific patterns
+```
+
+#### Performance with Large Codebases
+```python
+# For very large code files, consider:
+# 1. Setting reasonable size limits
+# 2. Using more specific patterns
+# 3. Implementing caching for repeated analysis
+```
+
+### Debugging Security Policies
+
+```python
+# Enable verbose logging to understand policy behavior
+import logging
+logging.getLogger('llm_sandbox').setLevel(logging.DEBUG)
+
+# Test individual patterns
+pattern = SecurityPattern(r"os\.system\s*\(", "Test", SecurityIssueSeverity.HIGH)
+test_code = "os.system('test')"
+
+import re
+if re.search(pattern.pattern, test_code):
+    print(f"Pattern matches: {pattern.description}")
+```
+
+## API Reference
+
+For complete API documentation, see:
+
+- **Docker**: [docker-py documentation](https://docker-py.readthedocs.io/en/stable/)
+- **Podman**: [podman-py documentation](https://podman-py.readthedocs.io/en/latest/)
+- **Kubernetes**: [kubernetes-client documentation](https://kubernetes.io/docs/reference/using-api/client-libraries/)
+
+For container-level security configuration (resource limits, network controls, file system restrictions), see the [Configuration Guide](configuration.md).

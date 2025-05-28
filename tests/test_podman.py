@@ -37,7 +37,7 @@ class TestSandboxPodmanSessionInit:
 
         assert session.lang == SupportedLanguage.PYTHON
         assert session.verbose is False
-        assert session.image == "python:3.11-bullseye"
+        assert session.image == "vndee/sandbox-python-311-bullseye"
         assert session.keep_template is False
         assert session.commit_container is False
         assert session.stream is True
@@ -126,7 +126,7 @@ class TestSandboxPodmanSessionOpen:
         mock_podman_from_env.return_value = mock_client
 
         mock_image = MagicMock()
-        mock_image.tags = ["python:3.11-bullseye"]
+        mock_image.tags = ["vndee/sandbox-python-311-bullseye"]
         mock_client.images.get.return_value = mock_image
 
         mock_container = MagicMock()
@@ -137,7 +137,7 @@ class TestSandboxPodmanSessionOpen:
         with patch.object(session, "environment_setup") as mock_env_setup:
             session.open()
 
-        mock_client.images.get.assert_called_once_with("python:3.11-bullseye")
+        mock_client.images.get.assert_called_once_with("vndee/sandbox-python-311-bullseye")
         mock_client.containers.create.assert_called_once()
         mock_container.start.assert_called_once()
         mock_env_setup.assert_called_once()
@@ -162,7 +162,7 @@ class TestSandboxPodmanSessionOpen:
         mock_client.images.get.side_effect = ImageNotFound("Image not found")
 
         mock_image = Mock(spec=PodmanImage)  # Use Mock with spec
-        mock_image.tags = ["python:3.11-bullseye"]
+        mock_image.tags = ["vndee/sandbox-python-311-bullseye"]
         mock_client.images.pull.return_value = mock_image
 
         mock_container = MagicMock()
@@ -173,7 +173,7 @@ class TestSandboxPodmanSessionOpen:
         with patch.object(session, "environment_setup"):
             session.open()
 
-        mock_client.images.pull.assert_called_once_with("python:3.11-bullseye")
+        mock_client.images.pull.assert_called_once_with("vndee/sandbox-python-311-bullseye")
         assert session.is_create_template is True
         assert session.docker_image == mock_image
 
@@ -193,7 +193,7 @@ class TestSandboxPodmanSessionOpen:
         mock_client.images.get.side_effect = ImageNotFound("Image not found")
 
         mock_image = MagicMock()
-        mock_image.tags = ["python:3.11-bullseye"]
+        mock_image.tags = ["vndee/sandbox-python-311-bullseye"]
         mock_client.images.pull.return_value = [mock_image]  # Returns list
 
         mock_container = MagicMock()

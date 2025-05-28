@@ -35,7 +35,7 @@ class TestSandboxKubernetesSessionInit:
 
         assert session.lang == SupportedLanguage.PYTHON
         assert session.verbose is False
-        assert session.image == "python:3.11-bullseye"
+        assert session.image == "vndee/sandbox-python-311-bullseye"
         assert session.workdir == "/sandbox"
         assert session.kube_namespace == "default"
         assert session.client == mock_client
@@ -125,7 +125,7 @@ class TestSandboxKubernetesSessionInit:
         assert manifest["apiVersion"] == "v1"
         assert manifest["kind"] == "Pod"
         assert manifest["metadata"]["namespace"] == "default"
-        assert manifest["spec"]["containers"][0]["image"] == "python:3.11-bullseye"
+        assert manifest["spec"]["containers"][0]["image"] == "vndee/sandbox-python-311-bullseye"
         assert manifest["spec"]["containers"][0]["env"] == [{"name": "TEST_VAR", "value": "test_value"}]
 
 

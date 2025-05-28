@@ -6,126 +6,11 @@ Comprehensive API documentation for LLM Sandbox.
 
 ### SandboxSession
 
-```python
-class SandboxSession(
-    backend: SandboxBackend = SandboxBackend.DOCKER,
-    *args,
-    **kwargs
-)
-```
-
-Main class for creating and managing sandbox sessions.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `backend` | `SandboxBackend` | `DOCKER` | Container backend to use |
-| `lang` | `str` | `"python"` | Programming language |
-| `image` | `str \| None` | `None` | Container image name |
-| `dockerfile` | `str \| None` | `None` | Path to Dockerfile |
-| `keep_template` | `bool` | `False` | Keep container image after session |
-| `verbose` | `bool` | `False` | Enable verbose logging |
-| `workdir` | `str \| None` | `"/sandbox"` | Working directory in container |
-| `security_policy` | `SecurityPolicy \| None` | `None` | Security policy to enforce |
-| `logger` | `logging.Logger \| None` | `None` | Custom logger instance |
-| `runtime_configs` | `dict \| None` | `None` | Runtime configuration options |
-| `mounts` | `list \| None` | `None` | Volume mounts (Docker/Podman) |
-| `commit_container` | `bool` | `False` | Commit container state (Docker/Podman) |
-| `client` | `Any \| None` | `None` | Backend-specific client instance |
-
-**Methods:**
-
-#### `run(code: str, libraries: list | None = None) -> ConsoleOutput`
-
-Execute code in the sandbox.
-
-```python
-with SandboxSession(lang="python") as session:
-    result = session.run("print('Hello')", libraries=["numpy"])
-    print(result.stdout)
-```
-
-#### `install(libraries: list[str] | None = None) -> None`
-
-Install libraries in the sandbox.
-
-```python
-session.install(["pandas", "matplotlib"])
-```
-
-#### `copy_to_runtime(src: str, dest: str) -> None`
-
-Copy file from host to sandbox.
-
-```python
-session.copy_to_runtime("local_file.txt", "/sandbox/file.txt")
-```
-
-#### `copy_from_runtime(src: str, dest: str) -> None`
-
-Copy file from sandbox to host.
-
-```python
-session.copy_from_runtime("/sandbox/output.txt", "output.txt")
-```
-
-#### `execute_command(command: str, workdir: str | None = None) -> ConsoleOutput`
-
-Execute shell command in sandbox.
-
-```python
-result = session.execute_command("ls -la", workdir="/sandbox")
-```
-
-#### `is_safe(code: str) -> tuple[bool, list[SecurityPattern]]`
-
-Check if code passes security policy.
-
-```python
-is_safe, violations = session.is_safe("import os; os.system('rm -rf /')")
-if not is_safe:
-    for violation in violations:
-        print(f"Violation: {violation.description}")
-```
-
----
+::: llm_sandbox.SandboxSession
 
 ### ArtifactSandboxSession
 
-```python
-class ArtifactSandboxSession(
-    backend: SandboxBackend = SandboxBackend.DOCKER,
-    enable_plotting: bool = True,
-    **kwargs
-)
-```
-
-Extended session with artifact extraction capabilities.
-
-**Additional Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `enable_plotting` | `bool` | `True` | Enable plot extraction |
-
-**Methods:**
-
-#### `run(code: str, libraries: list | None = None) -> ExecutionResult`
-
-Execute code and extract artifacts.
-
-```python
-with ArtifactSandboxSession(lang="python") as session:
-    result = session.run("""
-import matplotlib.pyplot as plt
-plt.plot([1, 2, 3], [1, 4, 9])
-plt.show()
-    """)
-    
-    for plot in result.plots:
-        print(f"Captured plot: {plot.format}")
-```
+::: llm_sandbox.session.ArtifactSandboxSession
 
 ---
 
@@ -133,49 +18,15 @@ plt.show()
 
 ### ConsoleOutput
 
-```python
-@dataclass(frozen=True)
-class ConsoleOutput:
-    exit_code: int = 0
-    stderr: str = ""
-    stdout: str = ""
-```
-
-Represents command execution output.
-
-**Attributes:**
-
-- `exit_code`: Process exit code (0 = success)
-- `stdout`: Standard output content
-- `stderr`: Standard error content
-
-**Methods:**
-
-- `success() -> bool`: Returns True if exit_code is 0
+::: llm_sandbox.data.ConsoleOutput
 
 ### ExecutionResult
 
-```python
-@dataclass(frozen=True)
-class ExecutionResult(ConsoleOutput):
-    plots: list[PlotOutput] = field(default_factory=list)
-```
-
-Extended output with captured plots.
+::: llm_sandbox.data.ExecutionResult
 
 ### PlotOutput
 
-```python
-@dataclass(frozen=True)
-class PlotOutput:
-    format: FileType
-    content_base64: str
-    width: int | None = None
-    height: int | None = None
-    dpi: int | None = None
-```
-
-Represents a captured plot/visualization.
+::: llm_sandbox.data.PlotOutput
 
 ---
 
@@ -183,76 +34,19 @@ Represents a captured plot/visualization.
 
 ### SecurityPolicy
 
-```python
-class SecurityPolicy:
-    severity_threshold: SecurityIssueSeverity = SecurityIssueSeverity.SAFE
-    patterns: list[SecurityPattern] | None = None
-    restricted_modules: list[DangerousModule] | None = None
-```
-
-Defines security rules for code execution.
-
-**Methods:**
-
-#### `add_pattern(pattern: SecurityPattern) -> None`
-
-Add a security pattern.
-
-```python
-policy.add_pattern(SecurityPattern(
-    pattern=r"requests\.get\(.*\.onion",
-    description="Tor network access",
-    severity=SecurityIssueSeverity.HIGH
-))
-```
-
-#### `add_restricted_module(module: DangerousModule) -> None`
-
-Add a restricted module.
-
-```python
-policy.add_restricted_module(DangerousModule(
-    name="cryptography",
-    description="Cryptographic operations",
-    severity=SecurityIssueSeverity.MEDIUM
-))
-```
+::: llm_sandbox.security.SecurityPolicy
 
 ### SecurityPattern
 
-```python
-@dataclass
-class SecurityPattern:
-    pattern: str
-    description: str
-    severity: SecurityIssueSeverity
-```
+::: llm_sandbox.security.SecurityPattern
 
-Regex pattern for detecting dangerous code.
+### RestrictedModule
 
-### DangerousModule
-
-```python
-@dataclass
-class DangerousModule:
-    name: str
-    description: str
-    severity: SecurityIssueSeverity
-```
-
-Module that should be restricted.
+::: llm_sandbox.security.RestrictedModule
 
 ### SecurityIssueSeverity
 
-```python
-class SecurityIssueSeverity(IntEnum):
-    SAFE = 0
-    LOW = 1
-    MEDIUM = 2
-    HIGH = 3
-```
-
-Severity levels for security issues.
+::: llm_sandbox.security.SecurityIssueSeverity
 
 ---
 
@@ -260,45 +54,15 @@ Severity levels for security issues.
 
 ### SandboxBackend
 
-```python
-class SandboxBackend(StrEnum):
-    DOCKER = "docker"
-    KUBERNETES = "kubernetes"
-    PODMAN = "podman"
-    MICROMAMBA = "micromamba"
-```
-
-Available container backends.
+::: llm_sandbox.const.SandboxBackend
 
 ### SupportedLanguage
 
-```python
-class SupportedLanguage(StrEnum):
-    PYTHON = "python"
-    JAVA = "java"
-    JAVASCRIPT = "javascript"
-    CPP = "cpp"
-    GO = "go"
-    RUBY = "ruby"
-```
-
-Supported programming languages.
+::: llm_sandbox.const.SupportedLanguage
 
 ### FileType
 
-```python
-class FileType(Enum):
-    PNG = "png"
-    JPEG = "jpeg"
-    PDF = "pdf"
-    SVG = "svg"
-    CSV = "csv"
-    JSON = "json"
-    TXT = "txt"
-    HTML = "html"
-```
-
-Supported file types for artifacts.
+::: llm_sandbox.data.FileType
 
 ---
 
@@ -306,77 +70,21 @@ Supported file types for artifacts.
 
 ### create_session
 
-```python
-def create_session(
-    backend: SandboxBackend = SandboxBackend.DOCKER,
-    *args,
-    **kwargs
-) -> Session
-```
-
-Factory function for creating sandbox sessions.
-
-```python
-session = create_session(
-    backend=SandboxBackend.KUBERNETES,
-    lang="python",
-    kube_namespace="sandbox"
-)
-```
-
-### get_security_policy
-
-```python
-def get_security_policy(preset_name: str) -> SecurityPolicy
-```
-
-Get a preset security policy.
-
-**Available Presets:**
-- `"minimal"`: Very permissive
-- `"development"`: Balanced for development
-- `"educational"`: For teaching environments
-- `"production"`: Strict for production
-- `"strict"`: Very restrictive
-- `"data_science"`: Optimized for data analysis
-- `"web_scraping"`: For web scraping tasks
-
-```python
-policy = get_security_policy("production")
-```
+::: llm_sandbox.create_session
 
 ---
 
 ## Exceptions
 
-### Base Exception
+The library defines a base exception `llm_sandbox.exceptions.SandboxError` and various specific exceptions that inherit from it. Please refer to the `llm_sandbox.exceptions` module for a complete list.
 
-```python
-class SandboxError(Exception):
-    """Base exception for all sandbox errors"""
-```
-
-### Specific Exceptions
-
-| Exception | Description |
-|-----------|-------------|
-| `ContainerError` | Container operation failed |
-| `SecurityError` | Security policy violation |
-| `ResourceError` | Resource limit exceeded |
-| `ValidationError` | Input validation failed |
-| `LanguageNotSupportedError` | Unsupported language |
-| `ImageNotFoundError` | Container image not found |
-| `NotOpenSessionError` | Session not opened |
-| `LibraryInstallationNotSupportedError` | Language doesn't support library installation |
-| `CommandEmptyError` | Empty command provided |
-| `CommandFailedError` | Command execution failed |
-| `PackageManagerError` | Package manager not found |
-| `ImagePullError` | Failed to pull container image |
-| `UnsupportedBackendError` | Backend not supported |
-| `MissingDependencyError` | Required dependency not installed |
-| `LanguageNotSupportPlotError` | Language doesn't support plot extraction |
-| `InvalidRegexPatternError` | Invalid regex in security pattern |
-| `SecurityViolationError` | Code violates security policy |
+Common exceptions include:
+- `ContainerError`
+- `SecurityError`
+- `ResourceError`
+- `ValidationError`
+- `LanguageNotSupportedError`
+- `ImageNotFoundError`
 
 ---
 
@@ -384,42 +92,11 @@ class SandboxError(Exception):
 
 ### AbstractLanguageHandler
 
-```python
-class AbstractLanguageHandler(ABC):
-    config: LanguageConfig
-    logger: logging.Logger
-```
-
-Base class for language-specific handlers.
-
-**Abstract Methods:**
-
-- `get_import_patterns(module: str) -> str`
-- `get_multiline_comment_patterns() -> str`
-- `get_inline_comment_patterns() -> str`
-
-**Methods:**
-
-- `get_execution_commands(code_file: str) -> list[str]`
-- `get_library_installation_command(library: str) -> str`
-- `inject_plot_detection_code(code: str) -> str`
-- `extract_plots(container: ContainerProtocol, output_dir: str) -> list[PlotOutput]`
-- `filter_comments(code: str) -> str`
+::: llm_sandbox.language_handlers.base.AbstractLanguageHandler
 
 ### LanguageConfig
 
-```python
-@dataclass
-class LanguageConfig:
-    name: str
-    file_extension: str
-    execution_commands: list[str]
-    package_manager: str | None
-    is_support_library_installation: bool = True
-    plot_detection: PlotDetectionConfig | None = None
-```
-
-Configuration for a language handler.
+::: llm_sandbox.language_handlers.LanguageConfig
 
 ---
 
@@ -427,54 +104,19 @@ Configuration for a language handler.
 
 ### Docker Backend
 
-```python
-class SandboxDockerSession(Session):
-    client: docker.DockerClient
-    container: docker.models.containers.Container
-    docker_image: docker.models.images.Image
-```
-
-**Docker-Specific Parameters:**
-- `stream`: Stream command output
-- `commit_container`: Save container state
-- `mounts`: Docker mount objects
+::: llm_sandbox.docker.SandboxDockerSession
 
 ### Kubernetes Backend
 
-```python
-class SandboxKubernetesSession(Session):
-    client: kubernetes.client.CoreV1Api
-    pod_name: str
-    kube_namespace: str
-```
-
-**Kubernetes-Specific Parameters:**
-- `kube_namespace`: Kubernetes namespace
-- `pod_manifest`: Custom pod specification
-- `env_vars`: Environment variables
+::: llm_sandbox.kubernetes.SandboxKubernetesSession
 
 ### Podman Backend
 
-```python
-class SandboxPodmanSession(Session):
-    client: podman.PodmanClient
-    container: podman.domain.containers.Container
-```
-
-**Podman-Specific Parameters:**
-- `stream`: Stream command output
-- `commit_container`: Save container state
-- `mounts`: Podman mount configurations
+::: llm_sandbox.podman.SandboxPodmanSession
 
 ### Micromamba Backend
 
-```python
-class MicromambaSession(SandboxDockerSession):
-    environment: str  # Conda environment name
-```
-
-**Micromamba-Specific Parameters:**
-- `environment`: Conda environment to use
+::: llm_sandbox.micromamba.MicromambaSession
 
 ---
 
@@ -485,13 +127,13 @@ class MicromambaSession(SandboxDockerSession):
 ```python
 class ContainerProtocol(Protocol):
     """Protocol for container objects"""
-    
+
     def execute_command(self, command: str, workdir: str | None = None) -> Any:
         ...
-    
+
     def get_archive(self, path: str) -> tuple:
         ...
-    
+
     def run(self, code: str, libraries: list | None = None) -> Any:
         ...
 ```
@@ -537,7 +179,7 @@ with SandboxSession(
     # Check code safety
     code = "import requests; requests.get('https://api.example.com')"
     is_safe, violations = session.is_safe(code)
-    
+
     if is_safe:
         result = session.run(code, libraries=["requests"])
         print(result.stdout)
@@ -559,7 +201,7 @@ plt.plot(x, y)
 plt.title('Sine Wave')
 plt.show()
     """, libraries=["matplotlib", "numpy"])
-    
+
     # Save plots
     for i, plot in enumerate(result.plots):
         with open(f"plot_{i}.{plot.format.value}", "wb") as f:
@@ -585,57 +227,4 @@ with SandboxSession(
 ) as session:
     result = session.run("print('Running in Kubernetes!')")
     print(result.stdout)
-```
-
----
-
-## Version Compatibility
-
-| LLM Sandbox Version | Python | Docker API | Kubernetes API | Podman API |
-|---------------------|--------|------------|----------------|------------|
-| 0.3.0 | 3.9+ | 5.0+ | 18.0+ | 4.0+ |
-| 0.2.0 | 3.8+ | 4.0+ | 12.0+ | 3.0+ |
-| 0.1.0 | 3.7+ | 4.0+ | 12.0+ | - |
-
----
-
-## Performance Considerations
-
-### Session Creation Overhead
-
-| Backend | Cold Start | Warm Start | Memory Overhead |
-|---------|------------|------------|------------------|
-| Docker | ~1s | ~0.1s | ~10MB |
-| Kubernetes | ~3-5s | ~1s | ~20MB |
-| Podman | ~1s | ~0.1s | ~10MB |
-| Micromamba | ~2s | ~0.5s | ~15MB |
-
-### Best Practices
-
-1. **Reuse Sessions**: Use `keep_template=True` for repeated executions
-2. **Batch Operations**: Execute multiple code snippets in one session
-3. **Resource Limits**: Always set appropriate resource limits
-4. **Security Policies**: Use the strictest policy suitable for your use case
-5. **Error Handling**: Always handle potential exceptions
-
-```python
-# Optimized for repeated use
-with SandboxSession(
-    lang="python",
-    keep_template=True,
-    runtime_configs={
-        "cpu_count": 1,
-        "mem_limit": "256m"
-    }
-) as session:
-    # Install once
-    session.install(["numpy", "pandas"])
-    
-    # Execute multiple times
-    for code in code_snippets:
-        try:
-            result = session.run(code)
-            process_result(result)
-        except SandboxError as e:
-            handle_error(e)
 ```
