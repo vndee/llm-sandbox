@@ -323,8 +323,9 @@ class ArtifactSandboxSession:
         """Run code in the sandbox session and extract any generated artifacts.
 
         This method executes the provided code in an isolated environment and captures any
-        generated artifacts (e.g., plots, figures). When plotting is enabled, it automatically
-        injects plot detection code and extracts the generated plots.
+        generated artifacts (e.g., plots, figures). When plotting is enabled, it delegates
+        to the language handler's run_with_artifacts method for language-specific artifact
+        extraction.
 
         Args:
             code (str): The code to execute. Can include plotting commands from matplotlib,
@@ -417,23 +418,18 @@ class ArtifactSandboxSession:
             ```
 
         """
-        if self.enable_plotting:
-            if not self._session.language_handler.is_support_plot_detection:
-                raise LanguageNotSupportPlotError(self.config.name)
+        # Check if plotting is enabled and language supports it
+        if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:
+            raise LanguageNotSupportPlotError(self._session.language_handler.name)
 
-            injected_code = self._session.language_handler.inject_plot_detection_code(code)
-        else:
-            injected_code = code
-
-        result = self._session.run(injected_code, libraries)
-
-        plots = []
-
-        if self.enable_plotting:
-            plots = self._session.language_handler.extract_plots(
-                self._session,
-                "/tmp/sandbox_plots",
-            )
+        # Delegate to language handler for language-specific artifact extraction
+        result, plots = self._session.language_handler.run_with_artifacts(
+            container=self._session,
+            code=code,
+            libraries=libraries,
+            enable_plotting=self.enable_plotting,
+            output_dir="/tmp/sandbox_plots",
+        )
 
         return ExecutionResult(
             exit_code=result.exit_code,

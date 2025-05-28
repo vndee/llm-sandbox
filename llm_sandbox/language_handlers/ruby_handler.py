@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
@@ -28,6 +28,39 @@ class RubyHandler(AbstractLanguageHandler):
     def inject_plot_detection_code(self, code: str) -> str:
         """Ruby does not support plot detection."""
         return code
+
+    def run_with_artifacts(
+        self,
+        container: "ContainerProtocol",
+        code: str,
+        libraries: list | None = None,
+        enable_plotting: bool = True,  # noqa: ARG002
+        output_dir: str = "/tmp/sandbox_plots",  # noqa: ARG002
+    ) -> tuple[Any, list[PlotOutput]]:
+        """Run Ruby code without artifact extraction.
+
+        Ruby plot detection is not currently supported. This method
+        runs the code normally and returns an empty list of plots.
+
+        Future implementations could support:
+        - Gruff for chart generation
+        - Ruby bindings for plotting libraries
+        - Custom plotting libraries that generate image files
+
+        Args:
+            container: The container protocol instance to run code in
+            code: The Ruby code to execute
+            libraries: Optional list of libraries to install before running
+            enable_plotting: Whether to enable plot detection (ignored for Ruby)
+            output_dir: Directory where plots should be saved (unused)
+
+        Returns:
+            tuple: (execution_result, empty_list_of_plots)
+
+        """
+        # Ruby doesn't support plot extraction yet
+        result = container.run(code, libraries)
+        return result, []
 
     def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:  # noqa: ARG002
         """Ruby does not support plot extraction."""

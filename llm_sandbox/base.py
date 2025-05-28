@@ -15,7 +15,7 @@ from llm_sandbox.exceptions import (
     SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
-from llm_sandbox.security import SecurityPattern, SecurityPolicy
+from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 if TYPE_CHECKING:
     from llm_sandbox.language_handlers.base import AbstractLanguageHandler
@@ -378,7 +378,10 @@ class Session(ABC):
                 if pattern_obj.pattern:
                     try:
                         if re.search(pattern_obj.pattern, filtered_code):
-                            if pattern_obj.severity >= self.security_policy.safety_level:
+                            if (
+                                self.security_policy.safety_level > SecurityIssueSeverity.SAFE
+                                and pattern_obj.severity >= self.security_policy.safety_level
+                            ):
                                 violations.append(pattern_obj)
                                 return False, violations
 

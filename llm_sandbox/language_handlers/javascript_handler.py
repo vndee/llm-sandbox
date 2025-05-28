@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
@@ -32,6 +32,40 @@ class JavaScriptHandler(AbstractLanguageHandler):
         Consider client-side libraries or specific Node.js plotting libraries.
         """
         return code
+
+    def run_with_artifacts(
+        self,
+        container: "ContainerProtocol",
+        code: str,
+        libraries: list | None = None,
+        enable_plotting: bool = True,  # noqa: ARG002
+        output_dir: str = "/tmp/sandbox_plots",  # noqa: ARG002
+    ) -> tuple[Any, list[PlotOutput]]:
+        """Run JavaScript code without artifact extraction.
+
+        JavaScript plot detection is not currently supported. This method
+        runs the code normally and returns an empty list of plots.
+
+        Future implementations could support:
+        - Chart.js for client-side plotting
+        - D3.js for data visualization
+        - Puppeteer for server-side rendering
+        - Canvas-based plotting libraries
+
+        Args:
+            container: The container protocol instance to run code in
+            code: The JavaScript code to execute
+            libraries: Optional list of libraries to install before running
+            enable_plotting: Whether to enable plot detection (ignored for JavaScript)
+            output_dir: Directory where plots should be saved (unused)
+
+        Returns:
+            tuple: (execution_result, empty_list_of_plots)
+
+        """
+        # JavaScript doesn't support plot extraction yet
+        result = container.run(code, libraries)
+        return result, []
 
     def extract_plots(
         self,

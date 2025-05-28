@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
@@ -30,6 +30,39 @@ class JavaHandler(AbstractLanguageHandler):
     def inject_plot_detection_code(self, code: str) -> str:
         """Java does not support plot detection directly in this manner."""
         return code
+
+    def run_with_artifacts(
+        self,
+        container: "ContainerProtocol",
+        code: str,
+        libraries: list | None = None,
+        enable_plotting: bool = True,  # noqa: ARG002
+        output_dir: str = "/tmp/sandbox_plots",  # noqa: ARG002
+    ) -> tuple[Any, list[PlotOutput]]:
+        """Run Java code without artifact extraction.
+
+        Java plot detection is not currently supported. This method
+        runs the code normally and returns an empty list of plots.
+
+        Future implementations could support:
+        - JFreeChart for chart generation
+        - XChart for plotting
+        - JavaFX for graphics
+
+        Args:
+            container: The container protocol instance to run code in
+            code: The Java code to execute
+            libraries: Optional list of libraries to install before running
+            enable_plotting: Whether to enable plot detection (ignored for Java)
+            output_dir: Directory where plots should be saved (unused)
+
+        Returns:
+            tuple: (execution_result, empty_list_of_plots)
+
+        """
+        # Java doesn't support plot extraction yet
+        result = container.run(code, libraries)
+        return result, []
 
     def extract_plots(
         self,

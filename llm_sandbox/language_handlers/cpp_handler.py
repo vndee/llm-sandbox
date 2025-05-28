@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
@@ -37,6 +37,39 @@ class CppHandler(AbstractLanguageHandler):
     def inject_plot_detection_code(self, code: str) -> str:
         """Inject plot detection code for the C++ handler."""
         return code
+
+    def run_with_artifacts(
+        self,
+        container: "ContainerProtocol",
+        code: str,
+        libraries: list | None = None,
+        enable_plotting: bool = True,  # noqa: ARG002
+        output_dir: str = "/tmp/sandbox_plots",  # noqa: ARG002
+    ) -> tuple[Any, list[PlotOutput]]:
+        """Run C++ code without artifact extraction.
+
+        C++ plot detection is not currently supported. This method
+        runs the code normally and returns an empty list of plots.
+
+        Future implementations could support:
+        - ROOT framework for scientific plotting
+        - Matplotlib-cpp for matplotlib bindings
+        - Custom plotting libraries that generate image files
+
+        Args:
+            container: The container protocol instance to run code in
+            code: The C++ code to execute
+            libraries: Optional list of libraries to install before running
+            enable_plotting: Whether to enable plot detection (ignored for C++)
+            output_dir: Directory where plots should be saved (unused)
+
+        Returns:
+            tuple: (execution_result, empty_list_of_plots)
+
+        """
+        # C++ doesn't support plot extraction yet
+        result = container.run(code, libraries)
+        return result, []
 
     def extract_plots(
         self,
@@ -87,14 +120,14 @@ class CppHandler(AbstractLanguageHandler):
         return r"/\*[\s\S]*?\*/"
 
     @staticmethod
-    def get_single_line_comment_patterns() -> str:
-        """Get the regex patterns for single line comments.
+    def get_inline_comment_patterns() -> str:
+        """Get the regex patterns for inline comments.
 
-        Regex to match single line comments.
+        Regex to match inline comments.
         Handles variations in whitespace.
 
         Returns:
-            str: The regex patterns for single line comments.
+            str: The regex patterns for inline comments.
 
         """
         return r"//.*$"
