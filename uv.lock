@@ -1554,11 +1554,10 @@ wheels = [
 
 [[package]]
 name = "llm-sandbox"
-version = "0.0.1"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
-    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -1603,7 +1602,6 @@ requires-dist = [
     { name = "kubernetes", marker = "extra == 'k8s'", specifier = ">=32.0.1" },
     { name = "podman", marker = "extra == 'podman'", specifier = ">=5.4.0.1" },
     { name = "pydantic", specifier = ">=2.11.5" },
-    { name = "typing-extensions", specifier = ">=4.0.0" },
 ]
 provides-extras = ["docker", "k8s", "podman"]
 
