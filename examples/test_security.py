@@ -1,5 +1,5 @@
 from llm_sandbox import SandboxSession
-from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 
 def comprehensive_security_policy() -> SecurityPolicy:
@@ -75,27 +75,27 @@ def comprehensive_security_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Subprocess management",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Foreign function library",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="socket",
             description="Network socket operations",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="requests",
             description="HTTP requests library",
             severity=SecurityIssueSeverity.MEDIUM,

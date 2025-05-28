@@ -1,22 +1,89 @@
-site_name: llm-sandbox
-repo_url: https://github.com/vndee/llm-sandbox
+site_name: LLM Sandbox Documentation
 site_url: https://vndee.github.io/llm-sandbox
-site_description: LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated manner using containers.
+repo_url: https://github.com/vndee/llm-sandbox
+repo_name: vndee/llm-sandbox
+site_description: A lightweight and portable sandbox environment for running LLM-generated code safely using containers
 site_author: Duy Huynh
 edit_uri: edit/main/docs/
-repo_name: vndee/llm-sandbox
-copyright: Maintained by <a href="https://vndee.com">vndee</a>.
+copyright: Copyright &copy; 2024 Duy Huynh - Maintained by <a href="https://blog.duy.dev">vndee</a>
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - header.autohide
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.prune
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - toc.integrate
+  language: en
+  font:
+    text: Roboto
+    code: Roboto Mono
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
 
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - User Guide:
       - Configuration: configuration.md
-  - API Reference: modules.md
+      - Security: security.md
+      - Container Backends: backends.md
+      - Supported Languages: languages.md
+      - LLM Integrations: integrations.md
+  - Examples: examples.md
+  - API Reference: api-reference.md
   - Contributing: contributing.md
 
 plugins:
-  - search
+  - search:
+      separator: '[\s\-\.]+'
+      lang:
+        - en
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
   - mkdocstrings:
       handlers:
         python:
@@ -24,61 +91,99 @@ plugins:
           options:
             show_source: true
             show_root_heading: true
-            heading_level: 2
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
             show_category_heading: true
-            docstring_style: google
-            show_if_no_docstring: true
+            show_if_no_docstring: false
+            show_signature: true
             show_signature_annotations: true
+            separate_signature: true
+            line_length: 100
+            merge_init_into_class: true
+            docstring_style: google
+            docstring_section_style: spacy
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
 
-theme:
-  name: material
-  feature:
-    tabs: true
-  palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: white
-      accent: deep orange
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: black
-      accent: deep orange
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
-  icon:
-    repo: fontawesome/brands/github
-  features:
-    - navigation.instant
-    - navigation.tracking
-    - navigation.sections
-    - navigation.expand
-    - navigation.top
-    - search.suggest
-    - search.highlight
-    - content.code.copy
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      title: On this page
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: vndee
+      repo: llm-sandbox
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/mkdocs.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - attr_list
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 extra:
+  analytics:
+    provider: google
+    property: "" # Replace with your Google Analytics ID when needed
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/vndee/llm-sandbox
     - icon: fontawesome/brands/python
-      link: https://pypi.org/project/llm-sandbox
+      link: https://pypi.org/project/llm-sandbox/
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/u/vndee
+    - icon: fontawesome/brands/linkedin
+      link: https://linkedin.com/in/vndee
+    - icon: fontawesome/solid/globe
+      link: https://vndee.com
+  version:
+    provider: mike
+    default: latest
+  consent:
+    title: Cookie consent
+    description: >
+      We use cookies to recognize your repeated visits and preferences, as well
+      as to measure the effectiveness of our documentation and whether users
+      find what they're searching for. With your consent, you're helping us to
+      make our documentation better.
 
-markdown_extensions:
-  - toc:
-      permalink: true
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
-  - pymdownx.superfences
-  - admonition
-  - pymdownx.details
-  - attr_list
-  - md_in_html
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

@@ -6,7 +6,7 @@ and risk levels, making it easy to get started with LLM Sandbox security.
 
 import logging
 
-from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 
 def create_development_policy() -> SecurityPolicy:
@@ -40,7 +40,7 @@ def create_development_policy() -> SecurityPolicy:
 
     restricted_modules = [
         # Only block modules that can cause immediate system damage
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Direct system call access",
             severity=SecurityIssueSeverity.HIGH,
@@ -112,27 +112,27 @@ def create_production_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Subprocess management",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Foreign function library",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="socket",
             description="Network socket operations",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="multiprocessing",
             description="Process-based parallelism",
             severity=SecurityIssueSeverity.MEDIUM,
@@ -194,23 +194,23 @@ def create_educational_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Subprocess management",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Foreign function library",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
         # Allow networking libraries for learning
-        DangerousModule(
+        RestrictedModule(
             name="socket",
             description="Network socket operations",
             severity=SecurityIssueSeverity.LOW,
@@ -272,28 +272,28 @@ def create_data_science_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Subprocess management",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Foreign function library",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
         # Allow common data science networking
-        DangerousModule(
+        RestrictedModule(
             name="urllib",
             description="URL handling library",
             severity=SecurityIssueSeverity.LOW,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="requests",
             description="HTTP requests library",
             severity=SecurityIssueSeverity.LOW,
@@ -350,33 +350,33 @@ def create_web_scraping_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Subprocess management",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Foreign function library",
             severity=SecurityIssueSeverity.HIGH,
         ),
         # Allow networking libraries (essential for web scraping)
-        DangerousModule(
+        RestrictedModule(
             name="urllib",
             description="URL handling library",
             severity=SecurityIssueSeverity.LOW,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="requests",
             description="HTTP requests library",
             severity=SecurityIssueSeverity.LOW,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="socket",
             description="Network socket operations",
             severity=SecurityIssueSeverity.MEDIUM,
@@ -416,7 +416,7 @@ def create_minimal_policy() -> SecurityPolicy:
 
     restricted_modules = [
         # Only block modules that can cause immediate system damage
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Direct system call access",
             severity=SecurityIssueSeverity.HIGH,
@@ -485,22 +485,22 @@ def create_strict_policy() -> SecurityPolicy:
 
     restricted_modules = [
         # Block all potentially dangerous modules
-        DangerousModule(name="os", description="Operating system interface", severity=SecurityIssueSeverity.HIGH),
-        DangerousModule(name="sys", description="System-specific parameters", severity=SecurityIssueSeverity.HIGH),
-        DangerousModule(name="subprocess", description="Subprocess management", severity=SecurityIssueSeverity.HIGH),
-        DangerousModule(name="ctypes", description="Foreign function library", severity=SecurityIssueSeverity.HIGH),
-        DangerousModule(name="socket", description="Network socket operations", severity=SecurityIssueSeverity.MEDIUM),
-        DangerousModule(name="urllib", description="URL handling library", severity=SecurityIssueSeverity.MEDIUM),
-        DangerousModule(name="requests", description="HTTP requests library", severity=SecurityIssueSeverity.MEDIUM),
-        DangerousModule(
+        RestrictedModule(name="os", description="Operating system interface", severity=SecurityIssueSeverity.HIGH),
+        RestrictedModule(name="sys", description="System-specific parameters", severity=SecurityIssueSeverity.HIGH),
+        RestrictedModule(name="subprocess", description="Subprocess management", severity=SecurityIssueSeverity.HIGH),
+        RestrictedModule(name="ctypes", description="Foreign function library", severity=SecurityIssueSeverity.HIGH),
+        RestrictedModule(name="socket", description="Network socket operations", severity=SecurityIssueSeverity.MEDIUM),
+        RestrictedModule(name="urllib", description="URL handling library", severity=SecurityIssueSeverity.MEDIUM),
+        RestrictedModule(name="requests", description="HTTP requests library", severity=SecurityIssueSeverity.MEDIUM),
+        RestrictedModule(
             name="multiprocessing", description="Process-based parallelism", severity=SecurityIssueSeverity.MEDIUM
         ),
-        DangerousModule(name="threading", description="Thread-based parallelism", severity=SecurityIssueSeverity.LOW),
-        DangerousModule(name="pickle", description="Python object serialization", severity=SecurityIssueSeverity.LOW),
-        DangerousModule(
+        RestrictedModule(name="threading", description="Thread-based parallelism", severity=SecurityIssueSeverity.LOW),
+        RestrictedModule(name="pickle", description="Python object serialization", severity=SecurityIssueSeverity.LOW),
+        RestrictedModule(
             name="marshal", description="Internal Python object serialization", severity=SecurityIssueSeverity.LOW
         ),
-        DangerousModule(name="shelve", description="Python object persistence", severity=SecurityIssueSeverity.LOW),
+        RestrictedModule(name="shelve", description="Python object persistence", severity=SecurityIssueSeverity.LOW),
     ]
 
     return SecurityPolicy(

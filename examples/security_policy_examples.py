@@ -7,7 +7,7 @@ malicious or dangerous code execution in the sandbox environment.
 import logging
 
 from llm_sandbox import SandboxSession
-from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -49,17 +49,17 @@ def create_basic_security_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="socket",
             description="Network socket operations",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="urllib",
             description="URL handling and HTTP requests",
             severity=SecurityIssueSeverity.LOW,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="requests",
             description="HTTP requests library",
             severity=SecurityIssueSeverity.LOW,
@@ -117,32 +117,32 @@ def create_strict_security_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="os",
             description="Operating system interface",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="sys",
             description="System-specific parameters and functions",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="subprocess",
             description="Subprocess management",
             severity=SecurityIssueSeverity.HIGH,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="multiprocessing",
             description="Process-based parallelism",
             severity=SecurityIssueSeverity.MEDIUM,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="threading",
             description="Thread-based parallelism",
             severity=SecurityIssueSeverity.LOW,
         ),
-        DangerousModule(
+        RestrictedModule(
             name="ctypes",
             description="Foreign function library",
             severity=SecurityIssueSeverity.HIGH,
@@ -177,7 +177,7 @@ def create_permissive_security_policy() -> SecurityPolicy:
     ]
 
     restricted_modules = [
-        DangerousModule(
+        RestrictedModule(
             name="shutil",
             description="High-level file operations (only blocked for dangerous operations)",
             severity=SecurityIssueSeverity.HIGH,
@@ -298,7 +298,7 @@ def test_dynamic_policy_modification() -> None:
     policy.add_pattern(new_pattern)
 
     # Add a new dangerous module
-    new_module = DangerousModule(
+    new_module = RestrictedModule(
         name="pickle",
         description="Potentially unsafe serialization",
         severity=SecurityIssueSeverity.MEDIUM,

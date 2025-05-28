@@ -18,7 +18,7 @@ from llm_sandbox.exceptions import (
     LibraryInstallationNotSupportedError,
     SecurityViolationError,
 )
-from llm_sandbox.security import DangerousModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 
 class ConcreteSession(Session):
@@ -208,7 +208,7 @@ class TestSessionLibraryInstallation:
         mock_handler.is_support_library_installation = True
         mock_create_handler.return_value = mock_handler
 
-        restricted_modules = [DangerousModule(name="os", description="OS module", severity=SecurityIssueSeverity.HIGH)]
+        restricted_modules = [RestrictedModule(name="os", description="OS module", severity=SecurityIssueSeverity.HIGH)]
         security_policy = SecurityPolicy(patterns=[], restricted_modules=restricted_modules)
 
         session = ConcreteSession(lang="python", security_policy=security_policy)
@@ -351,7 +351,7 @@ class TestSessionSecurity:
         mock_create_handler.return_value = mock_handler
 
         restricted_modules = [
-            DangerousModule(name="subprocess", description="Subprocess module", severity=SecurityIssueSeverity.HIGH)
+            RestrictedModule(name="subprocess", description="Subprocess module", severity=SecurityIssueSeverity.HIGH)
         ]
         security_policy = SecurityPolicy(
             patterns=[], restricted_modules=restricted_modules, severity_threshold=SecurityIssueSeverity.MEDIUM
