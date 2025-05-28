@@ -373,7 +373,7 @@ functions = [
 ]
 ```
 
-## ��️ Architecture
+## 🏗️ Architecture
 
 ```mermaid
 graph LR
