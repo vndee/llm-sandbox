@@ -453,6 +453,3 @@ If you find LLM Sandbox useful, please consider giving it a star on GitHub!
 - **PyPI**: [pypi.org/project/llm-sandbox](https://pypi.org/project/llm-sandbox/)
 - **Documentation**: [vndee.github.io/llm-sandbox](https://vndee.github.io/llm-sandbox/)
 
----
-
-Made with ❤️ for the AI developer community
