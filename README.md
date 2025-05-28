@@ -373,12 +373,11 @@ functions = [
 ]
 ```
 
-## ��️ Architecture
+## 📦 Architecture
 
 ```mermaid
 graph LR
     A[LLM Client] --> B[LLM Sandbox]
-    B --> C[Container Backend]
 
     A1[OpenAI] --> A
     A2[Anthropic] --> A
@@ -386,11 +385,6 @@ graph LR
     A4[LangChain] --> A
     A5[LangGraph] --> A
     A6[LlamaIndex] --> A
-
-    B1[Security Policies] --> B
-    B2[Code Isolation] --> B
-    B3[Multi-Language Support] --> B
-    B4[Artifact Management] --> B
 
     C --> C1[Docker]
     C --> C2[Kubernetes]
