@@ -27,7 +27,11 @@ class TestSandboxPodmanSessionInit:
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_init_with_defaults(self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock) -> None:
-        """Test initialization with default parameters."""
+        """
+        Verifies that SandboxPodmanSession initializes with default parameters.
+        
+        Ensures that language, image, flags, working directory, and Podman client are set to their default values when no arguments are provided.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
@@ -119,7 +123,9 @@ class TestSandboxPodmanSessionOpen:
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_open_with_existing_image(self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock) -> None:
-        """Test opening session with existing image."""
+        """
+        Tests that opening a session with an existing image retrieves the image, creates and starts the container, sets up the environment, and assigns the container and image to the session.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
@@ -149,7 +155,11 @@ class TestSandboxPodmanSessionOpen:
     def test_open_with_image_pull_single_image(
         self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
     ) -> None:
-        """Test opening session when image needs to be pulled (returns single image)."""
+        """
+        Tests opening a Podman session when the required image is not found locally and must be pulled, with the pull operation returning a single image.
+        
+        Verifies that the image is pulled, the session is marked as a template creation, and the pulled image is set as the session's Docker image.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()

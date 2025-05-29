@@ -21,7 +21,11 @@ class TestSandboxDockerSessionInit:
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_init_with_defaults(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test initialization with default parameters."""
+        """
+        Tests that SandboxDockerSession initializes with the correct default parameters.
+        
+        Verifies that the default language, image, verbosity, template handling, commit behavior, streaming, working directory, and Docker client are set as expected when no arguments are provided.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
@@ -113,7 +117,11 @@ class TestSandboxDockerSessionOpen:
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_open_with_existing_image(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test opening session with existing image."""
+        """
+        Verifies that opening a session with an existing Docker image retrieves the image, runs the container, and performs environment setup.
+        
+        Ensures the session's container and image attributes are set correctly after opening.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
@@ -140,7 +148,11 @@ class TestSandboxDockerSessionOpen:
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_open_with_image_pull(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test opening session when image needs to be pulled."""
+        """
+        Tests opening a SandboxDockerSession when the Docker image is not found locally and must be pulled.
+        
+        Verifies that the image is pulled from the registry, the container is started, and the session's `is_create_template` flag is set to True.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
