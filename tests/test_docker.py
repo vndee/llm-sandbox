@@ -152,7 +152,7 @@ class TestSandboxDockerSessionOpen:
         mock_client.images.get.side_effect = ImageNotFound("Image not found")
 
         mock_image = MagicMock()
-        mock_image.tags = ["vndee/sandbox-python-311-bullseye"]
+        mock_image.tags = [DefaultImage.PYTHON]
         mock_client.images.pull.return_value = mock_image
 
         mock_container = MagicMock()

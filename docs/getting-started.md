@@ -559,7 +559,7 @@ from llm_sandbox import SandboxSession
 
 with SandboxSession(
     lang="python",
-    image="vndee/sandbox-python-311-bullseye"
+    image="ghcr.io/vndee/sandbox-python-311-bullseye"
 ) as session:
     result = session.run("print('Hello from my custom image!')")
     print(result.stdout)

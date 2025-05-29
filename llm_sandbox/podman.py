@@ -57,7 +57,7 @@ class SandboxPodmanSession(Session):
             client (PodmanClient | None, optional): An existing Podman client instance.
                 If None, a new client will be created based on the local Podman environment
                 (e.g., Podman socket). Defaults to None.
-            image (str | None, optional): The name of the Podman image to use (e.g., "vndee/sandbox-python-311-bullseye").
+            image (str | None, optional): The name of the Podman image to use (e.g., "ghcr.io/vndee/sandbox-python-311-bullseye").
                 If None and `dockerfile` is also None, a default image for the specified `lang` is used.
                 Defaults to None.
             dockerfile (str | None, optional): The path to a Dockerfile or Containerfile to build an image from.

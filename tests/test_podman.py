@@ -126,7 +126,7 @@ class TestSandboxPodmanSessionOpen:
         mock_podman_from_env.return_value = mock_client
 
         mock_image = MagicMock()
-        mock_image.tags = ["vndee/sandbox-python-311-bullseye"]
+        mock_image.tags = [DefaultImage.PYTHON]
         mock_client.images.get.return_value = mock_image
 
         mock_container = MagicMock()
@@ -193,7 +193,7 @@ class TestSandboxPodmanSessionOpen:
         mock_client.images.get.side_effect = ImageNotFound("Image not found")
 
         mock_image = MagicMock()
-        mock_image.tags = ["vndee/sandbox-python-311-bullseye"]
+        mock_image.tags = [DefaultImage.PYTHON]
         mock_client.images.pull.return_value = [mock_image]  # Returns list
 
         mock_container = MagicMock()

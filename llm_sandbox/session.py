@@ -228,7 +228,7 @@ class ArtifactSandboxSession:
             with ArtifactSandboxSession(
                 lang="python",
                 verbose=True,
-                image="vndee/sandbox-python-311-bullseye",
+                image="ghcr.io/vndee/sandbox-python-311-bullseye",
                 backend=SandboxBackend.DOCKER
             ) as session:
                 # Example code that generates matplotlib, seaborn, and plotly plots
@@ -266,7 +266,7 @@ class ArtifactSandboxSession:
                 client=podman_client,  # Podman specific
                 lang="python",
                 verbose=True,
-                image="vndee/sandbox-python-311-bullseye",
+                image="ghcr.io/vndee/sandbox-python-311-bullseye",
                 backend=SandboxBackend.PODMAN
             ) as session:
                 result = session.run(code)
@@ -277,7 +277,7 @@ class ArtifactSandboxSession:
             with ArtifactSandboxSession(
                 lang="python",
                 verbose=True,
-                image="vndee/sandbox-python-311-bullseye",
+                image="ghcr.io/vndee/sandbox-python-311-bullseye",
                 backend=SandboxBackend.KUBERNETES
             ) as session:
                 result = session.run(code)
@@ -351,7 +351,7 @@ class ArtifactSandboxSession:
             with ArtifactSandboxSession(
                 lang="python",
                 verbose=True,
-                image="vndee/sandbox-python-311-bullseye"
+                image="ghcr.io/vndee/sandbox-python-311-bullseye"
             ) as session:
                 code = '''
                 import matplotlib.pyplot as plt

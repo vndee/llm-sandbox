@@ -54,7 +54,7 @@ class SandboxDockerSession(Session):
             client (docker.DockerClient | None, optional): An existing Docker client instance.
                 If None, a new client will be created based on the local Docker environment.
                 Defaults to None.
-            image (str | None, optional): The name of the Docker image to use (e.g., "vndee/sandbox-python-311-bullseye").
+            image (str | None, optional): The name of the Docker image to use (e.g., "ghcr.io/vndee/sandbox-python-311-bullseye").
                 If None and `dockerfile` is also None, a default image for the specified `lang` is used.
                 Defaults to None.
             dockerfile (str | None, optional): The path to a Dockerfile to build an image from.

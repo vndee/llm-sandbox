@@ -175,7 +175,7 @@ def test_kubernetes_custom_security() -> None:
                 "containers": [
                     {
                         "name": "sandbox-container",
-                        "image": "vndee/sandbox-python-311-bullseye",
+                        "image": "ghcr.io/vndee/sandbox-python-311-bullseye",
                         "tty": True,
                         "securityContext": {
                             "runAsUser": 1000,
