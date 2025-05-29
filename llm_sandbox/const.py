@@ -6,7 +6,16 @@ container image names.
 """
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
+
+# Python 3.11+ compatibility for StrEnum
+try:
+    from enum import StrEnum
+except ImportError:
+    # Python < 3.11 compatibility
+    class StrEnum(str, Enum):
+        """String enumeration for Python < 3.11 compatibility."""
+        pass
 
 
 class SandboxBackend(StrEnum):
@@ -45,7 +54,7 @@ class DefaultImage:
     provided by the user for a given programming language.
     """
 
-    PYTHON = "vndee/sandbox-python-311-bullseye"
+    PYTHON = "python:3.11-bullseye"
     JAVA = "openjdk:11.0.12-jdk-bullseye"
     JAVASCRIPT = "node:22-bullseye"
     CPP = "gcc:11.2.0-bullseye"
