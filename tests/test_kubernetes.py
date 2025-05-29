@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import NotOpenSessionError
 from llm_sandbox.kubernetes import SandboxKubernetesSession
@@ -35,7 +35,7 @@ class TestSandboxKubernetesSessionInit:
 
         assert session.lang == SupportedLanguage.PYTHON
         assert session.verbose is False
-        assert session.image == "vndee/sandbox-python-311-bullseye"
+        assert session.image == DefaultImage.PYTHON
         assert session.workdir == "/sandbox"
         assert session.kube_namespace == "default"
         assert session.client == mock_client
@@ -125,7 +125,7 @@ class TestSandboxKubernetesSessionInit:
         assert manifest["apiVersion"] == "v1"
         assert manifest["kind"] == "Pod"
         assert manifest["metadata"]["namespace"] == "default"
-        assert manifest["spec"]["containers"][0]["image"] == "vndee/sandbox-python-311-bullseye"
+        assert manifest["spec"]["containers"][0]["image"] == DefaultImage.PYTHON
         assert manifest["spec"]["containers"][0]["env"] == [{"name": "TEST_VAR", "value": "test_value"}]
 
 

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import (
     CommandEmptyError,
@@ -37,7 +37,7 @@ class TestSandboxPodmanSessionInit:
 
         assert session.lang == SupportedLanguage.PYTHON
         assert session.verbose is False
-        assert session.image == "vndee/sandbox-python-311-bullseye"
+        assert session.image == DefaultImage.PYTHON
         assert session.keep_template is False
         assert session.commit_container is False
         assert session.stream is True
@@ -137,7 +137,7 @@ class TestSandboxPodmanSessionOpen:
         with patch.object(session, "environment_setup") as mock_env_setup:
             session.open()
 
-        mock_client.images.get.assert_called_once_with("vndee/sandbox-python-311-bullseye")
+        mock_client.images.get.assert_called_once_with(DefaultImage.PYTHON)
         mock_client.containers.create.assert_called_once()
         mock_container.start.assert_called_once()
         mock_env_setup.assert_called_once()
@@ -173,7 +173,7 @@ class TestSandboxPodmanSessionOpen:
         with patch.object(session, "environment_setup"):
             session.open()
 
-        mock_client.images.pull.assert_called_once_with("vndee/sandbox-python-311-bullseye")
+        mock_client.images.pull.assert_called_once_with(DefaultImage.PYTHON)
         assert session.is_create_template is True
         assert session.docker_image == mock_image
 
