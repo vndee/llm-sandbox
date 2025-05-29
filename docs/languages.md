@@ -6,11 +6,11 @@ LLM Sandbox supports multiple programming languages, each with specific features
 
 | Language | Version | Package Manager | Plot Support | Default Image |
 |----------|---------|----------------|--------------|---------------|
-| **Python** | 3.11 | pip | ✅ Full | `vndee/sandbox-python-311-bullseye` |
-| **JavaScript** | Node 22 | npm | ❌ | `node:22-bullseye` |
-| **Java** | 11 | Maven | ❌ | `openjdk:11.0.12-jdk-bullseye` |
-| **C++** | GCC 11.2 | apt | ❌ | `gcc:11.2.0-bullseye` |
-| **Go** | 1.23.4 | go get | ❌ | `golang:1.23.4-bullseye` |
+| **Python** | 3.11 | pip | ✅ Full | `ghcr.io/vndee/sandbox-python-311-bullseye` |
+| **JavaScript** | Node 22 | npm | ❌ | `ghcr.io/vndee/sandbox-node-22-bullseye` |
+| **Java** | 11 | Maven | ❌ | `ghcr.io/vndee/sandbox-java-11-bullseye` |
+| **C++** | GCC 11.2 | apt | ❌ | `ghcr.io/vndee/sandbox-cpp-11-bullseye` |
+| **Go** | 1.23.4 | go get | ❌ | `ghcr.io/vndee/sandbox-go-123-bullseye` |
 
 ## Python
 

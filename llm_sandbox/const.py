@@ -87,9 +87,9 @@ class DefaultImage:
     provided by the user for a given programming language.
     """
 
-    PYTHON = "vndee/sandbox-python-311-bullseye"
-    JAVA = "openjdk:11.0.12-jdk-bullseye"
-    JAVASCRIPT = "node:22-bullseye"
-    CPP = "gcc:11.2.0-bullseye"
-    GO = "golang:1.23.4-bullseye"
-    RUBY = "ruby:3.0.2-bullseye"
+    PYTHON = "ghcr.io/vndee/sandbox-python-311-bullseye"
+    JAVA = "ghcr.io/vndee/sandbox-java-11-bullseye"
+    JAVASCRIPT = "ghcr.io/vndee/sandbox-node-22-bullseye"
+    CPP = "ghcr.io/vndee/sandbox-cpp-11-bullseye"
+    GO = "ghcr.io/vndee/sandbox-go-123-bullseye"
+    RUBY = "ghcr.io/vndee/sandbox-ruby-302-bullseye"

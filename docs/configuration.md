@@ -23,11 +23,12 @@ Supported languages and their identifiers:
 
 | Language | Identifier | Default Image |
 |----------|------------|---------------|
-| Python | `python` | `vndee/sandbox-python-311-bullseye` |
-| JavaScript | `javascript` | `node:22-bullseye` |
-| Java | `java` | `openjdk:11.0.12-jdk-bullseye` |
-| C++ | `cpp` | `gcc:11.2.0-bullseye` |
-| Go | `go` | `golang:1.23.4-bullseye` |
+| Python | `python` | `ghcr.io/vndee/sandbox-python-311-bullseye` |
+| JavaScript | `javascript` | `ghcr.io/vndee/sandbox-node-22-bullseye` |
+| Java | `java` | `ghcr.io/vndee/sandbox-java-11-bullseye` |
+| C++ | `cpp` | `ghcr.io/vndee/sandbox-cpp-11-bullseye` |
+| Go | `go` | `ghcr.io/vndee/sandbox-go-123-bullseye` |
+| Ruby | `ruby` | `ghcr.io/vndee/sandbox-ruby-302-bullseye` |
 
 ### Container Images
 

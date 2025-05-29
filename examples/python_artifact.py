@@ -249,7 +249,7 @@ Path("plots").mkdir(exist_ok=True)
 with ArtifactSandboxSession(
     lang="python",
     verbose=True,
-    image="vndee/sandbox-python-311-bullseye",
+    image="ghcr.io/vndee/sandbox-python-311-bullseye",
     backend=SandboxBackend.KUBERNETES,
 ) as session:
     result = session.run(code)
@@ -267,7 +267,7 @@ with ArtifactSandboxSession(
 with ArtifactSandboxSession(
     lang="python",
     verbose=True,
-    image="vndee/sandbox-python-311-bullseye",
+    image="ghcr.io/vndee/sandbox-python-311-bullseye",
     backend=SandboxBackend.DOCKER,
 ) as session:
     result = session.run(code)
@@ -286,7 +286,7 @@ with ArtifactSandboxSession(
     client=podman_client,
     lang="python",
     verbose=True,
-    image="vndee/sandbox-python-311-bullseye",
+    image="ghcr.io/vndee/sandbox-python-311-bullseye",
     backend=SandboxBackend.PODMAN,
 ) as session:
     result = session.run(code)
