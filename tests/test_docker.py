@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import SandboxDockerSession
 from llm_sandbox.exceptions import CommandEmptyError, ExtraArgumentsError, ImagePullError, NotOpenSessionError
@@ -31,7 +31,7 @@ class TestSandboxDockerSessionInit:
 
         assert session.lang == SupportedLanguage.PYTHON
         assert session.verbose is False
-        assert session.image == "vndee/sandbox-python-311-bullseye"  # Default Python image
+        assert session.image == DefaultImage.PYTHON
         assert session.keep_template is False
         assert session.commit_container is False
         assert session.stream is True
@@ -120,7 +120,7 @@ class TestSandboxDockerSessionOpen:
         mock_docker_from_env.return_value = mock_client
 
         mock_image = MagicMock()
-        mock_image.tags = ["vndee/sandbox-python-311-bullseye"]
+        mock_image.tags = [DefaultImage.PYTHON]
         mock_client.images.get.return_value = mock_image
 
         mock_container = MagicMock()
@@ -131,7 +131,7 @@ class TestSandboxDockerSessionOpen:
         with patch.object(session, "environment_setup") as mock_env_setup:
             session.open()
 
-        mock_client.images.get.assert_called_once_with("vndee/sandbox-python-311-bullseye")
+        mock_client.images.get.assert_called_once_with(DefaultImage.PYTHON)
         mock_client.containers.run.assert_called_once()
         mock_env_setup.assert_called_once()
         assert session.container == mock_container
@@ -163,7 +163,7 @@ class TestSandboxDockerSessionOpen:
         with patch.object(session, "environment_setup"):
             session.open()
 
-        mock_client.images.pull.assert_called_once_with("vndee/sandbox-python-311-bullseye")
+        mock_client.images.pull.assert_called_once_with(DefaultImage.PYTHON)
         assert session.is_create_template is True
 
     @patch("llm_sandbox.docker.docker.from_env")
