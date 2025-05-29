@@ -324,9 +324,11 @@ class SandboxNewBackendSession(Session):
 ```python
 # llm_sandbox/session.py
 def create_session(backend, **kwargs):
-    if backend == SandboxBackend.NEW_BACKEND:
-        from .new_backend import SandboxNewBackendSession
-        return SandboxNewBackendSession(**kwargs)
+    match backend:
+        # ...
+        case SandboxBackend.NEW_BACKEND:
+            from .new_backend import SandboxNewBackendSession
+            return SandboxNewBackendSession(**kwargs)
 ```
 
 3. Add to constants:

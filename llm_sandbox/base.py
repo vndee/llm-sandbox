@@ -307,27 +307,28 @@ class Session(ABC):
             (f"mkdir -p {self.workdir}", None),
         ])
 
-        if self.language_handler.name == SupportedLanguage.PYTHON:
-            # Create venv and cache directory first
-            self.execute_commands([
-                ("python -m venv /tmp/venv", None),
-                ("mkdir -p /tmp/pip_cache", None),
-            ])
+        match self.language_handler.name:
+            case SupportedLanguage.PYTHON:
+                # Create venv and cache directory first
+                self.execute_commands([
+                    ("python -m venv /tmp/venv", None),
+                    ("mkdir -p /tmp/pip_cache", None),
+                ])
 
-            self._ensure_ownership(["/tmp/venv", "/tmp/pip_cache"])
+                self._ensure_ownership(["/tmp/venv", "/tmp/pip_cache"])
 
-            # Now upgrade pip with proper ownership and cache
-            self.execute_commands([
-                (
-                    "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache",
-                    None,
-                ),
-            ])
-        elif self.language_handler.name == SupportedLanguage.GO:
-            self.execute_commands([
-                ("go mod init sandbox", self.workdir),
-                ("go mod tidy", self.workdir),
-            ])
+                # Now upgrade pip with proper ownership and cache
+                self.execute_commands([
+                    (
+                        "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache",
+                        None,
+                    ),
+                ])
+            case SupportedLanguage.GO:
+                self.execute_commands([
+                    ("go mod init sandbox", self.workdir),
+                    ("go mod tidy", self.workdir),
+                ])
 
     def _check_security_policy(self, code: str) -> tuple[bool, list[SecurityPattern]]:
         r"""Check the security policy.

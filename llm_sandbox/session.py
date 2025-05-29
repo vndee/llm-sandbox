@@ -150,27 +150,25 @@ def create_session(
     _check_dependency(backend)
 
     # Create the appropriate session based on backend
-    if backend == SandboxBackend.DOCKER:
-        from .docker import SandboxDockerSession
+    match backend:
+        case SandboxBackend.DOCKER:
+            from .docker import SandboxDockerSession
 
-        return SandboxDockerSession(*args, **kwargs)
+            return SandboxDockerSession(*args, **kwargs)
+        case SandboxBackend.KUBERNETES:
+            from .kubernetes import SandboxKubernetesSession
 
-    if backend == SandboxBackend.KUBERNETES:
-        from .kubernetes import SandboxKubernetesSession
+            return SandboxKubernetesSession(*args, **kwargs)
+        case SandboxBackend.PODMAN:
+            from .podman import SandboxPodmanSession
 
-        return SandboxKubernetesSession(*args, **kwargs)
+            return SandboxPodmanSession(*args, **kwargs)
+        case SandboxBackend.MICROMAMBA:
+            from .micromamba import MicromambaSession
 
-    if backend == SandboxBackend.PODMAN:
-        from .podman import SandboxPodmanSession
-
-        return SandboxPodmanSession(*args, **kwargs)
-
-    if backend == SandboxBackend.MICROMAMBA:
-        from .micromamba import MicromambaSession
-
-        return MicromambaSession(*args, **kwargs)
-
-    raise UnsupportedBackendError(backend=backend)
+            return MicromambaSession(*args, **kwargs)
+        case _:
+            raise UnsupportedBackendError(backend=backend)
 
 
 class ArtifactSandboxSession:
