@@ -153,7 +153,11 @@ print('✓ Successfully created file in /k8s_test_dir/')
 
 
 def test_kubernetes_custom_security() -> None:
-    """Test Kubernetes with custom security context."""
+    """
+    Tests running a Python sandbox session on Kubernetes with a custom security context.
+    
+    Creates a uniquely named pod using a manifest that sets the user and group to 1000, ensuring the container runs as a non-root user. Verifies the user and group IDs inside the pod and attempts to create a temporary file in `/tmp` to confirm non-root file system access. Handles and logs exceptions, including cases where a pod with the generated name already exists.
+    """
     logger.info("=== Testing Kubernetes Custom Security Context ===")
 
     try:

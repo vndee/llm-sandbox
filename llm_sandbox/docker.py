@@ -48,45 +48,15 @@ class SandboxDockerSession(Session):
         security_policy: SecurityPolicy | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
-        r"""Initialize a new Docker-based sandbox session.
-
-        Args:
-            client (docker.DockerClient | None, optional): An existing Docker client instance.
-                If None, a new client will be created based on the local Docker environment.
-                Defaults to None.
-            image (str | None, optional): The name of the Docker image to use (e.g., "ghcr.io/vndee/sandbox-python-311-bullseye").
-                If None and `dockerfile` is also None, a default image for the specified `lang` is used.
-                Defaults to None.
-            dockerfile (str | None, optional): The path to a Dockerfile to build an image from.
-                Cannot be used if `image` is also provided. Defaults to None.
-            lang (str, optional): The programming language of the code to be run (e.g., "python", "java").
-                Determines default image and language-specific handlers. Defaults to SupportedLanguage.PYTHON.
-            keep_template (bool, optional): If True, the Docker image (built or pulled) and the container
-                will not be removed after the session ends. Defaults to False.
-            commit_container (bool, optional): If True, the Docker container's state will be committed
-                to a new image after the session ends. Defaults to False.
-            verbose (bool, optional): If True, print detailed log messages. Defaults to False.
-            mounts (list[Mount] | None, optional): A list of Docker `Mount` objects to be mounted
-                into the container. Defaults to None.
-            stream (bool, optional): If True, the output from `execute_command` will be streamed.
-                Note: Enabling this option prevents obtaining an exit code for the command directly
-                from the `exec_run` result if it relies on the non-streamed `exit_code` attribute.
-                Defaults to True.
-            runtime_configs (dict | None, optional): Additional configurations for the container runtime,
-                such as resource limits (e.g., `cpu_count`, `mem_limit`) or user (`user="1000:1000"`).
-                By default, containers run as the root user for maximum compatibility.
-                Defaults to None.
-            workdir (str | None, optional): The working directory inside the container.
-                Defaults to "/sandbox". Consider using "/tmp/sandbox" when running as a non-root user.
-            security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
-                Defaults to None.
-            **kwargs: Catches unused keyword arguments passed from `create_session`.
-
+        """
+        Initializes a Docker-based sandbox session for isolated code execution.
+        
+        Creates a new Docker client or uses an existing one, sets up the Docker image or builds from a Dockerfile, and configures session parameters such as language, mounts, runtime options, working directory, and security policy. Ensures only one of `image` or `dockerfile` is provided, and selects a default image based on the programming language if neither is specified.
+        
         Raises:
             ExtraArgumentsError: If both `image` and `dockerfile` are provided.
             ImagePullError: If pulling the specified Docker image fails.
-            ImageNotFoundError: If the specified image is not found and cannot be pulled or built.
-
+            ImageNotFoundError: If the specified image cannot be found or built.
         """
         super().__init__(
             lang=lang,

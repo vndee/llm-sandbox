@@ -51,45 +51,15 @@ class SandboxPodmanSession(Session):
         security_policy: SecurityPolicy | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
-        r"""Initialize a new Podman-based sandbox session.
-
-        Args:
-            client (PodmanClient | None, optional): An existing Podman client instance.
-                If None, a new client will be created based on the local Podman environment
-                (e.g., Podman socket). Defaults to None.
-            image (str | None, optional): The name of the Podman image to use (e.g., "ghcr.io/vndee/sandbox-python-311-bullseye").
-                If None and `dockerfile` is also None, a default image for the specified `lang` is used.
-                Defaults to None.
-            dockerfile (str | None, optional): The path to a Dockerfile or Containerfile to build an image from.
-                Cannot be used if `image` is also provided. Defaults to None.
-            lang (str, optional): The programming language of the code to be run (e.g., "python", "java").
-                Determines default image and language-specific handlers. Defaults to SupportedLanguage.PYTHON.
-            keep_template (bool, optional): If True, the Podman image (built or pulled)
-                will not be removed after the session ends. Defaults to False.
-            commit_container (bool, optional): If True, the Podman container's state will be committed
-                to a new image after the session ends. Defaults to False.
-            verbose (bool, optional): If True, print detailed log messages. Defaults to False.
-            mounts (list | None, optional): A list of mount configurations for the container.
-                The exact structure depends on Podman client library expectations (often list of strings or dicts).
-                Defaults to None.
-            stream (bool, optional): If True, the output from `execute_command` will be streamed.
-                Note: Enabling this option might affect how exit codes are retrieved for commands.
-                Defaults to True.
-            runtime_configs (dict | None, optional): Additional configurations for the container runtime,
-                such as resource limits (e.g., `cpu_count`, `mem_limit`) or user (`user="1000:1000"`).
-                By default, containers run as the root user for maximum compatibility.
-                Defaults to None.
-            workdir (str | None, optional): The working directory inside the container.
-                Defaults to "/sandbox". Consider using "/tmp/sandbox" when running as a non-root user.
-            security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
-                Defaults to None.
-            **kwargs: Catches unused keyword arguments passed from `create_session`.
-
+        """
+        Initializes a new sandbox session using a Podman container.
+        
+        Configures the session with the specified Podman client, image or Dockerfile, programming language, container runtime options, mounts, working directory, and security policy. Ensures that only one of `image` or `dockerfile` is provided, and sets a default image based on the language if neither is specified. Prepares internal state for managing the Podman container lifecycle and execution environment.
+        
         Raises:
             ExtraArgumentsError: If both `image` and `dockerfile` are provided.
             ImagePullError: If pulling the specified Podman image fails.
             ImageNotFoundError: If the specified image is not found and cannot be pulled or built.
-
         """
         super().__init__(
             lang=lang,

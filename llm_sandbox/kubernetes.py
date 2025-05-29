@@ -38,33 +38,10 @@ class SandboxKubernetesSession(Session):
         security_policy: SecurityPolicy | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
-        r"""Initialize a new Kubernetes-based sandbox session.
-
-        Args:
-            client (CoreV1Api | None, optional): An existing Kubernetes `CoreV1Api` client instance.
-                If None, a new client will be created based on the local Kubernetes configuration
-                (e.g., from `~/.kube/config`). Defaults to None.
-            image (str | None, optional): The name of the Docker image to use for the Pod's container
-                (e.g., "ghcr.io/vndee/sandbox-python-311-bullseye"). If None and `pod_manifest` is not provided with an
-                image, a default image for the specified `lang` is used. Defaults to None.
-            lang (str, optional): The programming language of the code to be run (e.g., "python", "java").
-                Determines default image and language-specific handlers. Defaults to SupportedLanguage.PYTHON.
-            verbose (bool, optional): If True, print detailed log messages. Defaults to False.
-            kube_namespace (str | None, optional): The Kubernetes namespace where the Pod will be created.
-                Defaults to "default". This is overridden if `pod_manifest` specifies a namespace.
-            env_vars (dict | None, optional): A dictionary of environment variables to set in the sandbox
-                container (e.g., `{"MY_VAR": "value"}`). Defaults to None. This is overridden if
-                `pod_manifest` specifies environment variables.
-            pod_manifest (dict | None, optional): A complete Kubernetes Pod manifest (as a dictionary).
-                If provided, this manifest is used directly, overriding `image`, `kube_namespace`, `env_vars`,
-                and default security contexts. Allows for advanced customization of the Pod.
-                If None, a default Pod manifest is generated. Defaults to None.
-            workdir (str | None, optional): The working directory inside the Pod's container.
-                Defaults to "/sandbox".
-            security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
-                Defaults to None.
-            **kwargs: Catches unused keyword arguments.
-
+        """
+        Initializes a new sandbox session using a Kubernetes Pod for secure code execution.
+        
+        Creates or configures a Kubernetes Pod with the specified Docker image, language, namespace, environment variables, and security policy. If no image or client is provided, defaults are selected based on the language and local Kubernetes configuration. Allows advanced customization via a full Pod manifest.
         """
         super().__init__(
             lang=lang,

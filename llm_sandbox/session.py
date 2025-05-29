@@ -190,99 +190,23 @@ class ArtifactSandboxSession:
         security_policy: SecurityPolicy | None = None,
         **kwargs: Any,
     ) -> None:
-        """Create a new artifact sandbox session.
-
-        The ArtifactSandboxSession provides a secure environment for running code that generates artifacts
-        like plots, images, or other files. It supports multiple container backends (Docker, Kubernetes, Podman)
-        and can capture and extract artifacts from the execution.
-
-        Args:
-            backend (SandboxBackend): Container backend to use (Docker, Kubernetes or Podman)
-            image (str): Container image to use (e.g., "vndee/sandbox-python-311-bullseye")
-            dockerfile (str, optional): Path to Dockerfile
-            lang (str): Programming language (e.g., "python")
-            keep_template (bool, optional): Whether to keep the container template
-            commit_container (bool, optional): Whether to commit container changes
-            verbose (bool, optional): Enable verbose logging
-            runtime_configs (dict, optional): Additional runtime configurations
-            workdir (str, optional): Working directory inside the container
-            enable_plotting (bool, optional): Whether to enable plot extraction
-            security_policy (SecurityPolicy, optional): Security policy to enforce
-            **kwargs: Additional keyword arguments for specific backends (e.g., client for Podman)
-
+        """
+        Initializes an artifact sandbox session for secure code execution with artifact extraction.
+        
+        Creates a sandboxed environment using the specified container backend and programming language, enabling the capture of artifacts such as plots or images generated during code execution. Supports Docker, Kubernetes, and Podman backends, and allows configuration of container image, working directory, security policy, and plot extraction.
+        
         Raises:
-            MissingDependencyError: If the required dependency for the chosen backend is not installed
-            UnsupportedBackendError: If the chosen backend is not supported
-
+            MissingDependencyError: If the required dependency for the chosen backend is not installed.
+            UnsupportedBackendError: If the chosen backend is not supported.
+        
         Examples:
-            Basic usage with Docker backend:
-            ```python
-            from llm_sandbox import ArtifactSandboxSession, SandboxBackend
-            from pathlib import Path
-            import base64
-
-            # Create plots directory
-            Path("plots/docker").mkdir(parents=True, exist_ok=True)
-
-            # Run code that generates plots
-            with ArtifactSandboxSession(
-                lang="python",
-                verbose=True,
-                image="ghcr.io/vndee/sandbox-python-311-bullseye",
-                backend=SandboxBackend.DOCKER
-            ) as session:
-                # Example code that generates matplotlib, seaborn, and plotly plots
-                code = '''
-                import matplotlib.pyplot as plt
-                import numpy as np
-
-                # Generate and plot data
-                x = np.linspace(0, 10, 100)
-                y = np.sin(x)
-
-                plt.figure()
-                plt.plot(x, y)
-                plt.title('Simple Sine Wave')
-                plt.show()
-                '''
-
-                result = session.run(code)
-                print(f"Captured {len(result.plots)} plots")
-
-                # Save captured plots
-                for i, plot in enumerate(result.plots):
-                    plot_path = Path("plots/docker") / f"{i + 1:06d}.{plot.format.value}"
-                    with plot_path.open("wb") as f:
-                        f.write(base64.b64decode(plot.content_base64))
-            ```
-            Using Podman backend:
-            ```python
-            from podman import PodmanClient
-
-            # Initialize Podman client
-            podman_client = PodmanClient(base_url="unix:///path/to/podman.sock")
-
-            with ArtifactSandboxSession(
-                client=podman_client,  # Podman specific
-                lang="python",
-                verbose=True,
-                image="ghcr.io/vndee/sandbox-python-311-bullseye",
-                backend=SandboxBackend.PODMAN
-            ) as session:
-                result = session.run(code)
-            ```
-
-            Using Kubernetes backend:
-            ```python
-            with ArtifactSandboxSession(
-                lang="python",
-                verbose=True,
-                image="ghcr.io/vndee/sandbox-python-311-bullseye",
-                backend=SandboxBackend.KUBERNETES
-            ) as session:
-                result = session.run(code)
-            ```
-
+            Create a session with Docker and extract plots:
+                with ArtifactSandboxSession(
+                    lang="python",
+                    image="ghcr.io/vndee/sandbox-python-311-bullseye",
+                    backend=SandboxBackend.DOCKER
+                ) as session:
+                    result = session.run(code)
         """
         # Create the base session
         self._session: Session = create_session(
@@ -320,103 +244,20 @@ class ArtifactSandboxSession:
         return getattr(self._session, name)
 
     def run(self, code: str, libraries: list | None = None) -> ExecutionResult:
-        """Run code in the sandbox session and extract any generated artifacts.
-
-        This method executes the provided code in an isolated environment and captures any
-        generated artifacts (e.g., plots, figures). When plotting is enabled, it delegates
-        to the language handler's run_with_artifacts method for language-specific artifact
-        extraction.
-
+        """
+        Executes code in the sandbox and extracts generated artifacts such as plots.
+        
+        Runs the provided code in an isolated session, optionally installing additional libraries, and captures any artifacts produced during execution (e.g., plots from matplotlib, seaborn, or plotly). If plotting is enabled but not supported by the language, raises a LanguageNotSupportPlotError.
+        
         Args:
-            code (str): The code to execute. Can include plotting commands from matplotlib,
-                        seaborn, plotly, or other visualization libraries.
-            libraries (list | None, optional): Additional libraries to install before running
-                                                the code. Defaults to None.
-
+            code: The code to execute, which may include plotting commands.
+            libraries: Optional list of additional libraries to install before execution.
+        
         Returns:
-            ExecutionResult: An object containing:
-                - exit_code (int): The exit code of the execution
-                - stdout (str): Standard output from the code execution
-                - stderr (str): Standard error from the code execution
-                - plots (list[Plot]): List of captured plots, each containing:
-                    - content_base64 (str): Base64 encoded plot data
-                    - format (PlotFormat): Format of the plot (e.g., 'png', 'svg')
-
+            An ExecutionResult containing the exit code, standard output, standard error, and a list of captured plots with their base64-encoded content and format.
+        
         Raises:
-            LanguageNotSupportPlotError: If the language does not support plot detection
-
-        Examples:
-            Basic plotting example:
-            ```python
-            with ArtifactSandboxSession(
-                lang="python",
-                verbose=True,
-                image="ghcr.io/vndee/sandbox-python-311-bullseye"
-            ) as session:
-                code = '''
-                import matplotlib.pyplot as plt
-                import numpy as np
-
-                x = np.linspace(0, 10, 100)
-                y = np.sin(x)
-                plt.plot(x, y)
-                plt.title('Sine Wave')
-                plt.show()
-                '''
-                result = session.run(code)
-                print(f"Generated {len(result.plots)} plots")
-            ```
-
-            Multiple plot types and libraries:
-            ```python
-            code = '''
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-            import plotly.express as px
-            import pandas as pd
-            import numpy as np
-
-            # Matplotlib plot
-            plt.figure(figsize=(10, 6))
-            x = np.linspace(0, 10, 100)
-            plt.plot(x, np.sin(x))
-            plt.title('Matplotlib: Sine Wave')
-            plt.show()
-
-            # Seaborn plot
-            data = pd.DataFrame({
-                'x': np.random.randn(100),
-                'y': np.random.randn(100)
-            })
-            sns.scatterplot(data=data, x='x', y='y')
-            plt.title('Seaborn: Scatter Plot')
-            plt.show()
-
-            # Plotly plot
-            fig = px.line(data, x='x', y='y', title='Plotly: Line Plot')
-            fig.show()
-            '''
-
-            result = session.run(code, libraries=['plotly'])
-
-            # Save the generated plots
-            for i, plot in enumerate(result.plots):
-                with open(f'plot_{i}.{plot.format.value}', 'wb') as f:
-                    f.write(base64.b64decode(plot.content_base64))
-            ```
-
-            Installing additional libraries:
-            ```python
-            code = '''
-            import torch
-            import torch.nn as nn
-            print(f"PyTorch version: {torch.__version__}")
-            '''
-
-            result = session.run(code, libraries=['torch'])
-            print(result.stdout)
-            ```
-
+            LanguageNotSupportPlotError: If plot extraction is requested for a language that does not support it.
         """
         # Check if plotting is enabled and language supports it
         if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:

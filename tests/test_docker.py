@@ -21,7 +21,9 @@ class TestSandboxDockerSessionInit:
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_init_with_defaults(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test initialization with default parameters."""
+        """
+        Tests that SandboxDockerSession initializes with correct default parameters and creates a Docker client using docker.from_env when no client is provided.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
@@ -140,7 +142,11 @@ class TestSandboxDockerSessionOpen:
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_open_with_image_pull(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test opening session when image needs to be pulled."""
+        """
+        Tests that opening a session pulls the Docker image if it is not found locally.
+        
+        Simulates the absence of the image, verifies that the image is pulled, and confirms that the session marks the template as created.
+        """
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
