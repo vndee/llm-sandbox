@@ -12,7 +12,7 @@ try:
     from enum import StrEnum
 except ImportError:
     # Python < 3.11 compatibility
-    class StrEnum(str, Enum):
+    class StrEnum(str, Enum):  # type: ignore[no-redef]
         """String enumeration for Python < 3.11 compatibility."""
 
 
