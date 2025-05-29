@@ -157,7 +157,7 @@ markdown_extensions:
 extra:
   analytics:
     provider: google
-    property: "" # Replace with your Google Analytics ID when needed
+    property: "G-WV2MGL0XKM"
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/vndee/llm-sandbox
@@ -168,7 +168,7 @@ extra:
     - icon: fontawesome/brands/linkedin
       link: https://linkedin.com/in/vndee
     - icon: fontawesome/solid/globe
-      link: https://vndee.com
+      link: https://blog.duy.dev
   version:
     provider: mike
     default: latest
