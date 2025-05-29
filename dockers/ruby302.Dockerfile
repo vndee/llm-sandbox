@@ -10,4 +10,3 @@ ENV GEM_HOME=/tmp/gem_cache
 ENV PATH=/tmp/gem_cache/bin:$PATH
 
 WORKDIR /sandbox
-
