@@ -4,11 +4,11 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'docker/**'
+      - 'dockers/**'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'docker/**'
+      - 'dockers/**'
   release:
     types: [published]
 
@@ -26,17 +26,17 @@ jobs:
     strategy:
       matrix:
         include:
-          - dockerfile: docker/python311.Dockerfile
+          - dockerfile: dockers/python311.Dockerfile
             image: sandbox-python-311-bullseye
-          - dockerfile: docker/java11.Dockerfile
+          - dockerfile: dockers/java11.Dockerfile
             image: sandbox-java-11-bullseye
-          - dockerfile: docker/node22.Dockerfile
+          - dockerfile: dockers/node22.Dockerfile
             image: sandbox-node-22-bullseye
-          - dockerfile: docker/cpp11.Dockerfile
+          - dockerfile: dockers/cpp11.Dockerfile
             image: sandbox-cpp-11-bullseye
-          - dockerfile: docker/go123.Dockerfile
+          - dockerfile: dockers/go123.Dockerfile
             image: sandbox-go-123-bullseye
-          - dockerfile: docker/ruby302.Dockerfile
+          - dockerfile: dockers/ruby302.Dockerfile
             image: sandbox-ruby-302-bullseye
 
     steps:
