@@ -1,25 +1,21 @@
 [project]
 name = "llm-sandbox"
-version = "0.3.0"
-description = "LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated manner using containers."
+version = "0.3.2"
+description = "LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated mode."
 authors = [{ name = "Duy Huynh", email = "vndee.huynh@gmail.com" }]
 readme = "README.md"
 keywords = ['python']
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.10,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = [
-    "pydantic>=2.11.5",
-]
+dependencies = ["pydantic>=2.11.5"]
 
 [project.urls]
 Homepage = "https://vndee.github.io/llm-sandbox/"
