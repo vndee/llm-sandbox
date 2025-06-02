@@ -143,3 +143,12 @@ class SecurityViolationError(SandboxError):
     def __init__(self, message: str) -> None:
         """Initialize the SecurityViolationError."""
         super().__init__(message)
+
+
+class SandboxTimeoutError(SandboxError):
+    """Raised when an operation times out."""
+
+    def __init__(self, message: str, timeout_duration: float | None = None) -> None:
+        """Initialize the TimeoutError."""
+        super().__init__(message)
+        self.timeout_duration = timeout_duration

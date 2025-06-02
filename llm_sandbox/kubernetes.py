@@ -13,7 +13,7 @@ from kubernetes.stream import stream
 
 from llm_sandbox.base import ConsoleOutput, Session
 from llm_sandbox.const import DefaultImage, SupportedLanguage
-from llm_sandbox.exceptions import NotOpenSessionError
+from llm_sandbox.exceptions import NotOpenSessionError, SandboxTimeoutError
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -36,6 +36,9 @@ class SandboxKubernetesSession(Session):
         pod_manifest: dict | None = None,
         workdir: str | None = "/sandbox",
         security_policy: SecurityPolicy | None = None,
+        default_timeout: float | None = None,
+        execution_timeout: float | None = None,
+        session_timeout: float | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
         r"""Initialize a new Kubernetes-based sandbox session.
@@ -63,6 +66,12 @@ class SandboxKubernetesSession(Session):
                 Defaults to "/sandbox".
             security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
                 Defaults to None.
+            default_timeout (float | None, optional): The default timeout for the session.
+                Defaults to None.
+            execution_timeout (float | None, optional): The execution timeout for the session.
+                Defaults to None.
+            session_timeout (float | None, optional): The session timeout for the session.
+                Defaults to None.
             **kwargs: Catches unused keyword arguments.
 
         """
@@ -72,6 +81,9 @@ class SandboxKubernetesSession(Session):
             image=image,
             workdir=workdir,
             security_policy=security_policy,
+            default_timeout=default_timeout,
+            execution_timeout=execution_timeout,
+            session_timeout=session_timeout,
         )
 
         if not image:
@@ -158,6 +170,8 @@ class SandboxKubernetesSession(Session):
         self._create_kubernetes_pod()
         self.environment_setup()
 
+        super().open()
+
     def _ensure_ownership(self, folders: list[str]) -> None:
         r"""Ensure correct file ownership for specified folders within the Kubernetes Pod.
 
@@ -201,6 +215,8 @@ class SandboxKubernetesSession(Session):
 
         This method cleans up Kubernetes resources by deleting the created Pod.
         """
+        super().close()
+
         self._delete_kubernetes_pod()
 
     def _delete_kubernetes_pod(self) -> None:
@@ -215,7 +231,7 @@ class SandboxKubernetesSession(Session):
             body=k8s_client.V1DeleteOptions(),
         )
 
-    def run(self, code: str, libraries: list | None = None) -> ConsoleOutput:
+    def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
         r"""Run the provided code within the Kubernetes Pod.
 
         This method performs the following steps:
@@ -230,6 +246,8 @@ class SandboxKubernetesSession(Session):
             code (str): The code string to execute.
             libraries (list | None, optional): A list of libraries to install before running the code.
                                             Defaults to None.
+            timeout (float | None, optional): The timeout for the code execution.
+                                            Defaults to None.
 
         Returns:
             ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
@@ -242,19 +260,32 @@ class SandboxKubernetesSession(Session):
         if not self.container:
             raise NotOpenSessionError
 
-        self.install(libraries)
+        self._check_session_timeout()
+        actual_timeout = timeout or self.execution_timeout or self.default_timeout
 
-        with tempfile.TemporaryDirectory() as directory_name:
-            code_file = str(Path(directory_name) / f"code.{self.language_handler.file_extension}")
-            code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
+        try:
+            with self._timeout_context(actual_timeout):
+                self.install(libraries)
 
-            with Path(code_file).open("w", encoding="utf-8") as f:
-                f.write(code)
+                with tempfile.TemporaryDirectory() as directory_name:
+                    code_file = str(Path(directory_name) / f"code.{self.language_handler.file_extension}")
+                    code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
 
-            self.copy_to_runtime(code_file, code_dest_file)
+                    with Path(code_file).open("w", encoding="utf-8") as f:
+                        f.write(code)
 
-            commands = self.language_handler.get_execution_commands(code_dest_file)
-            return self.execute_commands(commands, workdir=self.workdir)  # type: ignore[arg-type]
+                    self.copy_to_runtime(code_file, code_dest_file)
+
+                    commands = self.language_handler.get_execution_commands(code_dest_file)
+                    return self._execute_commands_with_timeout(commands, actual_timeout)
+        except SandboxTimeoutError:
+            try:
+                self._delete_kubernetes_pod()
+                self.logger.warning("Pod deleted due to timeout")
+            except Exception:
+                if self.verbose:
+                    self.logger.exception("Failed to delete Kubernetes Pod")
+            raise
 
     def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         r"""Copy a file or directory from the Kubernetes Pod to the local host filesystem.
@@ -474,6 +505,63 @@ class SandboxKubernetesSession(Session):
             stdout=stdout_output,
             stderr=stderr_output,
         )
+
+    def _execute_commands_with_timeout(self, commands: list, timeout: float) -> ConsoleOutput:
+        """Execute commands with Kubernetes-specific timeout."""
+        if not commands:
+            return ConsoleOutput(exit_code=0, stdout="", stderr="")
+
+        result = ConsoleOutput(exit_code=0, stdout="", stderr="")
+
+        # Implementation similar to Docker but using kubectl exec with timeout
+        for command in commands:
+            if isinstance(command, tuple):
+                cmd_str, cmd_workdir = command
+            else:
+                cmd_str = command
+                cmd_workdir = self.workdir
+
+            # Use kubectl exec with timeout
+            exec_command = ["timeout", str(int(timeout)), "sh", "-c", cmd_str]
+            if cmd_workdir:
+                exec_command = ["timeout", str(int(timeout)), "sh", "-c", f"cd {cmd_workdir} && {cmd_str}"]
+
+            resp = stream(
+                self.client.connect_get_namespaced_pod_exec,
+                self.container,
+                self.kube_namespace,
+                command=exec_command,
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False,
+                _preload_content=False,
+            )
+
+            # Monitor execution with timeout
+            start_time = time.time()
+            stdout_output = ""
+            stderr_output = ""
+
+            while resp.is_open():
+                if time.time() - start_time > timeout:
+                    resp.close()
+                    msg = f"Command execution timed out after {timeout} seconds"
+                    raise SandboxTimeoutError(msg)
+
+                resp.update(timeout=1)
+                if resp.peek_stdout():
+                    stdout_output += resp.read_stdout()
+                if resp.peek_stderr():
+                    stderr_output += resp.read_stderr()
+
+            result = ConsoleOutput(
+                exit_code=resp.returncode or 0,
+                stdout=stdout_output,
+                stderr=stderr_output,
+            )
+
+        return result
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:
         r"""Retrieve a file or directory from the Kubernetes Pod as a tar archive.
