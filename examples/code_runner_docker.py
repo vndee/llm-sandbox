@@ -1,10 +1,14 @@
 import logging
 
+import docker
+
 from llm_sandbox import SandboxSession
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 logger = logging.getLogger(__name__)
+
+client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
 
 
 def run_python_code() -> None:

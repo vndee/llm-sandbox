@@ -4,6 +4,7 @@
 
 import io
 import tarfile
+import tempfile
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -356,19 +357,44 @@ class TestSandboxDockerSessionFileOperations:
         session = SandboxDockerSession()
 
         mock_container = MagicMock()
-        mock_container.exec_run.return_value = (1, b"")  # Directory doesn't exist
+        mock_container.exec_run.return_value = Mock(exit_code=1, output=b"")  # Directory doesn't exist
         session.container = mock_container
 
         with (
             patch("tarfile.open") as mock_tar_open,
             patch.object(session, "_ensure_ownership") as mock_ownership,
+            patch("llm_sandbox.docker.Path") as mock_path,
+            tempfile.NamedTemporaryFile() as temp_file,
         ):
+            # Create a real temporary file for the test
+            temp_file.write(b"test content")
+            temp_file.flush()
+
+            # Mock Path to return our temp file for source validation
+            mock_src_path = MagicMock()
+            mock_src_path.exists.return_value = True
+            mock_src_path.is_file.return_value = True
+            mock_src_path.is_dir.return_value = False
+
+            mock_dest_path = MagicMock()
+            mock_dest_path.parent = "/container"
+            mock_dest_path.name = "file.txt"
+
+            def path_side_effect(arg: str) -> MagicMock:
+                if arg == temp_file.name:
+                    return mock_src_path
+                if arg == "/container/file.txt":
+                    return mock_dest_path
+                return MagicMock()
+
+            mock_path.side_effect = path_side_effect
+
             mock_tar = MagicMock()
             mock_tar_open.return_value.__enter__.return_value = mock_tar
 
-            session.copy_to_runtime("/host/file.txt", "/container/file.txt")
+            session.copy_to_runtime(temp_file.name, "/container/file.txt")
 
-            mock_container.exec_run.assert_any_call("mkdir -p /container")
+            mock_container.exec_run.assert_any_call("mkdir -p '/container'")
             mock_container.put_archive.assert_called_once()
             mock_ownership.assert_called_once_with(["/container/file.txt"])
 
@@ -410,18 +436,31 @@ class TestSandboxDockerSessionFileOperations:
         mock_container.get_archive.return_value = ([tar_data], {"size": len(tar_data)})
         session.container = mock_container
 
-        with patch("tarfile.open") as mock_tar_open:
+        with (
+            patch("tarfile.open") as mock_tar_open,
+            patch("llm_sandbox.docker.Path") as mock_path,
+            tempfile.TemporaryDirectory() as temp_dir,
+        ):
             mock_tar = MagicMock()
             mock_member = MagicMock()
             mock_member.name = "file.txt"
             mock_member.isfile.return_value = True
+            mock_member.startswith.return_value = False
             mock_tar.getmembers.return_value = [mock_member]
             mock_tar_open.return_value.__enter__.return_value = mock_tar
 
-            session.copy_from_runtime("/container/file.txt", "/host/file.txt")
+            # Use temp directory instead of /host
+            dest_file = f"{temp_dir}/file.txt"
+
+            # Mock Path for destination directory creation
+            mock_dest_path = MagicMock()
+            mock_dest_path.parent.mkdir = MagicMock()
+            mock_path.return_value = mock_dest_path
+
+            session.copy_from_runtime("/container/file.txt", dest_file)
 
             mock_container.get_archive.assert_called_once_with("/container/file.txt")
-            mock_tar.extractall.assert_called_once()
+            mock_tar.extract.assert_called_once()
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")

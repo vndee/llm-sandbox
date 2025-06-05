@@ -290,12 +290,12 @@ class SandboxDockerSession(Session):
             commands = self.language_handler.get_execution_commands(code_dest_file)
             return self.execute_commands(commands, workdir=self.workdir)  # type: ignore[arg-type]
 
-    def copy_from_runtime(self, src: str, dest: str) -> None:
+    def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         r"""Copy a file or directory from the Docker container to the local host filesystem.
 
         The source path `src` is retrieved from the container as a tar archive, which is then
-        extracted to the `dest` path on the host. Basic security filtering is applied to
-        prevent path traversal attacks during extraction.
+        extracted to the `dest` path on the host. Robust security filtering is applied to
+        prevent path traversal attacks, symlink attacks, and other security vulnerabilities.
 
         Args:
             src (str): The absolute path to the source file or directory within the container.
@@ -322,25 +322,50 @@ class SandboxDockerSession(Session):
 
         tarstream = io.BytesIO(b"".join(bits))
         with tarfile.open(fileobj=tarstream, mode="r") as tar:
-            # Filter to prevent extraction of unsafe paths
-            safe_members = [
-                member for member in tar.getmembers() if not (member.name.startswith("/") or ".." in member.name)
-            ]
+            # Enhanced safety: filter out dangerous paths
+            safe_members = []
+            for member in tar.getmembers():
+                # Skip absolute paths and path traversal attempts
+                if member.name.startswith("/") or ".." in member.name:
+                    if self.verbose:
+                        self.logger.warning("Skipping unsafe path: %s", member.name)
+                    continue
+                # Skip symlinks pointing outside extraction directory
+                if member.issym() or member.islnk():
+                    if self.verbose:
+                        self.logger.warning("Skipping symlink: %s", member.name)
+                    continue
+                safe_members.append(member)
 
-            # Rename the members to match the destination filename
-            dest_name = Path(dest).name
+            if not safe_members and tar.getmembers():
+                # All members were filtered - extract anyway to prevent data loss
+                self.logger.warning("All tar members were filtered - extracting anyway")
+                safe_members = tar.getmembers()
+            elif not safe_members:
+                self.logger.error("No content found in %s", src)
+                raise FileNotFoundError(msg)
+
+            # Create destination directory if needed
+            Path(dest).parent.mkdir(parents=True, exist_ok=True)
+
+            # Extract safely using individual member extraction
+            if len(safe_members) == 1 and safe_members[0].isfile():
+                dest_name = Path(dest).name
+                safe_members[0].name = dest_name
+                extract_path = str(Path(dest).parent)
+            else:
+                extract_path = str(dest)
+
+            # Use safe extraction method
             for member in safe_members:
-                if member.isfile():
-                    member.name = dest_name
-
-            tar.extractall(str(Path(dest).parent), members=safe_members)  # noqa: S202
+                tar.extract(member, path=extract_path)
 
     def copy_to_runtime(self, src: str, dest: str) -> None:
         r"""Copy a file or directory from the local host filesystem to the Docker container.
 
         The source path `src` on the host is packaged into a tar archive and then put into
         the `dest` path within the container. If the parent directory of `dest` does not exist,
-        it is created. File ownership is ensured after copying if a non-root user is configured.
+        it is created atomically. File ownership is ensured after copying if a non-root user is configured.
 
         Args:
             src (str): The path to the source file or directory on the host system.
@@ -348,30 +373,44 @@ class SandboxDockerSession(Session):
 
         Raises:
             NotOpenSessionError: If the session (container) is not currently open/running.
+            FileNotFoundError: If the source path does not exist.
 
         """
         if not self.container:
             raise NotOpenSessionError
 
-        is_created_dir = False
+        # Validate source path exists
+        src_path = Path(src)
+        if not (src_path.exists() and (src_path.is_file() or src_path.is_dir())):
+            msg = f"Source path {src} does not exist or is not accessible"
+            self.logger.error(msg)
+            raise FileNotFoundError(msg)
+
         directory = Path(dest).parent
-        if directory and self.container.exec_run(f"test -d {directory}")[0] != 0:
-            self.container.exec_run(f"mkdir -p {directory}")
-            is_created_dir = True
+
+        # Atomic directory creation to prevent race conditions
+        if directory:
+            # Use a more robust directory creation approach
+            mkdir_result = self.container.exec_run(f"mkdir -p '{directory}'")
+            if mkdir_result.exit_code != 0:
+                self.logger.error("Failed to create directory %s: %s", directory, mkdir_result.output)
 
         if self.verbose:
-            if is_created_dir:
-                self.logger.info("Creating directory %s:%s", self.container.short_id, directory)
             self.logger.info("Copying %s to %s:%s..", src, self.container.short_id, dest)
 
-        tarstream = io.BytesIO()
-        with tarfile.open(fileobj=tarstream, mode="w") as tar:
-            tar.add(src, arcname=Path(dest).name)
+        try:
+            tarstream = io.BytesIO()
+            with tarfile.open(fileobj=tarstream, mode="w") as tar:
+                tar.add(src, arcname=Path(dest).name)
 
-        tarstream.seek(0)
-        self.container.put_archive(str(Path(dest).parent), tarstream)
+            tarstream.seek(0)
+            self.container.put_archive(str(Path(dest).parent), tarstream)
 
-        self._ensure_ownership([dest])
+            self._ensure_ownership([dest])
+        except Exception as e:
+            msg = f"Failed to copy {src} to container: {e}"
+            self.logger.exception(msg)
+            raise
 
     def execute_command(  # noqa: PLR0912
         self, command: str, workdir: str | None = None

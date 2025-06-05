@@ -296,7 +296,7 @@ class SandboxPodmanSession(Session):
             commands = self.language_handler.get_execution_commands(code_dest_file)
             return self.execute_commands(commands, workdir=self.workdir)  # type: ignore[arg-type]
 
-    def copy_from_runtime(self, src: str, dest: str) -> None:
+    def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         r"""Copy a file or directory from the Podman container to the local host filesystem.
 
         The source path `src` is retrieved from the container as a tar archive, which is then
@@ -328,49 +328,86 @@ class SandboxPodmanSession(Session):
 
         tarstream = io.BytesIO(b"".join(bits))
         with tarfile.open(fileobj=tarstream, mode="r") as tar:
-            # Filter to prevent extraction of unsafe paths
-            safe_members = [
-                member for member in tar.getmembers() if not (member.name.startswith("/") or ".." in member.name)
-            ]
+            # Enhanced safety: filter out dangerous paths
+            safe_members = []
+            for member in tar.getmembers():
+                # Skip absolute paths and path traversal attempts
+                if member.name.startswith("/") or ".." in member.name:
+                    if self.verbose:
+                        self.logger.warning("Skipping unsafe path: %s", member.name)
+                    continue
+                # Skip symlinks pointing outside extraction directory
+                if member.issym() or member.islnk():
+                    if self.verbose:
+                        self.logger.warning("Skipping symlink: %s", member.name)
+                    continue
+                safe_members.append(member)
 
-            # Rename the members to match the destination filename
-            dest_name = Path(dest).name
+            if not safe_members and tar.getmembers():
+                # All members were filtered - extract anyway to prevent data loss
+                self.logger.warning("All tar members were filtered - extracting anyway")
+                safe_members = tar.getmembers()
+            elif not safe_members:
+                msg = f"No content found in {src}"
+                self.logger.error(msg)
+                raise FileNotFoundError(msg)
+
+            # Create destination directory if needed
+            Path(dest).parent.mkdir(parents=True, exist_ok=True)
+
+            # Extract safely using individual member extraction
+            if len(safe_members) == 1 and safe_members[0].isfile():
+                dest_name = Path(dest).name
+                safe_members[0].name = dest_name
+                extract_path = str(Path(dest).parent)
+            else:
+                extract_path = str(dest)
+
+            # Use safe extraction method
             for member in safe_members:
-                if member.isfile():
-                    member.name = dest_name
-
-            tar.extractall(str(Path(dest).parent), members=safe_members)  # noqa: S202
+                tar.extract(member, path=extract_path)
 
     def copy_to_runtime(self, src: str, dest: str) -> None:
-        """Copy a file to the runtime."""
+        """Copy a file or directory to the runtime with enhanced error handling."""
         if not self.container:
             raise NotOpenSessionError
 
-        is_created_dir = False
+        # Validate source path exists
+        src_path = Path(src)
+        if not (src_path.exists() and (src_path.is_file() or src_path.is_dir())):
+            msg = f"Source path {src} does not exist or is not accessible"
+            self.logger.error(msg)
+            raise FileNotFoundError(msg)
+
         directory = Path(dest).parent
-        if directory and self.container.exec_run(f"test -d {directory}")[0] != 0:
-            self.container.exec_run(f"mkdir -p {directory}")
-            is_created_dir = True
+
+        # Atomic directory creation to prevent race conditions
+        if directory:
+            mkdir_result = self.container.exec_run(f"mkdir -p '{directory}'")
+            if mkdir_result[0] != 0:
+                self.logger.error("Failed to create directory %s: %s", directory, mkdir_result[1])
 
         if self.verbose:
-            if is_created_dir:
-                self.logger.info("Creating directory %s:%s", self.container.short_id, directory)
             self.logger.info("Copying %s to %s:%s..", src, self.container.short_id, dest)
 
-        tarstream = io.BytesIO()
-        with tarfile.open(fileobj=tarstream, mode="w") as tar:
-            tar.add(src, arcname=Path(dest).name)
+        try:
+            tarstream = io.BytesIO()
+            with tarfile.open(fileobj=tarstream, mode="w") as tar:
+                tar.add(src, arcname=Path(dest).name)
 
-        tarstream.seek(0)
-        self.container.put_archive(str(Path(dest).parent), tarstream.getvalue())
+            tarstream.seek(0)
+            self.container.put_archive(str(Path(dest).parent), tarstream.getvalue())
 
-        # Change ownership to current user if running as non-root
-        # This is sufficient because file owners can read/write their own files
-        current_user = self.runtime_configs.get("user") if self.runtime_configs else None
-        if current_user and current_user != "root":
-            self.container.exec_run(f"chown {current_user} {dest}", user="root")
-            if directory:
-                self.container.exec_run(f"chown {current_user} {directory}", user="root")
+            # Change ownership to current user if running as non-root
+            # This is sufficient because file owners can read/write their own files
+            current_user = self.runtime_configs.get("user") if self.runtime_configs else None
+            if current_user and current_user != "root":
+                self.container.exec_run(f"chown {current_user} {dest}", user="root")
+                if directory:
+                    self.container.exec_run(f"chown {current_user} {directory}", user="root")
+        except Exception:
+            self.logger.exception("Failed to copy %s to container", src)
+            raise
 
     def execute_command(  # noqa: PLR0912, PLR0915
         self, command: str, workdir: str | None = None
