@@ -104,9 +104,11 @@ class TestSandboxKubernetesSessionInit:
 
         session = SandboxKubernetesSession(pod_manifest=custom_manifest)
 
-        assert session.pod_name == "custom-pod"
+        # Pod name is now always made unique, so we just check it was updated
+        assert session.pod_name.startswith("sandbox-python-")
         assert session.kube_namespace == "custom-ns"
-        assert session.pod_manifest == custom_manifest
+        # The manifest name should be updated to match the unique pod name
+        assert session.pod_manifest["metadata"]["name"] == session.pod_name
 
     @patch("llm_sandbox.kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -359,6 +361,9 @@ class TestSandboxKubernetesSessionFileOperations:
         ):
             # Mock Path operations
             mock_host_path_instance = MagicMock()
+            mock_host_path_instance.exists.return_value = True
+            mock_host_path_instance.is_file.return_value = True
+            mock_host_path_instance.is_dir.return_value = False
             mock_host_path_instance.stat.return_value.st_size = 100
             mock_host_path_instance.open.return_value.__enter__ = Mock(return_value=io.BytesIO(b"test content"))
             mock_host_path_instance.open.return_value.__exit__ = Mock()
@@ -382,7 +387,7 @@ class TestSandboxKubernetesSessionFileOperations:
 
             session.copy_to_runtime("/host/file.txt", "/pod/file.txt")
 
-            mock_execute.assert_called_once_with("mkdir -p /pod")
+            mock_execute.assert_called_once_with("mkdir -p '/pod'")
             mock_ownership.assert_called_once_with(["/pod"])
 
     @patch("llm_sandbox.kubernetes.config.load_kube_config")
@@ -449,7 +454,9 @@ class TestSandboxKubernetesSessionFileOperations:
             mock_tar = MagicMock()
             mock_member = MagicMock()
             mock_member.isfile.return_value = True
+            mock_member.isdir.return_value = False
             mock_member.name = "file.txt"
+            # The member.name.startswith("/") check will return False for "file.txt"
             mock_tar.getmembers.return_value = [mock_member]
             mock_file_obj = io.BytesIO(file_content)
             mock_tar.extractfile.return_value = mock_file_obj
