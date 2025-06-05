@@ -358,39 +358,41 @@ class SandboxKubernetesSession(Session):
             self.logger.info("Copying %s to %s:%s..", src, self.container, dest)
 
         dest_dir = str(Path(dest).parent)
-        dest_file = str(Path(dest).name)
 
         if dest_dir:
             self.execute_command(f"mkdir -p {dest_dir}")
 
-        with Path(src).open("rb") as f:
-            tarstream = io.BytesIO()
-            with tarfile.open(fileobj=tarstream, mode="w") as tar:
-                tarinfo = tarfile.TarInfo(name=dest_file)
-                tarinfo.size = Path(src).stat().st_size
-                tar.addfile(tarinfo, f)
-            tarstream.seek(0)
+        # Determine if src is a file or directory and tar accordingly
+        src_path = Path(src)
+        tarstream = io.BytesIO()
+        with tarfile.open(fileobj=tarstream, mode="w") as tar:
+            if src_path.is_file() or src_path.is_dir():
+                tar.add(src, arcname=Path(dest).name)
+            else:
+                msg = f"Source path {src} does not exist"
+                raise FileNotFoundError(msg)
+        tarstream.seek(0)
 
-            exec_command = ["tar", "xvf", "-", "-C", dest_dir]
-            resp = stream(
-                self.client.connect_get_namespaced_pod_exec,
-                self.container,
-                self.kube_namespace,
-                command=exec_command,
-                stderr=True,
-                stdin=True,
-                stdout=True,
-                tty=False,
-                _preload_content=False,
-            )
-            while resp.is_open():
-                resp.update(timeout=1)
-                if resp.peek_stdout():
-                    self.logger.info(resp.read_stdout())
-                if resp.peek_stderr():
-                    self.logger.error(resp.read_stderr())
-                resp.write_stdin(tarstream.read(4096))
-            resp.close()
+        exec_command = ["tar", "xvf", "-", "-C", dest_dir]
+        resp = stream(
+            self.client.connect_get_namespaced_pod_exec,
+            self.container,
+            self.kube_namespace,
+            command=exec_command,
+            stderr=True,
+            stdin=True,
+            stdout=True,
+            tty=False,
+            _preload_content=False,
+        )
+        while resp.is_open():
+            resp.update(timeout=1)
+            if resp.peek_stdout():
+                self.logger.info(resp.read_stdout())
+            if resp.peek_stderr():
+                self.logger.error(resp.read_stderr())
+            resp.write_stdin(tarstream.read(4096))
+        resp.close()
 
         end_time = time.time()
         if self.verbose:
