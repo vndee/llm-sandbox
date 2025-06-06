@@ -319,11 +319,20 @@ class SandboxDockerSession(Session):
                     return self._execute_commands_with_timeout(commands, actual_timeout)
         except SandboxTimeoutError:
             if self.container:
+                container_id = self.container.short_id
                 try:
                     self.container.kill()
-                    self.logger.warning("Killed container %s due to timeout", self.container.short_id)
+                    self.logger.warning("Killed container %s due to timeout", container_id)
                 except Exception:
                     self.logger.exception("Failed to kill container")
+
+                try:
+                    self.container.remove(force=True)
+                    self.logger.warning("Removed container %s", container_id)
+                except Exception:
+                    self.logger.exception("Failed to remove container")
+
+                self.container = None
             raise
 
     def _execute_commands_with_timeout(self, commands: list, timeout: float) -> ConsoleOutput:
@@ -347,13 +356,18 @@ class SandboxDockerSession(Session):
         thread.join(timeout)
 
         if thread.is_alive():
-            # Force kill the container if still running
             if self.container:
+                container_id = self.container.short_id
                 with suppress(Exception):
                     self.container.kill()
 
+                with suppress(Exception):
+                    self.container.remove(force=True)
+
+                self.container = None
+
                 if self.verbose:
-                    self.logger.info("Killed container %s", self.container.short_id)
+                    self.logger.info("Killed and removed container %s due to timeout", container_id)
 
             msg = f"Code execution timed out after {timeout} seconds"
             raise SandboxTimeoutError(msg)

@@ -17,6 +17,179 @@ session = SandboxSession(
 )
 ```
 
+### Timeout Configuration
+
+LLM Sandbox provides comprehensive timeout controls to prevent runaway code execution and manage resource usage efficiently.
+
+#### Timeout Types
+
+There are three types of timeouts you can configure:
+
+| Timeout Type | Description | Default |
+|--------------|-------------|---------|
+| `default_timeout` | Default timeout for all operations | 30.0 seconds |
+| `execution_timeout` | Timeout for code execution (per run) | Uses `default_timeout` |
+| `session_timeout` | Maximum session lifetime | None (unlimited) |
+
+#### Basic Timeout Configuration
+
+```python
+from llm_sandbox import SandboxSession
+
+# Configure timeouts at session creation
+with SandboxSession(
+    lang="python",
+    default_timeout=30.0,      # Default timeout for operations
+    execution_timeout=60.0,    # Timeout for code execution
+    session_timeout=300.0,     # Session expires after 5 minutes
+    verbose=True
+) as session:
+    # Fast operation - should complete
+    result = session.run("""
+print("Hello, World!")
+import time
+time.sleep(2)
+print("Operation completed")
+    """)
+```
+
+#### Per-Execution Timeout Override
+
+You can override the execution timeout for individual `run()` calls:
+
+```python
+with SandboxSession(lang="python", execution_timeout=10.0) as session:
+    # This will use the session's execution_timeout (10 seconds)
+    result1 = session.run("print('Normal execution')")
+
+    # Override with a longer timeout for this specific execution
+    result2 = session.run("""
+import time
+time.sleep(15)  # This needs more time
+print("Long operation completed")
+    """, timeout=20.0)  # Override with 20 seconds
+
+    # Override with a shorter timeout
+    try:
+        session.run("""
+import time
+time.sleep(5)
+print("This might timeout")
+        """, timeout=2.0)  # Override with 2 seconds
+    except SandboxTimeoutError:
+        print("Operation timed out as expected")
+```
+
+#### Timeout Error Handling
+
+```python
+from llm_sandbox.exceptions import SandboxTimeoutError
+
+def execute_with_retry(session, code, max_retries=3):
+    """Execute code with automatic retry on timeout."""
+    for attempt in range(max_retries):
+        try:
+            return session.run(code, timeout=10.0)
+        except SandboxTimeoutError:
+            print(f"Attempt {attempt + 1} timed out")
+            if attempt == max_retries - 1:
+                raise
+            print("Retrying...")
+
+# Usage example
+with SandboxSession(lang="python") as session:
+    try:
+        result = execute_with_retry(session, """
+import time
+import random
+time.sleep(random.uniform(5, 15))  # Variable execution time
+print("Completed!")
+        """)
+        print(result.stdout)
+    except SandboxTimeoutError:
+        print("All retry attempts failed")
+```
+
+#### Backend-Specific Timeout Behavior
+
+Different backends handle timeouts differently:
+
+##### Docker & Podman
+- Containers are forcefully killed when timeout is reached
+- Container cleanup is automatic
+- Resource usage monitoring during execution
+
+##### Kubernetes
+- Pods are monitored for timeout during command execution
+- Timeout applies to individual command execution within the pod
+- Pod lifecycle is managed independently
+
+#### Advanced Timeout Scenarios
+
+##### Infinite Loop Protection
+```python
+with SandboxSession(lang="python", execution_timeout=5.0) as session:
+    try:
+        session.run("""
+# This infinite loop will be terminated
+i = 0
+while True:
+    i += 1
+    if i % 100000 == 0:
+        print(f"Iteration: {i}")
+        """)
+    except SandboxTimeoutError:
+        print("Infinite loop was terminated by timeout")
+```
+
+##### Resource-Intensive Operation Control
+```python
+with SandboxSession(lang="python") as session:
+    try:
+        session.run("""
+# CPU-intensive operation
+total = 0
+for i in range(10**8):  # Large computation
+    total += i * i
+print(f"Result: {total}")
+        """, timeout=30.0)  # Give enough time for legitimate computation
+    except SandboxTimeoutError:
+        print("Computation took too long and was terminated")
+```
+
+##### Session Lifetime Management
+```python
+import time
+
+# Session that automatically expires
+with SandboxSession(
+    lang="python",
+    session_timeout=60.0  # Session expires after 1 minute
+) as session:
+
+    # This will work
+    session.run("print('First execution')")
+
+    # Wait and try again
+    time.sleep(30)
+    session.run("print('Second execution')")
+
+    # This might fail if session has expired
+    time.sleep(40)  # Total elapsed: 70 seconds
+    try:
+        session.run("print('This might fail')")
+    except SandboxTimeoutError:
+        print("Session expired")
+```
+
+#### Best Practices
+
+1. **Set Appropriate Timeouts**: Balance between allowing legitimate long operations and preventing runaway code
+2. **Use Per-Execution Overrides**: Override timeouts for known long-running operations
+3. **Implement Retry Logic**: Handle timeout errors gracefully with retry mechanisms
+4. **Monitor Resource Usage**: Use timeout in combination with resource limits
+5. **Log Timeout Events**: Enable verbose logging to understand timeout patterns
+
 ### Language Options
 
 Supported languages and their identifiers:

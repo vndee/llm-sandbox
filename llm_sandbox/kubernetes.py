@@ -4,7 +4,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from kubernetes import client as k8s_client
 from kubernetes import config
@@ -282,7 +282,13 @@ class SandboxKubernetesSession(Session):
                     self.copy_to_runtime(code_file, code_dest_file)
 
                     commands = self.language_handler.get_execution_commands(code_dest_file)
-                    return self._execute_commands_with_timeout(commands, actual_timeout)
+                    # Type cast needed because get_execution_commands returns list[str]
+                    # but execute_commands expects list[str | tuple[str, str | None]]
+                    return self.execute_commands(
+                        cast("list[str | tuple[str, str | None]]", commands),
+                        workdir=self.workdir,
+                        timeout=actual_timeout,
+                    )
         except SandboxTimeoutError:
             try:
                 self._delete_kubernetes_pod()
@@ -528,6 +534,101 @@ class SandboxKubernetesSession(Session):
 
         self._ensure_ownership([dest_dir])
 
+    def _execute_single_command(  # noqa: PLR0912
+        self,
+        command: str,
+        workdir: str | None = None,
+        timeout: float | None = None,
+        *,
+        disable_logging: bool = False,
+    ) -> ConsoleOutput:
+        r"""Execute a single command within the Kubernetes Pod with optional timeout.
+
+        This is the base method that handles the actual command execution logic
+        to avoid code duplication between execute_command and _execute_commands_with_timeout.
+
+        Args:
+            command (str): The command string to execute.
+            workdir (str | None, optional): The working directory within the Pod.
+            timeout (float | None, optional): The timeout for the command execution.
+            disable_logging (bool, optional): If True, suppress verbose logging.
+
+        Returns:
+            ConsoleOutput: An object containing the stdout, stderr, and exit code.
+
+        Raises:
+            NotOpenSessionError: If the session (Pod) is not currently running.
+            SandboxTimeoutError: If the command execution times out.
+
+        """
+        if not self.container:
+            raise NotOpenSessionError
+
+        if self.verbose and not disable_logging:
+            self.logger.info("Executing command: %s", command)
+
+        # Build the exec command
+        if timeout:
+            exec_command = ["timeout", str(int(timeout)), "sh", "-c"]
+            if workdir:
+                exec_command.append(f"cd {workdir} && {command}")
+            else:
+                exec_command.append(command)
+        elif workdir:
+            exec_command = ["sh", "-c", f"cd {workdir} && {command}"]
+        else:
+            exec_command = ["/bin/sh", "-c", command]
+
+        # Create the stream connection
+        resp = stream(
+            self.client.connect_get_namespaced_pod_exec,
+            self.container,
+            self.kube_namespace,
+            command=exec_command,
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _preload_content=False,
+        )
+
+        # Execute and monitor the command
+        start_time = time.time()
+        stdout_output = ""
+        stderr_output = ""
+
+        if self.verbose and not disable_logging:
+            self.logger.info("Output:")
+
+        while resp.is_open():
+            # Check timeout if specified
+            if timeout and time.time() - start_time > timeout:
+                resp.close()
+                msg = f"Command execution timed out after {timeout} seconds"
+                raise SandboxTimeoutError(msg)
+
+            resp.update(timeout=1)
+
+            if resp.peek_stdout():
+                chunk = resp.read_stdout()
+                stdout_output += chunk
+                if self.verbose and not disable_logging:
+                    self.logger.info("Stdout: %s", chunk)
+
+            if resp.peek_stderr():
+                chunk = resp.read_stderr()
+                stderr_output += chunk
+                if self.verbose and not disable_logging:
+                    self.logger.error("Stderr: %s", chunk)
+
+        exit_code = resp.returncode or 0
+
+        return ConsoleOutput(
+            exit_code=exit_code,
+            stdout=stdout_output,
+            stderr=stderr_output,
+        )
+
     def execute_command(
         self, command: str, workdir: str | None = None, *, disable_logging: bool = False
     ) -> ConsoleOutput:
@@ -551,52 +652,10 @@ class SandboxKubernetesSession(Session):
             NotOpenSessionError: If the session (Pod) is not currently running.
 
         """
-        if not self.container:
-            raise NotOpenSessionError
-
-        if self.verbose:
-            self.logger.info("Executing command: %s", command)
-
-        exec_command = ["sh", "-c", f"cd {workdir} && {command}"] if workdir else ["/bin/sh", "-c", command]
-
-        resp = stream(
-            self.client.connect_get_namespaced_pod_exec,
-            self.container,
-            self.kube_namespace,
-            command=exec_command,
-            stderr=True,
-            stdin=False,
-            stdout=True,
-            tty=False,
-            _preload_content=False,
-        )
-
-        stdout_output = ""
-        stderr_output = ""
-
-        if self.verbose and not disable_logging:
-            self.logger.info("Output:")
-
-        while resp.is_open():
-            resp.update(timeout=1)
-            if resp.peek_stdout():
-                chunk = resp.read_stdout()
-                stdout_output += chunk
-                if self.verbose and not disable_logging:
-                    self.logger.info("Stdout: %s", chunk)
-
-            if resp.peek_stderr():
-                chunk = resp.read_stderr()
-                stderr_output += chunk
-                if self.verbose and not disable_logging:
-                    self.logger.error("Stderr: %s", chunk)
-
-        exit_code = resp.returncode
-
-        return ConsoleOutput(
-            exit_code=exit_code,
-            stdout=stdout_output,
-            stderr=stderr_output,
+        return self._execute_single_command(
+            command=command,
+            workdir=workdir,
+            disable_logging=disable_logging,
         )
 
     def _execute_commands_with_timeout(self, commands: list, timeout: float) -> ConsoleOutput:
@@ -606,7 +665,6 @@ class SandboxKubernetesSession(Session):
 
         result = ConsoleOutput(exit_code=0, stdout="", stderr="")
 
-        # Implementation similar to Docker but using kubectl exec with timeout
         for command in commands:
             if isinstance(command, tuple):
                 cmd_str, cmd_workdir = command
@@ -614,47 +672,38 @@ class SandboxKubernetesSession(Session):
                 cmd_str = command
                 cmd_workdir = self.workdir
 
-            # Use kubectl exec with timeout
-            exec_command = ["timeout", str(int(timeout)), "sh", "-c", cmd_str]
-            if cmd_workdir:
-                exec_command = ["timeout", str(int(timeout)), "sh", "-c", f"cd {cmd_workdir} && {cmd_str}"]
-
-            resp = stream(
-                self.client.connect_get_namespaced_pod_exec,
-                self.container,
-                self.kube_namespace,
-                command=exec_command,
-                stderr=True,
-                stdin=False,
-                stdout=True,
-                tty=False,
-                _preload_content=False,
+            # Execute the command using the common base method
+            result = self._execute_single_command(
+                command=cmd_str,
+                workdir=cmd_workdir,
+                timeout=timeout,
+                disable_logging=False,
             )
 
-            # Monitor execution with timeout
-            start_time = time.time()
-            stdout_output = ""
-            stderr_output = ""
-
-            while resp.is_open():
-                if time.time() - start_time > timeout:
-                    resp.close()
-                    msg = f"Command execution timed out after {timeout} seconds"
-                    raise SandboxTimeoutError(msg)
-
-                resp.update(timeout=1)
-                if resp.peek_stdout():
-                    stdout_output += resp.read_stdout()
-                if resp.peek_stderr():
-                    stderr_output += resp.read_stderr()
-
-            result = ConsoleOutput(
-                exit_code=resp.returncode or 0,
-                stdout=stdout_output,
-                stderr=stderr_output,
-            )
+            # Stop if any command fails - maintaining original behavior
+            if result.exit_code != 0:
+                break
 
         return result
+
+    def execute_commands(
+        self, commands: list[str | tuple[str, str | None]], workdir: str | None = None, timeout: float | None = None
+    ) -> ConsoleOutput:
+        """Execute a sequence of commands within the Kubernetes Pod.
+
+        This overrides the base class method to add timeout support for Kubernetes.
+        If timeout is provided, use the timeout-aware execution, otherwise use the base implementation.
+        """
+        if timeout:
+            processed_commands: list[str | tuple[str, str | None]] = []
+            for command in commands:
+                if isinstance(command, tuple):
+                    processed_commands.append(command)
+                else:
+                    processed_commands.append((command, workdir))
+            return self._execute_commands_with_timeout(processed_commands, timeout)
+
+        return super().execute_commands(commands, workdir)
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:
         r"""Retrieve a file or directory from the Kubernetes Pod as a tar archive.

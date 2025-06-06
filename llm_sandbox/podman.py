@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from podman import PodmanClient
 from podman.domain.images import Image
-from podman.errors import ImageNotFound
+from podman.errors import ImageNotFound, PodmanError
 
 from llm_sandbox.base import ConsoleOutput, Session
 from llm_sandbox.const import DefaultImage, SupportedLanguage
@@ -227,7 +227,7 @@ class SandboxPodmanSession(Session):
 
         super().open()
 
-    def close(self) -> None:
+    def close(self) -> None:  # noqa: PLR0912
         r"""Close the Podman sandbox session.
 
         This method cleans up Podman resources by:
@@ -258,23 +258,49 @@ class SandboxPodmanSession(Session):
                         self.logger.exception("Failed to commit container")
                     raise
 
-            self.container.stop()
-            self.container.wait()
-            self.container.remove(force=True)
+            try:
+                self.container.stop()
+            except Exception:
+                if self.verbose:
+                    self.logger.exception(
+                        "Failed to stop container %s (may already be stopped)", self.container.short_id
+                    )
+
+            try:
+                self.container.wait()
+            except PodmanError:
+                if self.verbose:
+                    self.logger.warning(
+                        "Failed to wait for container %s (may already be stopped)", self.container.short_id
+                    )
+
+            try:
+                self.container.remove(force=True)
+            except PodmanError:
+                if self.verbose:
+                    self.logger.warning(
+                        "Failed to remove container %s (may already be removed)", self.container.short_id
+                    )
+
+            self.container = None
 
         if self.is_create_template and not self.keep_template:
             # check if the image is used by any other container
-            containers = self.client.containers.list(all=True)
-            image_id = self.docker_image.id
-            image_in_use = any(container.image.id == image_id for container in containers)
+            try:
+                containers = self.client.containers.list(all=True)
+                image_id = self.docker_image.id
+                image_in_use = any(container.image.id == image_id for container in containers)
 
-            if not image_in_use:
-                self.docker_image.remove(force=True)
-            elif self.verbose:
-                self.logger.info(
-                    "Image %s is in use by other containers. Skipping removal..",
-                    self.docker_image.tags[-1],
-                )
+                if not image_in_use:
+                    self.docker_image.remove(force=True)
+                elif self.verbose:
+                    self.logger.info(
+                        "Image %s is in use by other containers. Skipping removal..",
+                        self.docker_image.tags[-1],
+                    )
+            except PodmanError:
+                if self.verbose:
+                    self.logger.warning("Failed to check or remove image during cleanup")
 
     def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
         r"""Run the provided code within the Podman sandbox session.
@@ -325,9 +351,14 @@ class SandboxPodmanSession(Session):
                     return self._execute_commands_with_timeout(commands, actual_timeout)
         except SandboxTimeoutError:
             if self.container:
+                container_id = self.container.short_id
                 with suppress(Exception):
                     self.container.kill()
-                self.logger.warning("Killed container %s due to timeout", self.container.short_id)
+
+                with suppress(Exception):
+                    self.container.remove(force=True)
+                self.container = None
+                self.logger.warning("Killed and removed container %s due to timeout", container_id)
             raise
 
     def _execute_commands_with_timeout(self, commands: list, timeout: float) -> ConsoleOutput:
@@ -356,9 +387,15 @@ class SandboxPodmanSession(Session):
         if thread.is_alive():
             # Force kill the container if still running
             if self.container:
+                container_id = self.container.short_id
                 with suppress(Exception):
                     self.container.kill()
-                self.logger.warning("Killed container %s due to timeout", self.container.short_id)
+                # Remove the killed container to prevent accumulation of exited containers
+                with suppress(Exception):
+                    self.container.remove(force=True)
+                # Clear the container reference since it's been killed and removed
+                self.container = None
+                self.logger.warning("Killed and removed container %s due to timeout", container_id)
 
             msg = f"Code execution timed out after {timeout} seconds"
             raise SandboxTimeoutError(msg)

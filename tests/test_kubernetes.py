@@ -298,7 +298,7 @@ class TestSandboxKubernetesSessionRun:
 
             expected_dest_path = "/sandbox/code.py"  # Default workdir and python filename
             mock_copy.assert_called_once_with(expected_src_path, expected_dest_path)
-            mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox")
+            mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox", timeout=30.0)
 
     @patch("llm_sandbox.kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")

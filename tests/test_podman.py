@@ -303,6 +303,7 @@ class TestSandboxPodmanSessionClose:
         mock_container.stop.assert_called_once()
         mock_container.wait.assert_called_once()
         mock_container.remove.assert_called_once_with(force=True)
+        assert session.container is None
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
