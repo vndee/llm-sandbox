@@ -32,6 +32,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     needs: [set-version]
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out
         uses: actions/checkout@v4
