@@ -13,6 +13,8 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -30,6 +32,8 @@ jobs:
 
   tests-and-type-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
