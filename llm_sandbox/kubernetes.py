@@ -98,7 +98,7 @@ class SandboxKubernetesSession(Session):
         else:
             self.client = client
 
-        self.container: str
+        self.container: str | None = None
         self.kube_namespace = kube_namespace
         short_uuid = uuid.uuid4().hex[:8]
         self.pod_name = f"sandbox-{lang.lower()}-{short_uuid}"
@@ -268,27 +268,30 @@ class SandboxKubernetesSession(Session):
         self._check_session_timeout()
         actual_timeout = timeout or self.execution_timeout or self.default_timeout
 
+        def _run_code() -> ConsoleOutput:
+            self.install(libraries)
+
+            with tempfile.TemporaryDirectory() as directory_name:
+                code_file = str(Path(directory_name) / f"code.{self.language_handler.file_extension}")
+                code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
+
+                with Path(code_file).open("w", encoding="utf-8") as f:
+                    f.write(code)
+
+                self.copy_to_runtime(code_file, code_dest_file)
+
+                commands = self.language_handler.get_execution_commands(code_dest_file)
+                # Type cast needed because get_execution_commands returns list[str]
+                # but execute_commands expects list[str | tuple[str, str | None]]
+                return self.execute_commands(
+                    cast("list[str | tuple[str, str | None]]", commands),
+                    workdir=self.workdir,
+                    timeout=actual_timeout,
+                )
+
         try:
-            with self._timeout_context(actual_timeout):
-                self.install(libraries)
-
-                with tempfile.TemporaryDirectory() as directory_name:
-                    code_file = str(Path(directory_name) / f"code.{self.language_handler.file_extension}")
-                    code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
-
-                    with Path(code_file).open("w", encoding="utf-8") as f:
-                        f.write(code)
-
-                    self.copy_to_runtime(code_file, code_dest_file)
-
-                    commands = self.language_handler.get_execution_commands(code_dest_file)
-                    # Type cast needed because get_execution_commands returns list[str]
-                    # but execute_commands expects list[str | tuple[str, str | None]]
-                    return self.execute_commands(
-                        cast("list[str | tuple[str, str | None]]", commands),
-                        workdir=self.workdir,
-                        timeout=actual_timeout,
-                    )
+            result = self._execute_with_timeout(_run_code, actual_timeout)
+            return cast("ConsoleOutput", result)
         except SandboxTimeoutError:
             try:
                 self._delete_kubernetes_pod()
@@ -545,7 +548,7 @@ class SandboxKubernetesSession(Session):
         r"""Execute a single command within the Kubernetes Pod with optional timeout.
 
         This is the base method that handles the actual command execution logic
-        to avoid code duplication between execute_command and _execute_commands_with_timeout.
+        with timeout support for Kubernetes pods.
 
         Args:
             command (str): The command string to execute.
@@ -658,8 +661,13 @@ class SandboxKubernetesSession(Session):
             disable_logging=disable_logging,
         )
 
-    def _execute_commands_with_timeout(self, commands: list, timeout: float) -> ConsoleOutput:
-        """Execute commands with Kubernetes-specific timeout."""
+    def execute_commands(
+        self, commands: list[str | tuple[str, str | None]], workdir: str | None = None, timeout: float | None = None
+    ) -> ConsoleOutput:
+        """Execute a sequence of commands within the Kubernetes Pod.
+
+        This overrides the base class method to add timeout support for Kubernetes.
+        """
         if not commands:
             return ConsoleOutput(exit_code=0, stdout="", stderr="")
 
@@ -670,9 +678,9 @@ class SandboxKubernetesSession(Session):
                 cmd_str, cmd_workdir = command
             else:
                 cmd_str = command
-                cmd_workdir = self.workdir
+                cmd_workdir = workdir or self.workdir
 
-            # Execute the command using the common base method
+            # Execute the command using the timeout-aware method
             result = self._execute_single_command(
                 command=cmd_str,
                 workdir=cmd_workdir,
@@ -685,25 +693,6 @@ class SandboxKubernetesSession(Session):
                 break
 
         return result
-
-    def execute_commands(
-        self, commands: list[str | tuple[str, str | None]], workdir: str | None = None, timeout: float | None = None
-    ) -> ConsoleOutput:
-        """Execute a sequence of commands within the Kubernetes Pod.
-
-        This overrides the base class method to add timeout support for Kubernetes.
-        If timeout is provided, use the timeout-aware execution, otherwise use the base implementation.
-        """
-        if timeout:
-            processed_commands: list[str | tuple[str, str | None]] = []
-            for command in commands:
-                if isinstance(command, tuple):
-                    processed_commands.append(command)
-                else:
-                    processed_commands.append((command, workdir))
-            return self._execute_commands_with_timeout(processed_commands, timeout)
-
-        return super().execute_commands(commands, workdir)
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:
         r"""Retrieve a file or directory from the Kubernetes Pod as a tar archive.

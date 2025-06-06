@@ -7,9 +7,7 @@ import threading
 import time
 import types
 from abc import ABC, abstractmethod
-from collections.abc import Generator
-from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import ConsoleOutput, ExecutionResult
@@ -108,54 +106,6 @@ class Session(ABC):
         if self.verbose:
             getattr(self.logger, level)(message)
 
-    @contextmanager
-    def _timeout_context(self, timeout: float | None = None) -> Generator[None, None, None]:
-        """Context manager for timeout operations."""
-        timeout = timeout or self.default_timeout
-
-        if timeout is None:
-            yield
-            return
-
-        # For Unix-like systems
-        if hasattr(signal, "SIGALRM"):
-
-            def timeout_handler(signum: int, frame: types.FrameType | None) -> None:  # noqa: ARG001
-                msg = f"Operation timed out after {timeout} seconds"
-                raise SandboxTimeoutError(msg)
-
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(int(timeout))
-
-            try:
-                yield
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
-        else:
-            # For Windows or systems without SIGALRM - use threading
-            result: list[str | None] = [None]
-            exception: list[Exception | None] = [None]
-
-            def target() -> Generator[None, None, None]:
-                try:
-                    yield
-                    result[0] = "completed"
-                except Exception as e:  # noqa: BLE001
-                    exception[0] = e
-
-            thread = threading.Thread(target=target)
-            thread.daemon = True
-            thread.start()
-            thread.join(timeout)
-
-            if thread.is_alive():
-                msg = f"Operation timed out after {timeout} seconds"
-                raise SandboxTimeoutError(msg)
-
-            if exception[0]:
-                raise exception[0]
-
     def _check_session_timeout(self) -> None:
         """Check if session has exceeded its maximum lifetime based on time."""
         if self.session_timeout and self._session_start_time:
@@ -186,6 +136,68 @@ class Session(ABC):
         if self._session_timer:
             self._session_timer.cancel()
             self._session_timer = None
+
+    def _execute_with_timeout(self, func: Any, timeout: float | None = None, *args: Any, **kwargs: Any) -> Any:
+        """Execute a function with timeout monitoring.
+
+        Uses signal-based timeout on Unix systems and threading-based timeout on Windows.
+
+        Args:
+            func: The function to execute
+            timeout: Timeout in seconds
+            *args: Arguments to pass to the function
+            **kwargs: Keyword arguments to pass to the function
+
+        Returns:
+            The result from the function execution
+
+        Raises:
+            SandboxTimeoutError: If the function execution times out
+
+        """
+        if timeout is None:
+            return func(*args, **kwargs)
+
+        # For Unix systems with SIGALRM, use signal-based timeout
+        if hasattr(signal, "SIGALRM"):
+
+            def timeout_handler(signum: int, frame: types.FrameType | None) -> None:  # noqa: ARG001
+                msg = f"Operation timed out after {timeout} seconds"
+                raise SandboxTimeoutError(msg)
+
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(int(timeout))
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+
+        # For Windows or systems without SIGALRM, use threading
+        result: list[Any] = [None]
+        exception: list[Exception | None] = [None]
+
+        def target() -> None:
+            try:
+                result[0] = func(*args, **kwargs)
+            except Exception as e:  # noqa: BLE001
+                exception[0] = e
+
+        thread = threading.Thread(target=target)
+        thread.daemon = True
+        thread.start()
+        thread.join(timeout)
+
+        if thread.is_alive():
+            # Note: We can't actually kill the thread, but we can timeout
+            msg = f"Operation timed out after {timeout} seconds"
+            raise SandboxTimeoutError(msg)
+
+        if exception[0]:
+            raise exception[0]
+
+        return result[0]
 
     @abstractmethod
     def open(self) -> None:

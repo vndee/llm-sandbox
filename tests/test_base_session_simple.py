@@ -56,13 +56,6 @@ class TestSessionTimeout:
         session = SimpleSession(lang="python", default_timeout=25.0, execution_timeout=None)
         assert session.execution_timeout == 25.0
 
-    def test_timeout_context_none(self) -> None:
-        """Test timeout context with None timeout."""
-        session = SimpleSession(lang="python")
-
-        with session._timeout_context(timeout=None):
-            pass  # Should complete without timeout
-
     def test_session_timeout_check_no_timeout(self) -> None:
         """Test session timeout check when no timeout is set."""
         session = SimpleSession(lang="python", session_timeout=None)

@@ -3,7 +3,6 @@
 import io
 import tarfile
 import tempfile
-import threading
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -334,21 +333,33 @@ class SandboxPodmanSession(Session):
         self._check_session_timeout()
         actual_timeout = timeout or self.execution_timeout or self.default_timeout
 
+        def _run_code() -> ConsoleOutput:
+            self.install(libraries)
+
+            with tempfile.NamedTemporaryFile(
+                delete=True, suffix=f".{self.language_handler.file_extension}"
+            ) as code_file:
+                code_file.write(code.encode("utf-8"))
+                code_file.seek(0)
+
+                code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
+                self.copy_to_runtime(code_file.name, code_dest_file)
+
+                commands = self.language_handler.get_execution_commands(code_dest_file)
+                # Type cast needed because get_execution_commands returns list[str]
+                # but execute_commands expects list[str | tuple[str, str | None]]
+                from typing import cast
+
+                return self.execute_commands(
+                    cast("list[str | tuple[str, str | None]]", commands),
+                    workdir=self.workdir,
+                )
+
         try:
-            with self._timeout_context(actual_timeout):
-                self.install(libraries)
+            result = self._execute_with_timeout(_run_code, actual_timeout)
+            from typing import cast
 
-                with tempfile.NamedTemporaryFile(
-                    delete=True, suffix=f".{self.language_handler.file_extension}"
-                ) as code_file:
-                    code_file.write(code.encode("utf-8"))
-                    code_file.seek(0)
-
-                    code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
-                    self.copy_to_runtime(code_file.name, code_dest_file)
-
-                    commands = self.language_handler.get_execution_commands(code_dest_file)
-                    return self._execute_commands_with_timeout(commands, actual_timeout)
+            return cast("ConsoleOutput", result)
         except SandboxTimeoutError:
             if self.container:
                 container_id = self.container.short_id
@@ -360,54 +371,6 @@ class SandboxPodmanSession(Session):
                 self.container = None
                 self.logger.warning("Killed and removed container %s due to timeout", container_id)
             raise
-
-    def _execute_commands_with_timeout(self, commands: list, timeout: float) -> ConsoleOutput:
-        """Execute commands with timeout monitoring."""
-        if not commands:
-            return ConsoleOutput(exit_code=0, stdout="", stderr="")
-
-        result = ConsoleOutput(exit_code=0, stdout="", stderr="")
-        exception = None
-
-        def execute_target() -> None:
-            nonlocal result, exception
-            try:
-                result = self.execute_commands(commands, workdir=self.workdir)
-            except Exception as e:  # noqa: BLE001
-                exception = e
-
-        # Start execution in a separate thread
-        thread = threading.Thread(target=execute_target)
-        thread.daemon = True
-        thread.start()
-
-        # Wait for completion or timeout
-        thread.join(timeout)
-
-        if thread.is_alive():
-            # Force kill the container if still running
-            if self.container:
-                container_id = self.container.short_id
-                with suppress(Exception):
-                    self.container.kill()
-                # Remove the killed container to prevent accumulation of exited containers
-                with suppress(Exception):
-                    self.container.remove(force=True)
-                # Clear the container reference since it's been killed and removed
-                self.container = None
-                self.logger.warning("Killed and removed container %s due to timeout", container_id)
-
-            msg = f"Code execution timed out after {timeout} seconds"
-            raise SandboxTimeoutError(msg)
-
-        if exception:
-            raise exception
-
-        if result is None:
-            msg = "Command execution completed but no result was captured"
-            raise RuntimeError(msg)
-
-        return result
 
     def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         r"""Copy a file or directory from the Podman container to the local host filesystem.
