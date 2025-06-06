@@ -7,9 +7,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -27,6 +32,8 @@ jobs:
 
   tests-and-type-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
@@ -58,6 +65,8 @@ jobs:
 
   check-docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -74,6 +83,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
+      pages: write
     steps:
       - name: Check out
         uses: actions/checkout@v4

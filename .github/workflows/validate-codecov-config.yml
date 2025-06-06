@@ -1,5 +1,8 @@
 name: validate-codecov-config
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths: [codecov.yaml]

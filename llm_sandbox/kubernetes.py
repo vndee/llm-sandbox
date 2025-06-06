@@ -100,7 +100,8 @@ class SandboxKubernetesSession(Session):
 
         self.container: str
         self.kube_namespace = kube_namespace
-        self.pod_name = f"sandbox-{lang.lower()}-{uuid.uuid4().hex}"
+        short_uuid = uuid.uuid4().hex[:8]
+        self.pod_name = f"sandbox-{lang.lower()}-{short_uuid}"
         self.env_vars = env_vars
         self.pod_manifest = pod_manifest or self._default_pod_manifest()
         self._reconfigure_with_pod_manifest()
@@ -153,9 +154,13 @@ class SandboxKubernetesSession(Session):
         r"""Reconfigure session attributes based on the provided or default pod_manifest.
 
         Ensures that `self.pod_name` and `self.kube_namespace` are consistent with the
-        metadata specified in the `pod_manifest`.
+        metadata specified in the `pod_manifest`. Always ensures pod name is unique.
         """
-        self.pod_name = self.pod_manifest.get("metadata", {}).get("name", self.pod_name)
+        # Always ensure pod name is unique, but keep it under 63 characters
+        additional_uuid = uuid.uuid4().hex[:8]
+        unique_pod_name = f"{self.pod_name}-{additional_uuid}"
+        self.pod_name = unique_pod_name
+        self.pod_manifest["metadata"]["name"] = unique_pod_name
         self.kube_namespace = self.pod_manifest.get("metadata", {}).get("namespace", self.kube_namespace)
 
     def open(self) -> None:
@@ -287,7 +292,7 @@ class SandboxKubernetesSession(Session):
                     self.logger.exception("Failed to delete Kubernetes Pod")
             raise
 
-    def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
+    def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912, PLR0915
         r"""Copy a file or directory from the Kubernetes Pod to the local host filesystem.
 
         This method uses `kubectl exec` (via the Kubernetes API stream) to create a tar archive
@@ -340,32 +345,95 @@ class SandboxKubernetesSession(Session):
         # Extract the file content from the tar archive
         tar_data.seek(0)
         with tarfile.open(fileobj=tar_data, mode="r") as tar:
-            # Filter to prevent extraction of unsafe paths
-            safe_members = [
-                member for member in tar.getmembers() if not (member.name.startswith("/") or ".." in member.name)
+            # Enhanced safety: filter out dangerous paths
+            safe_members = []
+            for member in tar.getmembers():
+                # Skip absolute paths and path traversal attempts
+                if member.name.startswith("/") or ".." in member.name:
+                    if self.verbose:
+                        self.logger.warning("Skipping unsafe path: %s", member.name)
+                    continue
+                # Skip symlinks pointing outside extraction directory
+                if member.issym() or member.islnk():
+                    if self.verbose:
+                        self.logger.warning("Skipping symlink: %s", member.name)
+                    continue
+                safe_members.append(member)
+
+            if not safe_members and tar.getmembers():
+                # All members were filtered - extract anyway to prevent data loss
+                self.logger.warning("All tar members were filtered - extracting anyway")
+                safe_members = tar.getmembers()
+            elif not safe_members:
+                msg = f"No content found in {src}"
+                if self.verbose:
+                    self.logger.error(msg)
+                raise FileNotFoundError(msg)
+
+            # Create destination directory if needed
+            Path(dest).parent.mkdir(parents=True, exist_ok=True)
+
+            # Handle both files and directories - account for tar path stripping
+            src_path = Path(src)
+            src_name = src_path.name
+            # tar removes leading '/' so absolute paths become relative
+            expected_prefix = str(src_path).lstrip("/")
+            extracted_any = False
+
+            if self.verbose:
+                self.logger.info("Looking for tar members matching: %s or %s", src_name, expected_prefix)
+                self.logger.info("Available members: %s", [m.name for m in safe_members[:5]])
+
+            # Check if we're dealing with a single file
+            single_file_members = [
+                m
+                for m in safe_members
+                if m.isfile() and (m.name in (src_name, expected_prefix) or m.name.endswith(f"/{src_name}"))
             ]
 
-            # Find the file we want to extract
-            target_member = None
-            src_name = Path(src).name
-            for member in safe_members:
-                if member.isfile() and (member.name == src_name or member.name.endswith(f"/{src_name}")):
-                    target_member = member
-                    break
-
-            if target_member:
-                # Extract the file content and write to destination
-                file_obj = tar.extractfile(target_member)
+            if len(single_file_members) == 1 and not any(m.isdir() for m in safe_members):
+                # Single file extraction
+                member = single_file_members[0]
+                file_obj = tar.extractfile(member)
                 if file_obj:
-                    Path(dest).parent.mkdir(parents=True, exist_ok=True)
                     with Path(dest).open("wb") as f:
                         f.write(file_obj.read())
-                else:
-                    raise FileNotFoundError(src)
+                    extracted_any = True
             else:
+                # Directory extraction - look for members that match our expected path
+                dest_dir = Path(dest)
+                dest_dir.mkdir(exist_ok=True)
+
+                for member in safe_members:
+                    if member.isfile():
+                        member_path = member.name
+                        target_path = None
+
+                        # Match against expected prefix (e.g., "sandbox/output/file.txt")
+                        if member_path.startswith(f"{expected_prefix}/"):
+                            # File inside the directory: sandbox/output/file.txt -> file.txt
+                            rel_path = Path(member_path).relative_to(expected_prefix)
+                            target_path = dest_dir / rel_path
+                        elif member_path == expected_prefix:
+                            # Directory itself
+                            target_path = dest_dir / src_name
+                        elif member_path.startswith(f"{src_name}/"):
+                            # Fallback: direct basename match
+                            rel_path = Path(member_path).relative_to(src_name)
+                            target_path = dest_dir / rel_path
+
+                        if target_path:
+                            target_path.parent.mkdir(parents=True, exist_ok=True)
+                            file_obj = tar.extractfile(member)
+                            if file_obj:
+                                with target_path.open("wb") as f:
+                                    f.write(file_obj.read())
+                                extracted_any = True
+
+            if not extracted_any:
                 raise FileNotFoundError(src)
 
-    def copy_to_runtime(self, src: str, dest: str) -> None:
+    def copy_to_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         r"""Copy a file or directory from the local host filesystem to the Kubernetes Pod.
 
         This method creates a tar archive of the `src` path on the host, then uses `kubectl exec`
@@ -384,44 +452,69 @@ class SandboxKubernetesSession(Session):
         if not self.container:
             raise NotOpenSessionError
 
+        # Validate source path exists and is accessible
+        src_path = Path(src)
+        if not (src_path.exists() and (src_path.is_file() or src_path.is_dir())):
+            msg = f"Source path {src} does not exist or is not accessible"
+            if self.verbose:
+                self.logger.error(msg)
+            raise FileNotFoundError(msg)
+
         start_time = time.time()
         if self.verbose:
             self.logger.info("Copying %s to %s:%s..", src, self.container, dest)
 
         dest_dir = str(Path(dest).parent)
-        dest_file = str(Path(dest).name)
 
         if dest_dir:
-            self.execute_command(f"mkdir -p {dest_dir}")
+            # Use quoted path to handle special characters
+            result = self.execute_command(f"mkdir -p '{dest_dir}'")
+            if result.exit_code != 0:
+                self.logger.error("Failed to create directory %s: %s", dest_dir, result.stderr)
 
-        with Path(src).open("rb") as f:
+        # Create tar archive with validated source
+        try:
             tarstream = io.BytesIO()
             with tarfile.open(fileobj=tarstream, mode="w") as tar:
-                tarinfo = tarfile.TarInfo(name=dest_file)
-                tarinfo.size = Path(src).stat().st_size
-                tar.addfile(tarinfo, f)
-            tarstream.seek(0)
+                tar.add(src, arcname=Path(dest).name)
+        except Exception:
+            self.logger.exception("Failed to create tar archive for %s", src)
+            raise
+        tarstream.seek(0)
 
-            exec_command = ["tar", "xvf", "-", "-C", dest_dir]
-            resp = stream(
-                self.client.connect_get_namespaced_pod_exec,
-                self.container,
-                self.kube_namespace,
-                command=exec_command,
-                stderr=True,
-                stdin=True,
-                stdout=True,
-                tty=False,
-                _preload_content=False,
-            )
-            while resp.is_open():
-                resp.update(timeout=1)
-                if resp.peek_stdout():
-                    self.logger.info(resp.read_stdout())
-                if resp.peek_stderr():
-                    self.logger.error(resp.read_stderr())
-                resp.write_stdin(tarstream.read(4096))
-            resp.close()
+        exec_command = ["tar", "xvf", "-", "-C", dest_dir]
+        resp = stream(
+            self.client.connect_get_namespaced_pod_exec,
+            self.container,
+            self.kube_namespace,
+            command=exec_command,
+            stderr=True,
+            stdin=True,
+            stdout=True,
+            tty=False,
+            _preload_content=False,
+        )
+
+        # Use interleaved reading/writing to prevent deadlock and infinite loops
+        stdin_completed = False
+        while resp.is_open():
+            resp.update(timeout=1)
+
+            # Read any available output first to prevent buffer buildup
+            if resp.peek_stdout():
+                self.logger.info(resp.read_stdout())
+            if resp.peek_stderr():
+                self.logger.error(resp.read_stderr())
+
+            # Write data in chunks, but stop once we've sent everything
+            if not stdin_completed:
+                chunk = tarstream.read(4096)
+                if chunk:
+                    resp.write_stdin(chunk)
+                else:
+                    # Mark stdin as completed to avoid infinite loop
+                    stdin_completed = True
+        resp.close()
 
         end_time = time.time()
         if self.verbose:
