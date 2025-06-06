@@ -452,3 +452,8 @@ If you find LLM Sandbox useful, please consider giving it a star on GitHub!
 - **GitHub Discussions**: [Join the community](https://github.com/vndee/llm-sandbox/discussions)
 - **PyPI**: [pypi.org/project/llm-sandbox](https://pypi.org/project/llm-sandbox/)
 - **Documentation**: [vndee.github.io/llm-sandbox](https://vndee.github.io/llm-sandbox/)
+
+## Contributors
+<a href="https://github.com/vndee/llm-sandbox/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=vndee/llm-sandbox" />
+</a>
