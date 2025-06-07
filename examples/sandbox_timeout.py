@@ -5,14 +5,14 @@ import time
 from typing import Any
 
 from llm_sandbox import SandboxBackend, SandboxSession
-from llm_sandbox.base import Session
+from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.exceptions import SandboxTimeoutError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def create_test_session(backend_enum: SandboxBackend, client: Any = None) -> Session:
+def create_test_session(backend_enum: SandboxBackend, client: Any = None) -> BaseSession:
     """Create a new test session for the given backend."""
     return SandboxSession(
         backend=backend_enum,
