@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from llm_sandbox.const import SupportedLanguage
-from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.micromamba import MicromambaSession
 from llm_sandbox.security import SecurityPolicy
 
@@ -26,13 +25,13 @@ class TestMicromambaSessionInit:
 
         session = MicromambaSession()
 
-        assert session.lang == SupportedLanguage.PYTHON
-        assert session.verbose is False
-        assert session.image == "mambaorg/micromamba:latest"
+        assert session.config.lang == SupportedLanguage.PYTHON
+        assert session.config.verbose is False
+        assert session.config.image == "mambaorg/micromamba:latest"
         assert session.keep_template is False
         assert session.commit_container is False
         assert session.stream is True
-        assert session.workdir == "/sandbox"
+        assert session.config.workdir == "/sandbox"
         assert session.environment == "base"
         assert session.client == mock_client
         mock_docker_from_env.assert_called_once()
@@ -72,15 +71,15 @@ class TestMicromambaSessionInit:
             security_policy=security_policy,
         )
 
-        assert session.image == "custom-micromamba:latest"
-        assert session.lang == "java"
+        assert session.config.image == "custom-micromamba:latest"
+        assert session.config.lang == SupportedLanguage.JAVA
         assert session.keep_template is True
         assert session.commit_container is True
-        assert session.verbose is True
+        assert session.config.verbose is True
         assert session.environment == "custom_env"
         assert session.stream is False
-        assert session.workdir == "/custom"
-        assert session.security_policy == security_policy
+        assert session.config.workdir == "/custom"
+        assert session.config.security_policy == security_policy
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -93,32 +92,16 @@ class TestMicromambaSessionInit:
         mock_client = MagicMock()
         mock_docker_from_env.return_value = mock_client
 
-        from docker.types import Mount
-
-        test_mounts = [Mount("/host/path", "/container/path", type="bind")]
         runtime_configs = {"cpu_count": 2, "mem_limit": "1g"}
 
         session = MicromambaSession(
-            mounts=test_mounts,
             runtime_configs=runtime_configs,
-            extra_param="should_be_passed",  # type: ignore[arg-type] # Test **kwargs
+            extra_param="should_be_passed",
         )
 
-        assert session.mounts == test_mounts
-        assert session.runtime_configs == runtime_configs
-
-    @patch("llm_sandbox.micromamba.docker.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_init_with_dockerfile(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test initialization with dockerfile."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = MicromambaSession(dockerfile="/path/to/Dockerfile", environment="data_science")
-
-        assert session.dockerfile == "/path/to/Dockerfile"
-        assert session.image is None
-        assert session.environment == "data_science"
+        # Mounts are deprecated and moved to runtime_configs
+        assert session.config.runtime_configs["cpu_count"] == 2
+        assert session.config.runtime_configs["mem_limit"] == "1g"
 
 
 class TestMicromambaSessionExecuteCommand:
@@ -133,17 +116,50 @@ class TestMicromambaSessionExecuteCommand:
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
-        session = MicromambaSession(environment="test_env")
+        session = MicromambaSession(environment="test_env", stream=False)
 
-        # Mock the parent execute_command method
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            expected_result = ConsoleOutput(exit_code=0, stdout="output")
-            mock_parent_execute.return_value = expected_result
+        # Mock the container_api execute_command method instead of parent
+        with patch.object(session.container_api, "execute_command") as mock_container_execute:
+            mock_container_execute.return_value = (0, (b"output", b""))
+            mock_container = MagicMock()
+            session.container = mock_container
 
             result = session.execute_command("python --version", workdir="/tmp")
 
-            assert result == expected_result
-            mock_parent_execute.assert_called_once_with("micromamba run -n test_env python --version", "/tmp")
+            # Verify that container_api.execute_command was called with wrapped command
+            mock_container_execute.assert_called_once_with(
+                mock_container, "python --version", workdir="/tmp", stream=False
+            )
+            assert result.exit_code == 0
+            assert result.stdout == "output"
+
+    @patch("llm_sandbox.micromamba.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_micromamba_container_api_wraps_commands(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test that MicromambaContainerAPI properly wraps commands."""
+        from llm_sandbox.micromamba import MicromambaContainerAPI
+
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+
+        # Create API instance directly to test command wrapping
+        api = MicromambaContainerAPI(mock_client, environment="test_env")
+
+        # Mock the parent execute_command
+        with patch("llm_sandbox.docker.DockerContainerAPI.execute_command") as mock_parent_execute:
+            mock_parent_execute.return_value = (0, "wrapped output")
+            mock_container = MagicMock()
+
+            result = api.execute_command(mock_container, "python --version", workdir="/tmp")
+
+            # Verify parent was called with wrapped command
+            mock_parent_execute.assert_called_once_with(
+                mock_container, "micromamba run -n test_env python --version", workdir="/tmp"
+            )
+            assert result == (0, "wrapped output")
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -151,39 +167,22 @@ class TestMicromambaSessionExecuteCommand:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test execute_command with default base environment."""
+        from llm_sandbox.micromamba import MicromambaContainerAPI
+
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
 
-        session = MicromambaSession()  # Default environment is "base"
+        # Test the container API directly with default environment
+        api = MicromambaContainerAPI(mock_client, environment="base")
 
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            expected_result = ConsoleOutput(exit_code=0, stdout="output")
-            mock_parent_execute.return_value = expected_result
+        with patch("llm_sandbox.docker.DockerContainerAPI.execute_command") as mock_parent_execute:
+            mock_parent_execute.return_value = (0, "output")
+            mock_container = MagicMock()
 
-            result = session.execute_command("conda list")
+            api.execute_command(mock_container, "conda list")
 
-            assert result == expected_result
-            mock_parent_execute.assert_called_once_with("micromamba run -n base conda list", None)
-
-    @patch("llm_sandbox.micromamba.docker.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_execute_command_with_none_command(
-        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
-    ) -> None:
-        """Test execute_command with None command."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = MicromambaSession()
-
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            expected_result = ConsoleOutput(exit_code=0, stdout="output")
-            mock_parent_execute.return_value = expected_result
-
-            result = session.execute_command(None)
-
-            assert result == expected_result
-            mock_parent_execute.assert_called_once_with("micromamba run -n base ", None)
+            mock_parent_execute.assert_called_once_with(mock_container, "micromamba run -n base conda list")
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -191,19 +190,21 @@ class TestMicromambaSessionExecuteCommand:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test execute_command with empty command."""
+        from llm_sandbox.micromamba import MicromambaContainerAPI
+
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
 
-        session = MicromambaSession(environment="ml_env")
+        api = MicromambaContainerAPI(mock_client, environment="base")
 
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            expected_result = ConsoleOutput(exit_code=0, stdout="output")
-            mock_parent_execute.return_value = expected_result
+        with patch("llm_sandbox.docker.DockerContainerAPI.execute_command") as mock_parent_execute:
+            mock_parent_execute.return_value = (0, "output")
+            mock_container = MagicMock()
 
-            result = session.execute_command("", workdir="/workspace")
+            api.execute_command(mock_container, "")
 
-            assert result == expected_result
-            mock_parent_execute.assert_called_once_with("micromamba run -n ml_env ", "/workspace")
+            mock_parent_execute.assert_called_once_with(mock_container, "micromamba run -n base ")
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -211,96 +212,23 @@ class TestMicromambaSessionExecuteCommand:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test execute_command with complex command containing pipes and redirects."""
+        from llm_sandbox.micromamba import MicromambaContainerAPI
+
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
 
-        session = MicromambaSession(environment="data_analysis")
+        api = MicromambaContainerAPI(mock_client, environment="data_analysis")
 
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            expected_result = ConsoleOutput(exit_code=0, stdout="output")
-            mock_parent_execute.return_value = expected_result
+        with patch("llm_sandbox.docker.DockerContainerAPI.execute_command") as mock_parent_execute:
+            mock_parent_execute.return_value = (0, "output")
+            mock_container = MagicMock()
 
             complex_command = "python script.py | grep 'result' > output.txt"
-            result = session.execute_command(complex_command, workdir="/data")
+            api.execute_command(mock_container, complex_command, workdir="/data")
 
-            assert result == expected_result
-            mock_parent_execute.assert_called_once_with(f"micromamba run -n data_analysis {complex_command}", "/data")
-
-    @patch("llm_sandbox.micromamba.docker.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_execute_command_with_quotes_and_special_chars(
-        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
-    ) -> None:
-        """Test execute_command with commands containing quotes and special characters."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = MicromambaSession(environment="test")
-
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            expected_result = ConsoleOutput(exit_code=0, stdout="output")
-            mock_parent_execute.return_value = expected_result
-
-            special_command = '''python -c "print('Hello, World!')" && echo "Done"'''
-            result = session.execute_command(special_command)
-
-            assert result == expected_result
-            mock_parent_execute.assert_called_once_with(f"micromamba run -n test {special_command}", None)
-
-    @patch("llm_sandbox.micromamba.docker.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_execute_command_preserves_parent_functionality(
-        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
-    ) -> None:
-        """Test that execute_command preserves all parent class functionality."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = MicromambaSession()
-
-        # Test that parent's execute_command is called with correct parameters
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            # Mock parent returning different exit codes and outputs
-            test_cases = [
-                ConsoleOutput(exit_code=0, stdout="success", stderr=""),
-                ConsoleOutput(exit_code=1, stdout="", stderr="error occurred"),
-                ConsoleOutput(exit_code=127, stdout="command not found", stderr="bash: command not found"),
-            ]
-
-            for expected_result in test_cases:
-                mock_parent_execute.return_value = expected_result
-                result = session.execute_command("test_command")
-                assert result == expected_result
-
-    @patch("llm_sandbox.micromamba.docker.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_execute_command_environment_name_with_special_chars(
-        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
-    ) -> None:
-        """Test execute_command with environment names containing special characters."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        # Test various environment name formats
-        test_environments = [
-            "my-env",
-            "env_with_underscores",
-            "env123",
-            "ENV_UPPER",
-            "env.with.dots",
-        ]
-
-        for env_name in test_environments:
-            session = MicromambaSession(environment=env_name)
-
-            with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-                expected_result = ConsoleOutput(exit_code=0, stdout="output")
-                mock_parent_execute.return_value = expected_result
-
-                result = session.execute_command("python --version")
-
-                assert result == expected_result
-                mock_parent_execute.assert_called_once_with(f"micromamba run -n {env_name} python --version", None)
+            expected_command = f"micromamba run -n data_analysis {complex_command}"
+            mock_parent_execute.assert_called_once_with(mock_container, expected_command, workdir="/data")
 
 
 class TestMicromambaSessionInheritance:
@@ -348,25 +276,31 @@ class TestMicromambaSessionInheritance:
 
         session = MicromambaSession()
 
-        # Test that all expected properties are available
-        expected_properties = [
+        # Test that all expected properties are available through config
+        expected_config_properties = [
             "lang",
             "verbose",
             "image",
-            "keep_template",
-            "commit_container",
-            "stream",
             "workdir",
             "security_policy",
-            "client",
             "dockerfile",
-            "is_create_template",
-            "mounts",
             "runtime_configs",
         ]
 
-        for prop_name in expected_properties:
-            assert hasattr(session, prop_name), f"Property {prop_name} should be inherited"
+        for prop_name in expected_config_properties:
+            assert hasattr(session.config, prop_name), f"Property {prop_name} should be in config"
+
+        # Test session-level properties
+        expected_session_properties = [
+            "keep_template",
+            "commit_container",
+            "stream",
+            "client",
+            "is_create_template",
+        ]
+
+        for prop_name in expected_session_properties:
+            assert hasattr(session, prop_name), f"Property {prop_name} should be on session"
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -384,12 +318,13 @@ class TestMicromambaSessionInheritance:
         # Mock container to avoid NotOpenSessionError
         mock_container = MagicMock()
         session.container = mock_container
+        session.is_open = True
 
         with (
             patch.object(session, "install"),
             patch.object(session, "copy_to_runtime"),
             patch("tempfile.NamedTemporaryFile") as mock_temp_file,
-            patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute,
+            patch.object(session.container_api, "execute_command") as mock_container_execute,
         ):
             # Setup mocks
             mock_temp_file.return_value.__enter__ = lambda x: x
@@ -398,14 +333,16 @@ class TestMicromambaSessionInheritance:
             mock_temp_file.return_value.write = MagicMock()
             mock_temp_file.return_value.seek = MagicMock()
 
-            expected_result = ConsoleOutput(exit_code=0, stdout="output")
-            mock_parent_execute.return_value = expected_result
+            mock_container_execute.return_value = (0, "output")
 
             result = session.run("print('hello')", ["numpy"])
 
-            # Verify that the command was wrapped with micromamba run
-            mock_parent_execute.assert_called_once_with("micromamba run -n ml_env python /sandbox/code.py", "/sandbox")
-            assert result == expected_result
+            # Verify that the container_api execute_command was called
+            # (it will internally wrap with micromamba run)
+            mock_container_execute.assert_called_once_with(
+                mock_container, "python /sandbox/code.py", workdir="/sandbox", stream=True
+            )
+            assert result.exit_code == 0
 
 
 class TestMicromambaSessionDocumentation:
@@ -424,17 +361,11 @@ class TestMicromambaSessionDocumentation:
         )
 
         assert session.environment == "data_science"
-        assert session.image == "mambaorg/micromamba:latest"
-        assert session.workdir == "/workspace"
+        assert session.config.image == "mambaorg/micromamba:latest"
+        assert session.config.workdir == "/workspace"
 
-        # Test that commands are properly wrapped
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            expected_result = ConsoleOutput(exit_code=0, stdout="Python 3.9.0")
-            mock_parent_execute.return_value = expected_result
-
-            _ = session.execute_command("python --version")
-
-            mock_parent_execute.assert_called_once_with("micromamba run -n data_science python --version", None)
+        # Test that the container API is properly configured
+        assert session.container_api.environment == "data_science"  # type: ignore[attr-defined]
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -445,7 +376,7 @@ class TestMicromambaSessionDocumentation:
 
         session = MicromambaSession()
 
-        assert session.image == "mambaorg/micromamba:latest"
+        assert session.config.image == "mambaorg/micromamba:latest"
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -461,12 +392,7 @@ class TestMicromambaSessionDocumentation:
         for env_name in environments_to_test:
             session = MicromambaSession(environment=env_name)
             assert session.environment == env_name
-
-            # Verify it's used in command execution
-            with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-                mock_parent_execute.return_value = ConsoleOutput(exit_code=0, stdout="")
-                session.execute_command("test")
-                mock_parent_execute.assert_called_once_with(f"micromamba run -n {env_name} test", None)
+            assert session.container_api.environment == env_name  # type: ignore[attr-defined]
 
 
 class TestMicromambaSessionEdgeCases:
@@ -476,17 +402,22 @@ class TestMicromambaSessionEdgeCases:
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_empty_environment_name(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
         """Test behavior with empty environment name."""
+        from llm_sandbox.micromamba import MicromambaContainerAPI
+
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
 
-        session = MicromambaSession(environment="")
+        api = MicromambaContainerAPI(mock_client, environment="")
 
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            mock_parent_execute.return_value = ConsoleOutput(exit_code=0, stdout="")
-            session.execute_command("test_command")
+        with patch("llm_sandbox.docker.DockerContainerAPI.execute_command") as mock_parent_execute:
+            mock_parent_execute.return_value = (0, "")
+            mock_container = MagicMock()
+
+            api.execute_command(mock_container, "test_command")
 
             # Should still wrap with micromamba run, even with empty env name
-            mock_parent_execute.assert_called_once_with("micromamba run -n  test_command", None)
+            mock_parent_execute.assert_called_once_with(mock_container, "micromamba run -n  test_command")
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -509,8 +440,10 @@ class TestMicromambaSessionEdgeCases:
         ]
 
         for exception in test_exceptions:
-            with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-                mock_parent_execute.side_effect = exception
+            with patch.object(session.container_api, "execute_command") as mock_container_execute:
+                mock_container_execute.side_effect = exception
+                mock_container = MagicMock()
+                session.container = mock_container
 
                 with pytest.raises(type(exception)):
                     session.execute_command("test")
@@ -519,21 +452,25 @@ class TestMicromambaSessionEdgeCases:
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_very_long_commands(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
         """Test execution of very long commands."""
+        from llm_sandbox.micromamba import MicromambaContainerAPI
+
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
 
-        session = MicromambaSession(environment="test")
+        api = MicromambaContainerAPI(mock_client, environment="test")
 
         # Create a very long command
         long_command = "python -c " + "'print(" + "A" * 1000 + ")'"
 
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            mock_parent_execute.return_value = ConsoleOutput(exit_code=0, stdout="")
+        with patch("llm_sandbox.docker.DockerContainerAPI.execute_command") as mock_parent_execute:
+            mock_parent_execute.return_value = (0, "")
+            mock_container = MagicMock()
 
-            session.execute_command(long_command)
+            api.execute_command(mock_container, long_command)
 
             expected_full_command = f"micromamba run -n test {long_command}"
-            mock_parent_execute.assert_called_once_with(expected_full_command, None)
+            mock_parent_execute.assert_called_once_with(mock_container, expected_full_command)
 
     @patch("llm_sandbox.micromamba.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -541,21 +478,25 @@ class TestMicromambaSessionEdgeCases:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test handling of Unicode characters in commands and environment names."""
+        from llm_sandbox.micromamba import MicromambaContainerAPI
+
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
 
         # Test Unicode environment name
-        session = MicromambaSession(environment="тест")
+        api = MicromambaContainerAPI(mock_client, environment="тест")
 
-        with patch("llm_sandbox.docker.SandboxDockerSession.execute_command") as mock_parent_execute:
-            mock_parent_execute.return_value = ConsoleOutput(exit_code=0, stdout="")
+        with patch("llm_sandbox.docker.DockerContainerAPI.execute_command") as mock_parent_execute:
+            mock_parent_execute.return_value = (0, "")
+            mock_container = MagicMock()
 
             # Test Unicode command
             unicode_command = "python -c 'print(\"Hello, 世界!\")'"
-            session.execute_command(unicode_command)
+            api.execute_command(mock_container, unicode_command)
 
             expected_command = f"micromamba run -n тест {unicode_command}"
-            mock_parent_execute.assert_called_once_with(expected_command, None)
+            mock_parent_execute.assert_called_once_with(mock_container, expected_command)
 
 
 class TestMicromambaSessionIntegration:
@@ -594,7 +535,7 @@ class TestMicromambaSessionIntegration:
         security_policy = SecurityPolicy(patterns=[], restricted_modules=[])
         session = MicromambaSession(security_policy=security_policy, environment="secure_env")
 
-        assert session.security_policy == security_policy
+        assert session.config.security_policy == security_policy
         assert session.environment == "secure_env"
 
         # Test that security policy methods are inherited

@@ -188,18 +188,12 @@ def test_backend(backend_name: str, backend_enum: SandboxBackend) -> dict[str, A
                     output_dir = temp_path / "from_container_dir"
                     session.copy_from_runtime("/sandbox/output_dir", str(output_dir))
 
-                    # Verify directory was copied back
-                    # Different backends have different extraction patterns:
-                    # Docker: output_dir/output_dir/output1.txt (preserves directory structure)
-                    # Kubernetes: output_dir/output1.txt (flattens to content level)
-                    docker_pattern = (output_dir / "output_dir" / "output1.txt").exists() and (
+                    # Verify directory was copied back with consistent structure
+                    expected_pattern = (output_dir / "output_dir" / "output1.txt").exists() and (
                         output_dir / "output_dir" / "subdir" / "output2.txt"
                     ).exists()
-                    kubernetes_pattern = (output_dir / "output1.txt").exists() and (
-                        output_dir / "subdir" / "output2.txt"
-                    ).exists()
 
-                    if output_dir.exists() and (docker_pattern or kubernetes_pattern):
+                    if output_dir.exists() and expected_pattern:
                         logger.info("✅ Directory copy from container successful")
                         results["tests_passed"] += 1
                     else:

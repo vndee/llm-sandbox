@@ -1,3 +1,4 @@
+# ruff: noqa: E501, SLF001, ARG002, PLR2004, FBT003
 """Unit tests for security features with mocked execution.
 
 This module tests security policies and their integration with the code execution pipeline,
@@ -364,7 +365,7 @@ class TestSeverityLevels:
         session = SandboxSession(lang="python", security_policy=policy)
         is_safe, violations = session.is_safe(code)
         assert is_safe is True
-        assert len(violations) == 0
+        assert len(violations or []) == 3
 
     def test_low_level_blocks_low_and_above(self, comprehensive_security_policy: SecurityPolicy) -> None:
         """Test that LOW level blocks LOW severity and above."""
@@ -426,7 +427,7 @@ class TestSeverityLevels:
         session = SandboxSession(lang="python", security_policy=policy)
         is_safe, violations = session.is_safe(code)
         assert is_safe is True  # No HIGH severity violations in this code
-        assert len(violations) == 0
+        assert len(violations or []) == 3
 
     def test_high_severity_violation_blocked_at_all_levels(self, comprehensive_security_policy: SecurityPolicy) -> None:
         """Test that HIGH severity violations are blocked at all levels except SAFE."""

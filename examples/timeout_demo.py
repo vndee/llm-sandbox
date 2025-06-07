@@ -168,6 +168,14 @@ def demo_session_timeout() -> None:
 
     except SandboxTimeoutError as e:
         logger.info("✅ Session timeout working: %s", e)
+    except Exception as e:
+        # Session timeout can manifest as NotOpenSessionError when the session is auto-closed
+        from llm_sandbox.exceptions import NotOpenSessionError
+
+        if isinstance(e, NotOpenSessionError):
+            logger.info("✅ Session timeout working: Session was closed due to timeout")
+        else:
+            raise
 
 
 def demo_timeout_error_handling() -> None:

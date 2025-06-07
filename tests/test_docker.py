@@ -8,11 +8,12 @@ import tempfile
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from pydantic_core import ValidationError
 
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import SandboxDockerSession
-from llm_sandbox.exceptions import CommandEmptyError, ExtraArgumentsError, ImagePullError, NotOpenSessionError
+from llm_sandbox.exceptions import CommandEmptyError, ImagePullError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -30,13 +31,13 @@ class TestSandboxDockerSessionInit:
 
         session = SandboxDockerSession()
 
-        assert session.lang == SupportedLanguage.PYTHON
-        assert session.verbose is False
-        assert session.image == DefaultImage.PYTHON
+        assert session.config.lang == SupportedLanguage.PYTHON
+        assert session.config.verbose is False
+        assert session.config.image is None  # Image is set during _prepare_image()
         assert session.keep_template is False
         assert session.commit_container is False
         assert session.stream is True
-        assert session.workdir == "/sandbox"
+        assert session.config.workdir == "/sandbox"
         assert session.client == mock_client
         mock_docker_from_env.assert_called_once()
 
@@ -74,14 +75,14 @@ class TestSandboxDockerSessionInit:
             security_policy=security_policy,
         )
 
-        assert session.image == "custom:latest"
-        assert session.lang == "java"
+        assert session.config.image == "custom:latest"
+        assert session.config.lang == SupportedLanguage.JAVA
         assert session.keep_template is True
         assert session.commit_container is True
-        assert session.verbose is False
+        assert session.config.verbose is False
         assert session.stream is False
-        assert session.workdir == "/custom"
-        assert session.security_policy == security_policy
+        assert session.config.workdir == "/custom"
+        assert session.config.security_policy == security_policy
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -92,7 +93,7 @@ class TestSandboxDockerSessionInit:
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
-        with pytest.raises(ExtraArgumentsError, match="Only one of `image` or `dockerfile` can be provided"):
+        with pytest.raises(ValidationError, match="Only one of"):
             SandboxDockerSession(image="test:latest", dockerfile="/path/to/Dockerfile")
 
     @patch("llm_sandbox.docker.docker.from_env")
@@ -104,8 +105,8 @@ class TestSandboxDockerSessionInit:
 
         session = SandboxDockerSession(dockerfile="/path/to/Dockerfile")
 
-        assert session.dockerfile == "/path/to/Dockerfile"
-        assert session.image is None
+        assert session.config.dockerfile == "/path/to/Dockerfile"
+        assert session.config.image is None
 
 
 class TestSandboxDockerSessionOpen:
@@ -125,7 +126,7 @@ class TestSandboxDockerSessionOpen:
         mock_client.images.get.return_value = mock_image
 
         mock_container = MagicMock()
-        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.create.return_value = mock_container
 
         session = SandboxDockerSession()
 
@@ -133,7 +134,7 @@ class TestSandboxDockerSessionOpen:
             session.open()
 
         mock_client.images.get.assert_called_once_with(DefaultImage.PYTHON)
-        mock_client.containers.run.assert_called_once()
+        mock_client.containers.create.assert_called_once()
         mock_env_setup.assert_called_once()
         assert session.container == mock_container
         assert session.docker_image == mock_image
@@ -157,7 +158,7 @@ class TestSandboxDockerSessionOpen:
         mock_client.images.pull.return_value = mock_image
 
         mock_container = MagicMock()
-        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.create.return_value = mock_container
 
         session = SandboxDockerSession(verbose=True)
 
@@ -200,6 +201,7 @@ class TestSandboxDockerSessionOpen:
 
         # Mock Path behavior
         mock_dockerfile_path = MagicMock()
+        # Use a string to avoid Mock serialization issues
         mock_dockerfile_path.parent = "/path/to"
         mock_dockerfile_path.name = "Dockerfile"
         mock_path.return_value = mock_dockerfile_path
@@ -209,7 +211,7 @@ class TestSandboxDockerSessionOpen:
         mock_client.images.build.return_value = (mock_image, mock_build_logs)
 
         mock_container = MagicMock()
-        mock_client.containers.run.return_value = mock_container
+        mock_client.containers.create.return_value = mock_container
 
         session = SandboxDockerSession(dockerfile="/path/to/Dockerfile")
 
@@ -254,6 +256,7 @@ class TestSandboxDockerSessionClose:
         mock_docker_from_env.return_value = mock_client
 
         session = SandboxDockerSession(commit_container=True)
+        session.keep_template = True  # Need to set this for commit to happen
 
         mock_container = MagicMock()
         mock_image = MagicMock()
@@ -276,7 +279,7 @@ class TestSandboxDockerSessionClose:
 
         session = SandboxDockerSession(keep_template=False)
         session.is_create_template = True
-        session.image = "test:latest"
+        session.config.image = "test:latest"
 
         mock_container = MagicMock()
         mock_image = MagicMock()
@@ -305,6 +308,7 @@ class TestSandboxDockerSessionRun:
 
         mock_container = MagicMock()
         session.container = mock_container
+        session.is_open = True  # Set session as open
 
         with (
             patch.object(session, "install") as mock_install,
@@ -339,6 +343,7 @@ class TestSandboxDockerSessionRun:
 
         session = SandboxDockerSession()
         session.container = None
+        session.is_open = False
 
         with pytest.raises(NotOpenSessionError):
             session.run("print('hello')")
@@ -357,7 +362,6 @@ class TestSandboxDockerSessionFileOperations:
         session = SandboxDockerSession()
 
         mock_container = MagicMock()
-        mock_container.exec_run.return_value = Mock(exit_code=1, output=b"")  # Directory doesn't exist
         session.container = mock_container
 
         with (
@@ -377,6 +381,7 @@ class TestSandboxDockerSessionFileOperations:
             mock_src_path.is_dir.return_value = False
 
             mock_dest_path = MagicMock()
+            # Use a string to avoid Mock serialization issues
             mock_dest_path.parent = "/container"
             mock_dest_path.name = "file.txt"
 
@@ -392,9 +397,10 @@ class TestSandboxDockerSessionFileOperations:
             mock_tar = MagicMock()
             mock_tar_open.return_value.__enter__.return_value = mock_tar
 
-            session.copy_to_runtime(temp_file.name, "/container/file.txt")
+            with patch.object(session, "_ensure_directory_exists") as mock_ensure_dir:
+                session.copy_to_runtime(temp_file.name, "/container/file.txt")
 
-            mock_container.exec_run.assert_any_call("mkdir -p '/container'")
+            mock_ensure_dir.assert_called_once_with("/container")
             mock_container.put_archive.assert_called_once()
             mock_ownership.assert_called_once_with(["/container/file.txt"])
 
@@ -424,11 +430,11 @@ class TestSandboxDockerSessionFileOperations:
 
         mock_container = MagicMock()
 
-        # Create mock tar data
+        # Create mock tar data with proper member names (no leading slash)
         file_content = b"test content"
         tar_buffer = io.BytesIO()
         with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
-            info = tarfile.TarInfo("file.txt")
+            info = tarfile.TarInfo("file.txt")  # Remove leading slash
             info.size = len(file_content)
             tar.addfile(info, io.BytesIO(file_content))
         tar_data = tar_buffer.getvalue()
@@ -443,9 +449,10 @@ class TestSandboxDockerSessionFileOperations:
         ):
             mock_tar = MagicMock()
             mock_member = MagicMock()
-            mock_member.name = "file.txt"
+            mock_member.name = "file.txt"  # No leading slash
             mock_member.isfile.return_value = True
-            mock_member.startswith.return_value = False
+            mock_member.issym.return_value = False
+            mock_member.islnk.return_value = False
             mock_tar.getmembers.return_value = [mock_member]
             mock_tar_open.return_value.__enter__.return_value = mock_tar
 
@@ -454,7 +461,19 @@ class TestSandboxDockerSessionFileOperations:
 
             # Mock Path for destination directory creation
             mock_dest_path = MagicMock()
-            mock_dest_path.parent.mkdir = MagicMock()
+
+            # Create a simple class that won't cause Mock stringification issues
+            class MockParent:
+                def __init__(self) -> None:
+                    self.mkdir = MagicMock()
+
+                def __str__(self) -> str:
+                    return "/temp/dest"
+
+                def __fspath__(self) -> str:
+                    return "/temp/dest"
+
+            mock_dest_path.parent = MockParent()
             mock_path.return_value = mock_dest_path
 
             session.copy_from_runtime("/container/file.txt", dest_file)
@@ -505,7 +524,7 @@ class TestSandboxDockerSessionCommands:
         assert result.stdout == "stdout content"
         assert result.stderr == "stderr content"
         mock_container.exec_run.assert_called_once_with(
-            "ls -l",
+            cmd="ls -l",
             stream=False,
             tty=False,
             workdir="/tmp",
