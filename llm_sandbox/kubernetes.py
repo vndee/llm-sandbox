@@ -16,6 +16,7 @@ from llm_sandbox.exceptions import NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
 SH_SHELL = "/bin/sh"
+POD_STARTUP_TIMEOUT = 300  # 5 minutes
 
 
 class KubernetesContainerAPI:
@@ -33,11 +34,15 @@ class KubernetesContainerAPI:
 
         # Wait for pod to be running
         pod_name = pod_manifest["metadata"]["name"]
+        start_time = time.time()
         while True:
             pod = self.client.read_namespaced_pod(name=pod_name, namespace=self.namespace)
             if pod.status.phase == "Running":
                 break
             time.sleep(1)
+            if time.time() - start_time > POD_STARTUP_TIMEOUT:
+                msg = f"Pod {pod_name} did not start within {POD_STARTUP_TIMEOUT} seconds"
+                raise TimeoutError(msg)
 
         return pod_name
 
@@ -106,7 +111,7 @@ class KubernetesContainerAPI:
         # Create destination directory
         if dest_dir:
             exec_command = ["mkdir", "-p", dest_dir]
-            stream(
+            resp = stream(
                 self.client.connect_get_namespaced_pod_exec,
                 container,
                 self.namespace,
@@ -117,6 +122,16 @@ class KubernetesContainerAPI:
                 tty=False,
                 _preload_content=False,
             )
+
+            stderr_output = ""
+            while resp.is_open():
+                resp.update(timeout=1)
+                if resp.peek_stderr():
+                    stderr_output += resp.read_stderr()
+
+            if resp.returncode != 0:
+                msg = f"Failed to create directory {dest_dir}: {stderr_output}"
+                raise RuntimeError(msg)
 
         # Create tar archive
         tarstream = io.BytesIO()
