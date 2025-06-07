@@ -1,4 +1,4 @@
-# ruff: noqa: SLF001, PLR2004, ARG002, PT011
+# ruff: noqa: SLF001, PLR2004, ARG002, PT011, PT012
 
 """Tests for Kubernetes backend implementation."""
 
@@ -12,7 +12,7 @@ import pytest
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import NotOpenSessionError
-from llm_sandbox.kubernetes import SandboxKubernetesSession
+from llm_sandbox.kubernetes import KubernetesContainerAPI, SandboxKubernetesSession
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -756,3 +756,1066 @@ class TestSandboxKubernetesSessionContextManager:
 
             mock_open.assert_called_once()
             mock_close.assert_called_once()
+
+
+class TestKubernetesContainerAPI:
+    """Test KubernetesContainerAPI class."""
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    def test_init_default_namespace(self, mock_core_v1_api: MagicMock) -> None:
+        """Test initialization with default namespace."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        assert api.client == mock_client
+        assert api.namespace == "default"
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    def test_init_custom_namespace(self, mock_core_v1_api: MagicMock) -> None:
+        """Test initialization with custom namespace."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client, "custom-ns")
+
+        assert api.client == mock_client
+        assert api.namespace == "custom-ns"
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("time.sleep")
+    def test_create_container_success(self, mock_sleep: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test successful container creation."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        pod_manifest = {"metadata": {"name": "test-pod"}, "spec": {"containers": [{"name": "test"}]}}
+        config = {"pod_manifest": pod_manifest}
+
+        # Mock pod status becoming Running
+        mock_pod = MagicMock()
+        mock_pod.status.phase = "Running"
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        result = api.create_container(config)
+
+        assert result == "test-pod"
+        mock_client.create_namespaced_pod.assert_called_once_with(namespace="default", body=pod_manifest)
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("time.sleep")
+    @patch("time.time")
+    def test_create_container_timeout(
+        self, mock_time: MagicMock, mock_sleep: MagicMock, mock_core_v1_api: MagicMock
+    ) -> None:
+        """Test container creation timeout."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        pod_manifest = {"metadata": {"name": "test-pod"}, "spec": {"containers": [{"name": "test"}]}}
+        config = {"pod_manifest": pod_manifest}
+
+        # Mock time progression to simulate timeout
+        mock_time.side_effect = [0, 400]  # Start time and timeout exceeded
+
+        # Mock pod status staying Pending
+        mock_pod = MagicMock()
+        mock_pod.status.phase = "Pending"
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        with pytest.raises(TimeoutError, match="did not start within"):
+            api.create_container(config)
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    def test_start_container_noop(self, mock_core_v1_api: MagicMock) -> None:
+        """Test start_container is a no-op."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        # Should not raise any exception
+        api.start_container("test-container")
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.k8s_client.V1DeleteOptions")
+    def test_stop_container_success(self, mock_delete_options: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test successful container stopping."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+        mock_delete_opts = MagicMock()
+        mock_delete_options.return_value = mock_delete_opts
+
+        api.stop_container("test-pod")
+
+        mock_client.delete_namespaced_pod.assert_called_once_with(
+            name="test-pod", namespace="default", body=mock_delete_opts
+        )
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.k8s_client.V1DeleteOptions")
+    def test_stop_container_with_exception(self, mock_delete_options: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test container stopping with exception (should not raise)."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+        mock_client.delete_namespaced_pod.side_effect = Exception("Pod not found")
+
+        # Should not raise exception
+        api.stop_container("test-pod")
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_execute_command_simple(self, mock_stream: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test simple command execution."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        mock_resp = MagicMock()
+        mock_resp.is_open.side_effect = [True, False]
+        mock_resp.update.return_value = None
+        mock_resp.peek_stdout.side_effect = [True, False]
+        mock_resp.read_stdout.return_value = "output"
+        mock_resp.peek_stderr.return_value = False
+        mock_resp.returncode = 0
+        mock_stream.return_value = mock_resp
+
+        exit_code, output = api.execute_command("test-container", "ls")
+
+        assert exit_code == 0
+        assert output == ("output", "")
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_execute_command_with_workdir(self, mock_stream: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test command execution with working directory."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        mock_resp = MagicMock()
+        mock_resp.is_open.return_value = False
+        mock_resp.returncode = 0
+        mock_stream.return_value = mock_resp
+
+        api.execute_command("test-container", "ls", workdir="/tmp")
+
+        # Verify the command was wrapped with cd
+        call_args = mock_stream.call_args
+        executed_command = call_args[1]["command"]
+        assert "cd /tmp && ls" in " ".join(executed_command)
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_execute_command_with_stderr(self, mock_stream: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test command execution with stderr output."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        mock_resp = MagicMock()
+        mock_resp.is_open.side_effect = [True, True, False]
+        mock_resp.update.return_value = None
+        mock_resp.peek_stdout.side_effect = [False, False, False]
+        mock_resp.peek_stderr.side_effect = [True, False, False]
+        mock_resp.read_stderr.return_value = "error output"
+        mock_resp.returncode = 1
+        mock_stream.return_value = mock_resp
+
+        exit_code, output = api.execute_command("test-container", "invalid-command")
+
+        assert exit_code == 1
+        assert output == ("", "error output")
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    @patch("pathlib.Path.exists")
+    @patch("pathlib.Path.is_file")
+    @patch("tarfile.open")
+    def test_copy_to_container_success(
+        self,
+        mock_tarfile: MagicMock,
+        mock_is_file: MagicMock,
+        mock_exists: MagicMock,
+        mock_stream: MagicMock,
+        mock_core_v1_api: MagicMock,
+    ) -> None:
+        """Test successful file copy to container."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        # Mock file existence checks
+        mock_exists.return_value = True
+        mock_is_file.return_value = True
+
+        # Mock successful mkdir response
+        mock_mkdir_resp = MagicMock()
+        mock_mkdir_resp.is_open.return_value = False
+        mock_mkdir_resp.returncode = 0
+
+        # Mock successful tar response
+        mock_tar_resp = MagicMock()
+        mock_tar_resp.is_open.side_effect = [True, False]
+        mock_tar_resp.update.return_value = None
+        mock_tar_resp.write_stdin = MagicMock()
+        mock_tar_resp.close = MagicMock()
+
+        mock_stream.side_effect = [mock_mkdir_resp, mock_tar_resp]
+
+        # Mock tarfile operations
+        mock_tar = MagicMock()
+        mock_tarfile.return_value.__enter__.return_value = mock_tar
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            api.copy_to_container("test-container", temp_file.name, "/pod/dest.txt")
+
+        # Verify mkdir was called
+        assert mock_stream.call_count == 2  # mkdir + tar
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("pathlib.Path.exists")
+    def test_copy_to_container_file_not_found(self, mock_exists: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test copy_to_container with non-existent file."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        mock_exists.return_value = False
+
+        with pytest.raises(FileNotFoundError, match="does not exist"):
+            api.copy_to_container("test-container", "/nonexistent/file.txt", "/pod/dest.txt")
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    @patch("pathlib.Path.exists")
+    @patch("pathlib.Path.is_file")
+    def test_copy_to_container_mkdir_failure(
+        self, mock_is_file: MagicMock, mock_exists: MagicMock, mock_stream: MagicMock, mock_core_v1_api: MagicMock
+    ) -> None:
+        """Test copy_to_container when mkdir fails."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        mock_exists.return_value = True
+        mock_is_file.return_value = True
+
+        # Mock failed mkdir response
+        mock_mkdir_resp = MagicMock()
+        mock_mkdir_resp.is_open.side_effect = [True, False]
+        mock_mkdir_resp.update.return_value = None
+        mock_mkdir_resp.peek_stderr.side_effect = [True, False]
+        mock_mkdir_resp.read_stderr.return_value = "Permission denied"
+        mock_mkdir_resp.returncode = 1
+
+        mock_stream.return_value = mock_mkdir_resp
+
+        with (
+            tempfile.NamedTemporaryFile() as temp_file,
+            pytest.raises(RuntimeError, match="Failed to create directory"),
+        ):
+            api.copy_to_container("test-container", temp_file.name, "/pod/dest.txt")
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_copy_from_container_success(self, mock_stream: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test successful file copy from container."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        # Mock stat command response
+        mock_stat_resp = MagicMock()
+        mock_stat_resp.is_open.side_effect = [True, False]
+        mock_stat_resp.update.return_value = None
+        mock_stat_resp.peek_stdout.side_effect = [True, False]
+        mock_stat_resp.read_stdout.return_value = "1024 1609459200 /pod/file.txt"
+
+        # Mock tar command response
+        mock_tar_resp = MagicMock()
+        mock_tar_resp.is_open.side_effect = [True, False]
+        mock_tar_resp.update.return_value = None
+        mock_tar_resp.peek_stdout.side_effect = [True, False]
+        mock_tar_resp.read_stdout.return_value = "dGVzdCBjb250ZW50"  # base64 encoded "test content"
+
+        mock_stream.side_effect = [mock_stat_resp, mock_tar_resp]
+
+        data, stat = api.copy_from_container("test-container", "/pod/file.txt")
+
+        assert len(data) > 0  # Should contain decoded tar data
+        assert stat["name"] == "/pod/file.txt"
+        assert stat["size"] == 1024
+        assert stat["mtime"] == 1609459200
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_copy_from_container_file_not_found(self, mock_stream: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test copy_from_container when file not found."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        # Mock stat command returning NOT_FOUND
+        mock_stat_resp = MagicMock()
+        mock_stat_resp.is_open.side_effect = [True, False]
+        mock_stat_resp.update.return_value = None
+        mock_stat_resp.peek_stdout.side_effect = [True, False]
+        mock_stat_resp.read_stdout.return_value = "NOT_FOUND"
+
+        mock_stream.return_value = mock_stat_resp
+
+        data, stat = api.copy_from_container("test-container", "/pod/missing.txt")
+
+        assert data == b""
+        assert stat == {"size": 0}
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_copy_from_container_base64_decode_error(self, mock_stream: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test copy_from_container with base64 decode error."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        # Mock stat command response
+        mock_stat_resp = MagicMock()
+        mock_stat_resp.is_open.side_effect = [True, False]
+        mock_stat_resp.update.return_value = None
+        mock_stat_resp.peek_stdout.side_effect = [True, False]
+        mock_stat_resp.read_stdout.return_value = "1024 1609459200 /pod/file.txt"
+
+        # Mock tar command with invalid base64
+        mock_tar_resp = MagicMock()
+        mock_tar_resp.is_open.side_effect = [True, False]
+        mock_tar_resp.update.return_value = None
+        mock_tar_resp.peek_stdout.side_effect = [True, False]
+        mock_tar_resp.read_stdout.return_value = "invalid_base64!!!"
+
+        mock_stream.side_effect = [mock_stat_resp, mock_tar_resp]
+
+        data, stat = api.copy_from_container("test-container", "/pod/file.txt")
+
+        assert data == b""
+        assert stat == {"size": 0}
+
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_copy_from_container_empty_tar_output(self, mock_stream: MagicMock, mock_core_v1_api: MagicMock) -> None:
+        """Test copy_from_container with empty tar output."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client)
+
+        # Mock stat command response
+        mock_stat_resp = MagicMock()
+        mock_stat_resp.is_open.side_effect = [True, False]
+        mock_stat_resp.update.return_value = None
+        mock_stat_resp.peek_stdout.side_effect = [True, False]
+        mock_stat_resp.read_stdout.return_value = "1024 1609459200 /pod/file.txt"
+
+        # Mock tar command with empty output
+        mock_tar_resp = MagicMock()
+        mock_tar_resp.is_open.side_effect = [True, False]
+        mock_tar_resp.update.return_value = None
+        mock_tar_resp.peek_stdout.side_effect = [True, False]
+        mock_tar_resp.read_stdout.return_value = ""
+
+        mock_stream.side_effect = [mock_stat_resp, mock_tar_resp]
+
+        data, stat = api.copy_from_container("test-container", "/pod/file.txt")
+
+        assert data == b""
+        assert stat == {"size": 0}
+
+
+class TestSandboxKubernetesSessionEdgeCases:
+    """Test additional edge cases for SandboxKubernetesSession."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_init_with_pod_manifest_no_namespace(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test initialization with pod manifest missing namespace."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "custom-pod"},  # No namespace
+            "spec": {"containers": [{"name": "test", "image": "test:latest"}]},
+        }
+
+        session = SandboxKubernetesSession(pod_manifest=custom_manifest)
+
+        # Should use default namespace when not specified in manifest
+        assert session.kube_namespace == "default"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_default_pod_manifest_no_env_vars(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test default pod manifest generation without environment variables."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+
+        manifest = session.pod_manifest
+        containers = manifest["spec"]["containers"]
+
+        # Should not have env section when no env_vars provided
+        assert "env" not in containers[0]
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_ensure_directory_exists_success(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test successful directory creation."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+
+        with patch.object(session.container_api, "execute_command") as mock_execute:
+            mock_execute.return_value = (0, ("", ""))
+
+            session._ensure_directory_exists("/test/path")
+
+            mock_execute.assert_called_once_with("test-pod", "mkdir -p '/test/path'")
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_ensure_directory_exists_failure(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test directory creation failure (should log error but not raise)."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(verbose=True)
+        session.container = "test-pod"
+
+        with (
+            patch.object(session.container_api, "execute_command") as mock_execute,
+            patch.object(session, "_log") as mock_log,
+        ):
+            mock_execute.return_value = (1, ("", "Permission denied"))
+
+            session._ensure_directory_exists("/test/path")
+
+            mock_log.assert_called_with("Failed to create directory /test/path: Permission denied", "error")
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_ensure_directory_exists_stderr_error(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test directory creation with stderr output only."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(verbose=True)
+        session.container = "test-pod"
+
+        with (
+            patch.object(session.container_api, "execute_command") as mock_execute,
+            patch.object(session, "_log") as mock_log,
+        ):
+            mock_execute.return_value = (1, ("some output", ""))
+
+            session._ensure_directory_exists("/test/path")
+
+            mock_log.assert_called_with("Failed to create directory /test/path: some output", "error")
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_handle_timeout_with_container(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test timeout handling when container exists."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+
+        with (
+            patch.object(session.container_api, "stop_container") as mock_stop,
+            patch.object(session, "logger") as mock_logger,
+        ):
+            session._handle_timeout()
+
+            mock_stop.assert_called_once_with("test-pod")
+            mock_logger.warning.assert_called_once()
+            assert session.container is None
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_handle_timeout_with_stop_exception(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test timeout handling when stop_container raises exception."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+
+        with (
+            patch.object(session.container_api, "stop_container", side_effect=Exception("Stop failed")) as mock_stop,
+            patch.object(session, "logger") as mock_logger,
+        ):
+            session._handle_timeout()
+
+            mock_stop.assert_called_once_with("test-pod")
+            mock_logger.exception.assert_called_once()
+            # Container should still be set to None even if stop fails
+            assert session.container is None
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_handle_timeout_no_container(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test timeout handling when no container exists."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = None
+
+        with patch.object(session.container_api, "stop_container") as mock_stop:
+            session._handle_timeout()
+
+            # Should not attempt to stop container when none exists
+            mock_stop.assert_not_called()
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_process_non_stream_output_tuple(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test processing of non-stream tuple output."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+
+        output = ("stdout_content", "stderr_content")
+        stdout, stderr = session._process_non_stream_output(output)
+
+        assert stdout == "stdout_content"
+        assert stderr == "stderr_content"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_process_non_stream_output_invalid(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test processing of invalid non-stream output."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+
+        # Test with non-tuple input
+        stdout, stderr = session._process_non_stream_output("invalid")
+        assert stdout == ""
+        assert stderr == ""
+
+        # Test with wrong tuple length
+        stdout, stderr = session._process_non_stream_output(("only_one",))
+        assert stdout == ""
+        assert stderr == ""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_process_stream_output_delegates(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that stream output processing delegates to non-stream processing."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+
+        with patch.object(session, "_process_non_stream_output") as mock_process:
+            mock_process.return_value = ("stdout", "stderr")
+
+            result = session._process_stream_output("test_output")
+
+            mock_process.assert_called_once_with("test_output")
+            assert result == ("stdout", "stderr")
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_reconfigure_with_pod_manifest_creates_unique_name(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that reconfigure creates a unique pod name."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        original_name = session.pod_name
+
+        # Call reconfigure again to ensure uniqueness
+        session._reconfigure_with_pod_manifest()
+        new_name = session.pod_name
+
+        # Names should be different and both should be in manifest
+        assert original_name != new_name
+        assert session.pod_manifest["metadata"]["name"] == new_name
+
+
+class TestSandboxKubernetesSessionTimeoutAndStream:
+    """Test timeout and streaming functionality."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_stream_property_default(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that stream property is set to False by default."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+
+        assert session.stream is False
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_close_with_stop_exception(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test close method when stop_container raises exception."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(verbose=True)
+        session.container = "test-pod"
+        session.is_open = True
+
+        with (
+            patch.object(session.container_api, "stop_container", side_effect=Exception("Stop failed")),
+            patch.object(session, "_log") as mock_log,
+        ):
+            session.close()
+
+            mock_log.assert_called_with("Error cleaning up pod: Stop failed", "error")
+            assert session.container is None
+            assert session.is_open is False
+
+
+class TestSandboxKubernetesSessionInitializationVariations:
+    """Test various initialization scenarios."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_init_with_all_timeout_parameters(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test initialization with all timeout parameters."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(
+            default_timeout=60.0,
+            execution_timeout=120.0,
+            session_timeout=3600.0,
+        )
+        assert session.config is not None
+        assert session.config.default_timeout is not None
+        assert session.config.execution_timeout is not None
+        assert session.config.session_timeout is not None
+
+        assert abs(session.config.default_timeout - 60.0) < 1e-6
+        assert abs(session.config.execution_timeout - 120.0) < 1e-6
+        assert abs(session.config.session_timeout - 3600.0) < 1e-6
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_init_with_different_languages(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test initialization with different supported languages."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        # Test with string language
+        session_python = SandboxKubernetesSession(lang=SupportedLanguage.PYTHON)
+        assert session_python.config.lang == SupportedLanguage.PYTHON
+
+        # Test with different language
+        session_go = SandboxKubernetesSession(lang="go")
+        assert session_go.config.lang == SupportedLanguage.GO
+
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_init_with_client_no_kube_config_load(self, mock_create_handler: MagicMock) -> None:
+        """Test that providing a client doesn't trigger kube config loading."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        custom_client = MagicMock()
+
+        with patch("kubernetes.config.load_kube_config") as mock_load_config:
+            session = SandboxKubernetesSession(client=custom_client)
+
+            # Should not load kube config when client is provided
+            mock_load_config.assert_not_called()
+            assert session.client == custom_client
+
+
+class TestSandboxKubernetesSessionInheritance:
+    """Test inherited functionality and mixin behavior."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_inherited_properties_from_base_session(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that inherited properties work correctly."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(verbose=True)
+
+        # Test inherited properties
+        assert hasattr(session, "config")
+        assert hasattr(session, "verbose")
+        assert hasattr(session, "logger")
+        assert hasattr(session, "language_handler")
+        assert session.verbose is True
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_copy_to_runtime_inherited_validation(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that copy_to_runtime inherits proper validation from mixin."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+
+        # Test that inherited validation catches non-existent files
+        with pytest.raises(FileNotFoundError, match="does not exist"):
+            session.copy_to_runtime("/nonexistent/file.txt", "/pod/dest.txt")
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_copy_from_runtime_inherited_validation(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that copy_from_runtime inherits proper validation from mixin."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+
+        with (
+            patch.object(session.container_api, "copy_from_container") as mock_copy_from,
+            pytest.raises(FileNotFoundError, match="not found in container"),
+        ):
+            mock_copy_from.return_value = (b"", {"size": 0})
+            session.copy_from_runtime("/pod/missing.txt", "/host/dest.txt")
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_execute_command_empty_command(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that execute_command handles empty commands properly."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+
+        from llm_sandbox.exceptions import CommandEmptyError
+
+        with pytest.raises(CommandEmptyError):
+            session.execute_command("")
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_verbose_logging_behavior(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test verbose logging behavior."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(verbose=True)
+        session.container = "test-pod"
+
+        with (
+            patch.object(session.container_api, "execute_command") as mock_execute,
+            patch.object(session, "logger") as mock_logger,
+        ):
+            mock_execute.return_value = (0, ("stdout_output", "stderr_output"))
+
+            session.execute_command("test command")
+
+            # Verify verbose logging was called
+            mock_logger.info.assert_any_call("Executing command: %s", "test command")
+            mock_logger.info.assert_any_call("STDOUT: %s", "stdout_output")
+            mock_logger.error.assert_any_call("STDERR: %s", "stderr_output")
+
+
+class TestSandboxKubernetesSessionSecurity:
+    """Test security-related functionality."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_init_with_security_policy(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test initialization with security policy."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        security_policy = SecurityPolicy(patterns=[], restricted_modules=[])
+        session = SandboxKubernetesSession(security_policy=security_policy)
+
+        assert session.config.security_policy == security_policy
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_security_context_in_pod_manifest(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that pod manifest includes security context."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+
+        manifest = session.pod_manifest
+
+        # Check pod-level security context
+        assert "securityContext" in manifest["spec"]
+        assert manifest["spec"]["securityContext"]["runAsUser"] == 0
+        assert manifest["spec"]["securityContext"]["runAsGroup"] == 0
+
+        # Check container-level security context
+        container = manifest["spec"]["containers"][0]
+        assert "securityContext" in container
+        assert container["securityContext"]["runAsUser"] == 0
+        assert container["securityContext"]["runAsGroup"] == 0
+
+
+class TestSandboxKubernetesSessionComplexScenarios:
+    """Test complex scenarios and integration-like tests."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    @patch("time.sleep")
+    def test_full_session_lifecycle(
+        self,
+        mock_sleep: MagicMock,
+        mock_create_handler: MagicMock,
+        mock_core_v1_api: MagicMock,
+        mock_load_config: MagicMock,
+    ) -> None:
+        """Test complete session lifecycle: init -> open -> run -> close."""
+        mock_handler = MagicMock()
+        mock_handler.file_extension = "py"
+        mock_handler.get_execution_commands.return_value = ["python /sandbox/code.py"]
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        # Mock pod becoming running
+        mock_pod = MagicMock()
+        mock_pod.status.phase = "Running"
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        session = SandboxKubernetesSession()
+
+        # Test full lifecycle with context manager
+        with (
+            patch.object(session, "environment_setup") as mock_env_setup,
+            patch.object(session, "install") as mock_install,
+            patch.object(session, "copy_to_runtime") as mock_copy,
+            patch.object(session, "execute_commands") as mock_execute_commands,
+            patch("tempfile.NamedTemporaryFile") as mock_temp_file,
+        ):
+            # Setup mocks
+            mock_file_instance = mock_temp_file.return_value.__enter__.return_value
+            mock_file_instance.name = "/tmp/code.py"
+            mock_execute_commands.return_value = ConsoleOutput(exit_code=0, stdout="Hello World")
+
+            with session:
+                result = session.run("print('Hello World')", ["requests"])
+
+            # Verify lifecycle calls
+            mock_client.create_namespaced_pod.assert_called_once()
+            mock_env_setup.assert_called_once()
+            mock_install.assert_called_once_with(["requests"])
+            mock_copy.assert_called_once()
+            mock_execute_commands.assert_called_once()
+            mock_client.delete_namespaced_pod.assert_called_once()
+
+            assert result.exit_code == 0
+            assert result.stdout == "Hello World"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_pod_manifest_with_complex_configuration(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test pod manifest generation with complex environment variables."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        complex_env_vars = {
+            "API_KEY": "secret123",
+            "DATABASE_URL": "postgresql://localhost:5432/db",
+            "DEBUG": "true",
+            "PYTHONPATH": "/app:/libs",
+        }
+
+        session = SandboxKubernetesSession(
+            image="custom:latest",
+            env_vars=complex_env_vars,
+            workdir="/custom/workdir",
+        )
+
+        manifest = session.pod_manifest
+        container = manifest["spec"]["containers"][0]
+
+        # Verify custom image is used
+        assert container["image"] == "custom:latest"
+
+        # Verify all environment variables are present
+        env_vars = {env["name"]: env["value"] for env in container["env"]}
+        assert env_vars == complex_env_vars
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_error_propagation_from_container_api(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that errors from container API are properly propagated."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+
+        # Test FileNotFoundError propagation in copy operations
+        with (
+            tempfile.NamedTemporaryFile() as temp_file,
+            patch.object(session, "_ensure_directory_exists"),
+            patch.object(session.container_api, "copy_to_container", side_effect=FileNotFoundError("File not found")),
+            pytest.raises(FileNotFoundError, match="File not found"),
+        ):
+            session.copy_to_runtime(temp_file.name, "/dest")
+
+        # Test RuntimeError propagation
+        with (
+            tempfile.NamedTemporaryFile() as temp_file,
+            patch.object(session, "_ensure_directory_exists"),
+            patch.object(session.container_api, "copy_to_container", side_effect=RuntimeError("Runtime error")),
+            pytest.raises(RuntimeError, match="Runtime error"),
+        ):
+            session.copy_to_runtime(temp_file.name, "/dest")
+
+
+class TestSandboxKubernetesSessionDifferencesFromDocker:
+    """Test differences in Kubernetes implementation compared to Docker."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_unique_pod_naming_strategy(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that pod names are made unique to avoid conflicts."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session1 = SandboxKubernetesSession(lang="python")
+        session2 = SandboxKubernetesSession(lang="python")
+
+        # Pod names should be unique even with same language
+        assert session1.pod_name != session2.pod_name
+        assert "sandbox-python" in session1.pod_name
+        assert "sandbox-python" in session2.pod_name
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_namespace_awareness(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that the session is namespace-aware unlike Docker containers."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(kube_namespace="test-namespace")
+
+        assert session.kube_namespace == "test-namespace"
+        assert session.container_api.namespace == "test-namespace"  # type: ignore[attr-defined]
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_pod_manifest_customization(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that pod manifest can be fully customized unlike Docker containers."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "name": "custom-pod",
+                "namespace": "custom-ns",
+                "labels": {"app": "test", "version": "1.0"},
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "name": "custom-container",
+                        "image": "custom:latest",
+                        "resources": {
+                            "limits": {"memory": "256Mi", "cpu": "100m"},
+                            "requests": {"memory": "128Mi", "cpu": "50m"},
+                        },
+                    }
+                ],
+                "restartPolicy": "Never",
+            },
+        }
+
+        session = SandboxKubernetesSession(pod_manifest=custom_manifest)
+
+        # Verify custom labels and resources are preserved
+        manifest = session.pod_manifest
+        assert manifest["metadata"]["labels"]["app"] == "test"
+        assert manifest["metadata"]["labels"]["version"] == "1.0"
+        assert "resources" in manifest["spec"]["containers"][0]
