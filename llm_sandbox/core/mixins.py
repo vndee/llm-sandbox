@@ -154,35 +154,49 @@ class FileOperationsMixin:
         """Extract tar archive with security filtering and consistent structure."""
         tarstream = io.BytesIO(bits)
         with tarfile.open(fileobj=tarstream, mode="r") as tar:
-            safe_members = []
-
-            for member in tar.getmembers():
-                if member.name.startswith("/") or ".." in member.name:
-                    if self.verbose:
-                        self.logger.warning("Skipping unsafe path: %s", member.name)
-                    continue
-                if member.issym() or member.islnk():
-                    if self.verbose:
-                        self.logger.warning("Skipping symlink: %s", member.name)
-                    continue
-                safe_members.append(member)
+            safe_members = self._filter_safe_members(tar.getmembers())
 
             if not safe_members:
                 msg = "No safe content found in archive"
                 raise FileNotFoundError(msg)
 
             Path(dest).parent.mkdir(parents=True, exist_ok=True)
-
-            # Handle single file case
-            if len(safe_members) == 1 and safe_members[0].isfile():
-                safe_members[0].name = Path(dest).name
-                extract_path = str(Path(dest).parent)
-            else:
-                # Handle directory case - extract to destination preserving structure
-                extract_path = str(dest)
+            extract_path = self._determine_extract_path(safe_members, dest)
 
             for member in safe_members:
                 tar.extract(member, path=extract_path)
+
+    def _filter_safe_members(self, members: list[Any]) -> list[Any]:
+        """Filter tar members to exclude unsafe paths and symlinks."""
+        safe_members = []
+        for member in members:
+            if self._is_unsafe_path(member.name):
+                if self.verbose:
+                    self.logger.warning("Skipping unsafe path: %s", member.name)
+                continue
+            if self._is_symlink(member):
+                if self.verbose:
+                    self.logger.warning("Skipping symlink: %s", member.name)
+                continue
+            safe_members.append(member)
+        return safe_members
+
+    def _is_unsafe_path(self, path: str) -> bool:
+        """Check if a path is unsafe (absolute or contains path traversal)."""
+        return path.startswith("/") or ".." in path
+
+    def _is_symlink(self, member: Any) -> bool:
+        """Check if a tar member is a symlink."""
+        return bool(member.issym() or member.islnk())
+
+    def _determine_extract_path(self, safe_members: list[Any], dest: str) -> str:
+        """Determine the extraction path based on content type."""
+        # Handle single file case
+        if len(safe_members) == 1 and safe_members[0].isfile():
+            safe_members[0].name = Path(dest).name
+            return str(Path(dest).parent)
+        # Handle directory case - extract to destination preserving structure
+        return str(dest)
 
     @abstractmethod
     def _ensure_directory_exists(self, path: str) -> None:

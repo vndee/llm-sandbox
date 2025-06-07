@@ -184,21 +184,18 @@ class SandboxDockerSession(BaseSession):
 
     def _process_stream_output(self, output: Any) -> tuple[str, str]:
         """Process streaming Docker output."""
-        stdout_output = ""
-        stderr_output = ""
+        stdout_output, stderr_output = "", ""
 
         try:
             for stdout_chunk, stderr_chunk in output:
                 if stdout_chunk:
-                    if isinstance(stdout_chunk, bytes):
-                        stdout_output += stdout_chunk.decode("utf-8")
-                    else:
-                        stdout_output += str(stdout_chunk)
+                    stdout_output += (
+                        stdout_chunk.decode("utf-8") if isinstance(stdout_chunk, bytes) else str(stdout_chunk)
+                    )
                 if stderr_chunk:
-                    if isinstance(stderr_chunk, bytes):
-                        stderr_output += stderr_chunk.decode("utf-8")
-                    else:
-                        stderr_output += str(stderr_chunk)
+                    stderr_output += (
+                        stderr_chunk.decode("utf-8") if isinstance(stderr_chunk, bytes) else str(stderr_chunk)
+                    )
         except Exception as e:
             from llm_sandbox.exceptions import SandboxTimeoutError
 

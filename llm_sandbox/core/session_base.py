@@ -86,6 +86,83 @@ class BaseSession(
             self._session_timer.cancel()
             self._session_timer = None
 
+    def _add_restricted_module_patterns(self) -> None:
+        """Add patterns for restricted modules to the security policy."""
+        if not self.config.security_policy or not self.config.security_policy.restricted_modules:
+            return
+
+        for module in self.config.security_policy.restricted_modules:
+            pattern = SecurityPattern(
+                pattern=self.language_handler.get_import_patterns(module.name),
+                description=module.description,
+                severity=module.severity,
+            )
+            self.config.security_policy.add_pattern(pattern)
+
+    def _check_pattern_violations(self, filtered_code: str) -> tuple[bool, list[SecurityPattern]]:
+        """Check for pattern violations in the filtered code.
+
+        Args:
+            filtered_code (str): Code with comments filtered out.
+
+        Returns:
+            tuple[bool, list[SecurityPattern]]: A tuple containing safety status and violations.
+
+        """
+        violations: list[SecurityPattern] = []
+
+        if not self.config.security_policy or not self.config.security_policy.patterns:
+            return True, []
+
+        for pattern_obj in self.config.security_policy.patterns:
+            if not pattern_obj.pattern:
+                continue
+
+            violation_found = self._check_single_pattern(pattern_obj, filtered_code)
+            if violation_found:
+                violations.append(pattern_obj)
+
+                # Check if this violation should cause immediate failure
+                if self._should_fail_on_violation(pattern_obj):
+                    return False, violations
+
+        return True, violations
+
+    def _check_single_pattern(self, pattern_obj: SecurityPattern, filtered_code: str) -> bool:
+        """Check a single security pattern against the code.
+
+        Args:
+            pattern_obj (SecurityPattern): The pattern to check.
+            filtered_code (str): Code with comments filtered out.
+
+        Returns:
+            bool: True if pattern matches (violation found), False otherwise.
+
+        """
+        try:
+            return bool(re.search(pattern_obj.pattern, filtered_code))
+        except re.error as e:
+            self._log(f"Invalid regex pattern '{pattern_obj.pattern}': {e}", "error")
+            return False
+
+    def _should_fail_on_violation(self, pattern_obj: SecurityPattern) -> bool:
+        """Determine if a security violation should cause immediate failure.
+
+        Args:
+            pattern_obj (SecurityPattern): The pattern that was violated.
+
+        Returns:
+            bool: True if execution should fail immediately, False otherwise.
+
+        """
+        if not self.config.security_policy or not self.config.security_policy.severity_threshold:
+            return False
+
+        return (
+            self.config.security_policy.severity_threshold > SecurityIssueSeverity.SAFE
+            and pattern_obj.severity >= self.config.security_policy.severity_threshold
+        )
+
     def _check_security_policy(self, code: str) -> tuple[bool, list[SecurityPattern]]:
         r"""Check code against security policy.
 
@@ -103,34 +180,16 @@ class BaseSession(
         if not self.language_handler:
             raise LanguageHandlerNotInitializedError(self.config.lang)
 
-        if self.config.security_policy.restricted_modules:
-            for module in self.config.security_policy.restricted_modules:
-                pattern = SecurityPattern(
-                    pattern=self.language_handler.get_import_patterns(module.name),
-                    description=module.description,
-                    severity=module.severity,
-                )
-                self.config.security_policy.add_pattern(pattern)
+        # Add patterns for restricted modules
+        self._add_restricted_module_patterns()
 
-        violations: list[SecurityPattern] = []
-        if self.config.security_policy.patterns:
-            filtered_code = self.language_handler.filter_comments(code)
+        # If no patterns are configured, code is safe
+        if not self.config.security_policy.patterns:
+            return True, []
 
-            for pattern_obj in self.config.security_policy.patterns:
-                if pattern_obj.pattern:
-                    try:
-                        if re.search(pattern_obj.pattern, filtered_code):
-                            if (
-                                self.config.security_policy.severity_threshold > SecurityIssueSeverity.SAFE
-                                and pattern_obj.severity >= self.config.security_policy.severity_threshold
-                            ):
-                                violations.append(pattern_obj)
-                                return False, violations
-                            violations.append(pattern_obj)
-                    except re.error as e:
-                        self._log(f"Invalid regex pattern '{pattern_obj.pattern}': {e}", "error")
-
-        return True, violations
+        # Check for pattern violations
+        filtered_code = self.language_handler.filter_comments(code)
+        return self._check_pattern_violations(filtered_code)
 
     def is_safe(self, code: str) -> tuple[bool, list[SecurityPattern]]:
         r"""Check if code is safe to execute.
