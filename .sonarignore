@@ -1,30 +1,31 @@
-# Exclude test directories
-tests/
+# Exclude test directories completely from SonarQube analysis
+tests/**
 **/test_*
 **/*_test.py
+test_*.py
 
-# Exclude examples and documentation
-examples/
-docs/
+# Exclude examples and documentation from quality analysis
+examples/**
+docs/**
+site/**
 README.md
 CHANGELOG.md
 CODE_OF_CONDUCT.md
 CONTRIBUTING.md
 
 # Exclude build and cache directories
-htmlcov/
-site/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-.venv/
-.vscode/
-__pycache__/
+htmlcov/**
+.mypy_cache/**
+.ruff_cache/**
+.pytest_cache/**
+.venv/**
+.vscode/**
+__pycache__/**
 *.pyc
 *.pyo
 *.pyd
 
-# Exclude configuration files
+# Exclude configuration files from analysis
 pyproject.toml
 uv.lock
 tox.ini
@@ -34,11 +35,16 @@ LICENSE
 Makefile
 .gitignore
 .pre-commit-config.yaml
+sonar-project.properties
 
 # Exclude plots and coverage files
-plots/
+plots/**
 coverage.xml
 .coverage
 
 # Exclude Docker files
-dockers/
+dockers/**
+
+# Exclude any generated files
+**/generated/**
+**/_generated/**
