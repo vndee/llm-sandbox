@@ -6,8 +6,9 @@ from typing import Any
 
 from llm_sandbox.security import SecurityPolicy
 
-from .base import ExecutionResult, Session
+from .base import ExecutionResult
 from .const import SandboxBackend, SupportedLanguage
+from .core.session_base import BaseSession
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
 
 
@@ -28,7 +29,7 @@ def create_session(
     backend: SandboxBackend = SandboxBackend.DOCKER,
     *args: Any,
     **kwargs: Any,
-) -> Session:
+) -> BaseSession:
     r"""Create a new sandbox session for executing code in an isolated environment.
 
     This function creates a sandbox session that supports multiple programming languages
@@ -285,7 +286,7 @@ class ArtifactSandboxSession:
 
         """
         # Create the base session
-        self._session: Session = create_session(
+        self._session: BaseSession = create_session(
             backend=backend,
             image=image,
             dockerfile=dockerfile,
@@ -424,7 +425,7 @@ class ArtifactSandboxSession:
 
         # Delegate to language handler for language-specific artifact extraction
         result, plots = self._session.language_handler.run_with_artifacts(
-            container=self._session,
+            container=self._session,  # type: ignore[arg-type]
             code=code,
             libraries=libraries,
             enable_plotting=self.enable_plotting,
