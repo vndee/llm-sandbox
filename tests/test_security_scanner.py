@@ -49,6 +49,12 @@ def comprehensive_security_policy() -> SecurityPolicy:
             description="Raw socket creation",
             severity=SecurityIssueSeverity.LOW,
         ),
+        # File reading operations
+        SecurityPattern(
+            pattern=r"\bopen\s*\(.*['\"]r['\"]",  # or a more robust regex for file reading
+            description="File reading operations",
+            severity=SecurityIssueSeverity.MEDIUM,
+        ),
     ]
 
     restricted_modules = [
@@ -636,8 +642,9 @@ class TestRealWorldAttackScenarios:
 
         session = SandboxSession(lang="python", security_policy=comprehensive_security_policy)
         is_safe, violations = session.is_safe(code)
-        # This test checks the current behavior - reading might be allowed
-        # The assertion depends on the specific policy configuration
+        assert is_safe is False
+        assert len(violations) >= 1
+        assert any(v.description == "File reading operations" for v in violations)
 
     def test_network_backdoor_creation(self, comprehensive_security_policy: SecurityPolicy) -> None:
         """Test that network backdoor creation is blocked."""

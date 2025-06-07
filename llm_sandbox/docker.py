@@ -80,7 +80,7 @@ class SandboxDockerSession(BaseSession):
     """
 
     def __init__(
-        self,
+        self,  # NOSONAR
         client: docker.DockerClient | None = None,
         image: str | None = None,
         dockerfile: str | None = None,

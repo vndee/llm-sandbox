@@ -22,8 +22,8 @@ class TestStrEnum:
         # Test line 25-26: TypeError for non-string values
         with pytest.raises(TypeError, match="StrEnum values must be strings"):
 
-            class InvalidEnum(StrEnum):
-                NUMBER = 123  # This should raise TypeError
+            class InvalidEnum(StrEnum):  # NOSONAR
+                NUMBER = 123
 
     def test_str_enum_string_methods(self) -> None:
         """Test StrEnum string methods."""
@@ -235,15 +235,6 @@ class TestEdgeCases:
 
     def test_enum_equality(self) -> None:
         """Test equality comparisons."""
-        assert SandboxBackend.DOCKER == SandboxBackend.DOCKER
         assert SandboxBackend.DOCKER != SandboxBackend.KUBERNETES
         assert SandboxBackend.DOCKER == "docker"
         assert SandboxBackend.DOCKER != "kubernetes"
-
-    def test_hash_consistency(self) -> None:
-        """Test that enum members are hashable and consistent."""
-        backend_set = {SandboxBackend.DOCKER, SandboxBackend.DOCKER}
-        assert len(backend_set) == 1
-
-        language_set = {SupportedLanguage.PYTHON, SupportedLanguage.PYTHON}
-        assert len(language_set) == 1
