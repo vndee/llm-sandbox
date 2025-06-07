@@ -270,9 +270,6 @@ class SandboxDockerSession(BaseSession):
         - Setting up the environment
         - Running the code
 
-        Args:
-            None
-
         Raises:
             ImagePullError: If the image cannot be pulled.
             ImageNotFoundError: If the image cannot be found.
