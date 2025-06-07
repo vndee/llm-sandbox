@@ -590,6 +590,19 @@ class TestBaseSessionContextManager:
 
             mock_close.assert_called_once()
 
+    def test_context_manager_exception(self) -> None:
+        """Test context manager when exception occurs."""
+        with (
+            patch.object(self.session, "open") as mock_open,
+            patch.object(self.session, "close") as mock_close,
+        ):
+            with pytest.raises(ValueError):  # noqa: SIM117, PT012, PT011
+                with self.session:
+                    mock_open.assert_called_once()
+                    raise ValueError
+
+            mock_close.assert_called_once()
+
 
 class TestBaseSessionOpenClose:
     """Test BaseSession open/close functionality."""

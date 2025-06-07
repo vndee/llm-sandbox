@@ -6,9 +6,9 @@ from typing import Any
 
 from llm_sandbox.security import SecurityPolicy
 
-from .base import ExecutionResult
 from .const import SandboxBackend, SupportedLanguage
 from .core.session_base import BaseSession
+from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
 
 

@@ -1,7 +1,7 @@
 """LLM Sandbox - A lightweight and portable LLM sandbox runtime."""
 
-from .base import ConsoleOutput
 from .const import SandboxBackend, SupportedLanguage
+from .data import ConsoleOutput
 from .exceptions import ContainerError, ResourceError, SandboxError, SecurityError, ValidationError
 from .session import ArtifactSandboxSession, SandboxSession, create_session
 
