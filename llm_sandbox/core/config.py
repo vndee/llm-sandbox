@@ -1,5 +1,3 @@
-from typing import Self
-
 from pydantic import BaseModel, Field, model_validator
 
 from llm_sandbox.const import SupportedLanguage
@@ -26,7 +24,7 @@ class SessionConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_image_and_dockerfile(self) -> Self:
+    def validate_image_and_dockerfile(self) -> "SessionConfig":
         """Validate that image and dockerfile are not both provided."""
         if self.image is not None and self.dockerfile is not None:
             msg = "Only one of 'image' or 'dockerfile' can be provided, not both"
