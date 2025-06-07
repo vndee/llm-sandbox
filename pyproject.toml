@@ -126,3 +126,7 @@ source = ["llm_sandbox"]
 
 [tool.deptry]
 ignore = ["DEP004"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B108"]
