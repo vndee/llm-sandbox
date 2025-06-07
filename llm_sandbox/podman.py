@@ -3,12 +3,13 @@
 import io
 import tarfile
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from podman import PodmanClient
 from podman.domain.images import Image
-from podman.errors import ImageNotFound
+from podman.errors import ImageNotFound, PodmanError
 
 from llm_sandbox.base import ConsoleOutput, Session
 from llm_sandbox.const import DefaultImage, SupportedLanguage
@@ -18,6 +19,7 @@ from llm_sandbox.exceptions import (
     ImageNotFoundError,
     ImagePullError,
     NotOpenSessionError,
+    SandboxTimeoutError,
 )
 from llm_sandbox.security import SecurityPolicy
 
@@ -49,6 +51,9 @@ class SandboxPodmanSession(Session):
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         security_policy: SecurityPolicy | None = None,
+        default_timeout: float | None = None,
+        execution_timeout: float | None = None,
+        session_timeout: float | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
         r"""Initialize a new Podman-based sandbox session.
@@ -83,6 +88,12 @@ class SandboxPodmanSession(Session):
                 Defaults to "/sandbox". Consider using "/tmp/sandbox" when running as a non-root user.
             security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
                 Defaults to None.
+            default_timeout (float | None, optional): The default timeout for the session.
+                Defaults to None.
+            execution_timeout (float | None, optional): The execution timeout for the session.
+                Defaults to None.
+            session_timeout (float | None, optional): The session timeout for the session.
+                Defaults to None.
             **kwargs: Catches unused keyword arguments passed from `create_session`.
 
         Raises:
@@ -98,6 +109,9 @@ class SandboxPodmanSession(Session):
             keep_template=keep_template,
             workdir=workdir,
             security_policy=security_policy,
+            default_timeout=default_timeout,
+            execution_timeout=execution_timeout,
+            session_timeout=session_timeout,
         )
         self.dockerfile = dockerfile
         if self.image and self.dockerfile:
@@ -210,7 +224,9 @@ class SandboxPodmanSession(Session):
 
         self.environment_setup()
 
-    def close(self) -> None:
+        super().open()
+
+    def close(self) -> None:  # noqa: PLR0912
         r"""Close the Podman sandbox session.
 
         This method cleans up Podman resources by:
@@ -220,6 +236,8 @@ class SandboxPodmanSession(Session):
             during this session), `keep_template` is False, and the image is not in use by
             other containers.
         """
+        super().close()
+
         if self.container:
             if self.commit_container and isinstance(self.image, Image):
                 if self.image.tags:
@@ -239,25 +257,51 @@ class SandboxPodmanSession(Session):
                         self.logger.exception("Failed to commit container")
                     raise
 
-            self.container.stop()
-            self.container.wait()
-            self.container.remove(force=True)
+            try:
+                self.container.stop()
+            except Exception:
+                if self.verbose:
+                    self.logger.exception(
+                        "Failed to stop container %s (may already be stopped)", self.container.short_id
+                    )
+
+            try:
+                self.container.wait()
+            except PodmanError:
+                if self.verbose:
+                    self.logger.warning(
+                        "Failed to wait for container %s (may already be stopped)", self.container.short_id
+                    )
+
+            try:
+                self.container.remove(force=True)
+            except PodmanError:
+                if self.verbose:
+                    self.logger.warning(
+                        "Failed to remove container %s (may already be removed)", self.container.short_id
+                    )
+
+            self.container = None
 
         if self.is_create_template and not self.keep_template:
             # check if the image is used by any other container
-            containers = self.client.containers.list(all=True)
-            image_id = self.docker_image.id
-            image_in_use = any(container.image.id == image_id for container in containers)
+            try:
+                containers = self.client.containers.list(all=True)
+                image_id = self.docker_image.id
+                image_in_use = any(container.image.id == image_id for container in containers)
 
-            if not image_in_use:
-                self.docker_image.remove(force=True)
-            elif self.verbose:
-                self.logger.info(
-                    "Image %s is in use by other containers. Skipping removal..",
-                    self.docker_image.tags[-1],
-                )
+                if not image_in_use:
+                    self.docker_image.remove(force=True)
+                elif self.verbose:
+                    self.logger.info(
+                        "Image %s is in use by other containers. Skipping removal..",
+                        self.docker_image.tags[-1],
+                    )
+            except PodmanError:
+                if self.verbose:
+                    self.logger.warning("Failed to check or remove image during cleanup")
 
-    def run(self, code: str, libraries: list | None = None) -> ConsoleOutput:
+    def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
         r"""Run the provided code within the Podman sandbox session.
 
         This method performs the following steps:
@@ -272,6 +316,8 @@ class SandboxPodmanSession(Session):
             code (str): The code string to execute.
             libraries (list | None, optional): A list of libraries to install before running the code.
                                             Defaults to None.
+            timeout (float | None, optional): The timeout for the execution of the code.
+                Defaults to None.
 
         Returns:
             ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
@@ -284,17 +330,47 @@ class SandboxPodmanSession(Session):
         if not self.container:
             raise NotOpenSessionError
 
-        self.install(libraries)
+        self._check_session_timeout()
+        actual_timeout = timeout or self.execution_timeout or self.default_timeout
 
-        with tempfile.NamedTemporaryFile(delete=True, suffix=f".{self.language_handler.file_extension}") as code_file:
-            code_file.write(code.encode("utf-8"))
-            code_file.seek(0)
+        def _run_code() -> ConsoleOutput:
+            self.install(libraries)
 
-            code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
-            self.copy_to_runtime(code_file.name, code_dest_file)
+            with tempfile.NamedTemporaryFile(
+                delete=True, suffix=f".{self.language_handler.file_extension}"
+            ) as code_file:
+                code_file.write(code.encode("utf-8"))
+                code_file.seek(0)
 
-            commands = self.language_handler.get_execution_commands(code_dest_file)
-            return self.execute_commands(commands, workdir=self.workdir)  # type: ignore[arg-type]
+                code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
+                self.copy_to_runtime(code_file.name, code_dest_file)
+
+                commands = self.language_handler.get_execution_commands(code_dest_file)
+                # Type cast needed because get_execution_commands returns list[str]
+                # but execute_commands expects list[str | tuple[str, str | None]]
+                from typing import cast
+
+                return self.execute_commands(
+                    cast("list[str | tuple[str, str | None]]", commands),
+                    workdir=self.workdir,
+                )
+
+        try:
+            result = self._execute_with_timeout(_run_code, actual_timeout)
+            from typing import cast
+
+            return cast("ConsoleOutput", result)
+        except SandboxTimeoutError:
+            if self.container:
+                container_id = self.container.short_id
+                with suppress(Exception):
+                    self.container.kill()
+
+                with suppress(Exception):
+                    self.container.remove(force=True)
+                self.container = None
+                self.logger.warning("Killed and removed container %s due to timeout", container_id)
+            raise
 
     def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         r"""Copy a file or directory from the Podman container to the local host filesystem.

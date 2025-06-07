@@ -298,7 +298,7 @@ class TestSandboxKubernetesSessionRun:
 
             expected_dest_path = "/sandbox/code.py"  # Default workdir and python filename
             mock_copy.assert_called_once_with(expected_src_path, expected_dest_path)
-            mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox")
+            mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox", timeout=30.0)
 
     @patch("llm_sandbox.kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -314,7 +314,7 @@ class TestSandboxKubernetesSessionRun:
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
-        session.container = None  # type: ignore[assignment]
+        session.container = None
 
         with pytest.raises(NotOpenSessionError):
             session.run("print('hello')")
@@ -480,7 +480,7 @@ class TestSandboxKubernetesSessionFileOperations:
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
-        session.container = None  # type: ignore[assignment]
+        session.container = None
 
         with pytest.raises(NotOpenSessionError):
             session.copy_to_runtime("/host/file.txt", "/pod/file.txt")
@@ -581,7 +581,7 @@ class TestSandboxKubernetesSessionCommands:
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
-        session.container = None  # type: ignore[assignment]
+        session.container = None
 
         with pytest.raises(NotOpenSessionError):
             session.execute_command("ls")
@@ -721,7 +721,7 @@ class TestSandboxKubernetesSessionArchive:
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
-        session.container = None  # type: ignore[assignment]
+        session.container = None
 
         with pytest.raises(NotOpenSessionError):
             session.get_archive("/pod/path")
@@ -744,19 +744,23 @@ class TestSandboxKubernetesSessionOwnership:
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
+        session.container = "test-pod"
 
-        with patch.object(session, "execute_command") as mock_execute:
+        with (
+            patch.object(session, "execute_command") as mock_execute_command,
+            patch.object(session, "execute_commands") as mock_execute_commands,
+        ):
             # Mock user check returning non-root
-            mock_execute.side_effect = [
-                ConsoleOutput(exit_code=0, stdout="1000"),  # id -u returns 1000
-                ConsoleOutput(exit_code=0, stdout=""),  # chown command
-            ]
+            mock_execute_command.return_value = ConsoleOutput(exit_code=0, stdout="1000")
+            mock_execute_commands.return_value = ConsoleOutput(exit_code=0, stdout="")
 
             session._ensure_ownership(["/tmp/test", "/tmp/test2"])
 
-            assert mock_execute.call_count == 2
-            chown_call = mock_execute.call_args_list[1]
-            assert "chown -R $(id -u):$(id -g)" in chown_call[0][0]
+            assert mock_execute_command.call_count == 1
+            assert mock_execute_commands.call_count == 1
+            # Verify the chown command was called
+            chown_call = mock_execute_commands.call_args
+            assert "chown -R $(id -u):$(id -g)" in str(chown_call)
 
     @patch("llm_sandbox.kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -772,15 +776,20 @@ class TestSandboxKubernetesSessionOwnership:
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
+        session.container = "test-pod"
 
-        with patch.object(session, "execute_command") as mock_execute:
+        with (
+            patch.object(session, "execute_command") as mock_execute_command,
+            patch.object(session, "execute_commands") as mock_execute_commands,
+        ):
             # Mock user check returning root
-            mock_execute.return_value = ConsoleOutput(exit_code=0, stdout="0")
+            mock_execute_command.return_value = ConsoleOutput(exit_code=0, stdout="0")
 
             session._ensure_ownership(["/tmp/test"])
 
-            # Should only call id -u, not chown
-            assert mock_execute.call_count == 1
+            # Should only call id -u, not chown (since root doesn't need ownership change)
+            assert mock_execute_command.call_count == 1
+            assert mock_execute_commands.call_count == 0
 
 
 class TestSandboxKubernetesSessionContextManager:

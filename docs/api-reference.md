@@ -78,6 +78,10 @@ Comprehensive API documentation for LLM Sandbox.
 
 The library defines a base exception `llm_sandbox.exceptions.SandboxError` and various specific exceptions that inherit from it. Please refer to the `llm_sandbox.exceptions` module for a complete list.
 
+### SandboxTimeoutError
+
+::: llm_sandbox.exceptions.SandboxTimeoutError
+
 Common exceptions include:
 - `ContainerError`
 - `SecurityError`
@@ -85,6 +89,7 @@ Common exceptions include:
 - `ValidationError`
 - `LanguageNotSupportedError`
 - `ImageNotFoundError`
+- `SandboxTimeoutError` - Raised when operations exceed configured timeout limits
 
 ---
 
@@ -152,12 +157,34 @@ from llm_sandbox import (
     SecurityPattern,
     SecurityIssueSeverity
 )
+from llm_sandbox.exceptions import SandboxTimeoutError
 import base64
 
 # Basic usage
 with SandboxSession(lang="python") as session:
     result = session.run("print('Hello, World!')")
     print(result.stdout)
+
+# With timeout configuration
+with SandboxSession(
+    lang="python",
+    execution_timeout=30.0,  # 30 seconds for code execution
+    session_timeout=300.0,   # 5 minutes session lifetime
+    default_timeout=10.0     # Default timeout for operations
+) as session:
+    try:
+        # This will use the execution_timeout (30s)
+        result = session.run("print('Normal execution')")
+
+        # Override timeout for specific execution
+        result = session.run("""
+import time
+time.sleep(5)
+print('Long operation completed')
+        """, timeout=15.0)  # Override with 15 seconds
+
+    except SandboxTimeoutError as e:
+        print(f"Operation timed out: {e}")
 
 # With security policy
 policy = get_security_policy("production")

@@ -4,7 +4,7 @@ import io
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import docker
 from docker.errors import ImageNotFound
@@ -19,6 +19,7 @@ from llm_sandbox.exceptions import (
     ImageNotFoundError,
     ImagePullError,
     NotOpenSessionError,
+    SandboxTimeoutError,
 )
 from llm_sandbox.security import SecurityPolicy
 
@@ -46,6 +47,9 @@ class SandboxDockerSession(Session):
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         security_policy: SecurityPolicy | None = None,
+        default_timeout: float | None = None,
+        execution_timeout: float | None = None,
+        session_timeout: float | None = None,
         **kwargs: dict[str, Any],  # noqa: ARG002
     ) -> None:
         r"""Initialize a new Docker-based sandbox session.
@@ -80,6 +84,12 @@ class SandboxDockerSession(Session):
                 Defaults to "/sandbox". Consider using "/tmp/sandbox" when running as a non-root user.
             security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
                 Defaults to None.
+            default_timeout (float | None, optional): The default timeout for the session.
+                Defaults to None.
+            execution_timeout (float | None, optional): The timeout for the execution of the code.
+                Defaults to None.
+            session_timeout (float | None, optional): The timeout for the session.
+                Defaults to None.
             **kwargs: Catches unused keyword arguments passed from `create_session`.
 
         Raises:
@@ -95,6 +105,9 @@ class SandboxDockerSession(Session):
             keep_template=keep_template,
             workdir=workdir,
             security_policy=security_policy,
+            default_timeout=default_timeout,
+            execution_timeout=execution_timeout,
+            session_timeout=session_timeout,
         )
         self.dockerfile = dockerfile
         if self.image and self.dockerfile:
@@ -196,6 +209,8 @@ class SandboxDockerSession(Session):
 
         self.environment_setup()
 
+        super().open()
+
     def close(self) -> None:  # noqa: PLR0912
         r"""Close the Docker sandbox session.
 
@@ -210,6 +225,8 @@ class SandboxDockerSession(Session):
             ImageNotFoundError: If the image to be removed is not found (should not typically occur).
 
         """
+        super().close()
+
         if self.container:
             if self.commit_container and self.docker_image:
                 if self.docker_image.tags:
@@ -251,7 +268,7 @@ class SandboxDockerSession(Session):
                     self.docker_image.tags[-1],
                 )
 
-    def run(self, code: str, libraries: list | None = None) -> ConsoleOutput:
+    def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
         r"""Run the provided code within the Docker sandbox session.
 
         This method performs the following steps:
@@ -266,6 +283,8 @@ class SandboxDockerSession(Session):
             code (str): The code string to execute.
             libraries (list | None, optional): A list of libraries to install before running the code.
                                             Defaults to None.
+            timeout (float | None, optional): The timeout for the execution of the code.
+                Defaults to None.
 
         Returns:
             ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
@@ -278,17 +297,49 @@ class SandboxDockerSession(Session):
         if not self.container:
             raise NotOpenSessionError
 
-        self.install(libraries)
+        self._check_session_timeout()
+        actual_timeout = timeout or self.execution_timeout or self.default_timeout
 
-        with tempfile.NamedTemporaryFile(delete=True, suffix=f".{self.language_handler.file_extension}") as code_file:
-            code_file.write(code.encode("utf-8"))
-            code_file.seek(0)
+        def _run_code() -> ConsoleOutput:
+            self.install(libraries)
 
-            code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
-            self.copy_to_runtime(code_file.name, code_dest_file)
+            with tempfile.NamedTemporaryFile(
+                delete=True, suffix=f".{self.language_handler.file_extension}"
+            ) as code_file:
+                code_file.write(code.encode("utf-8"))
+                code_file.seek(0)
 
-            commands = self.language_handler.get_execution_commands(code_dest_file)
-            return self.execute_commands(commands, workdir=self.workdir)  # type: ignore[arg-type]
+                code_dest_file = f"{self.workdir}/code.{self.language_handler.file_extension}"
+                self.copy_to_runtime(code_file.name, code_dest_file)
+
+                commands = self.language_handler.get_execution_commands(code_dest_file)
+                # Type cast needed because get_execution_commands returns list[str]
+                # but execute_commands expects list[str | tuple[str, str | None]]
+                return self.execute_commands(
+                    cast("list[str | tuple[str, str | None]]", commands),
+                    workdir=self.workdir,
+                )
+
+        try:
+            result = self._execute_with_timeout(_run_code, actual_timeout)
+            return cast("ConsoleOutput", result)
+        except SandboxTimeoutError:
+            if self.container:
+                container_id = self.container.short_id
+                try:
+                    self.container.kill()
+                    self.logger.warning("Killed container %s due to timeout", container_id)
+                except Exception:
+                    self.logger.exception("Failed to kill container")
+
+                try:
+                    self.container.remove(force=True)
+                    self.logger.warning("Removed container %s", container_id)
+                except Exception:
+                    self.logger.exception("Failed to remove container")
+
+                self.container = None
+            raise
 
     def copy_from_runtime(self, src: str, dest: str) -> None:  # noqa: PLR0912
         r"""Copy a file or directory from the Docker container to the local host filesystem.

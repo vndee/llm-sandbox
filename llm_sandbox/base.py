@@ -2,9 +2,12 @@
 
 import logging
 import re
+import signal
+import threading
+import time
 import types
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import ConsoleOutput, ExecutionResult
@@ -12,6 +15,7 @@ from llm_sandbox.exceptions import (
     CommandFailedError,
     LanguageHandlerNotInitializedError,
     LibraryInstallationNotSupportedError,
+    SandboxTimeoutError,
     SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
@@ -41,6 +45,9 @@ class Session(ABC):
         logger: logging.Logger | None = None,
         workdir: str | None = "/sandbox",
         security_policy: SecurityPolicy | None = None,
+        default_timeout: float | None = None,
+        execution_timeout: float | None = None,
+        session_timeout: float | None = None,
     ) -> None:
         r"""Initialize the sandbox session.
 
@@ -57,6 +64,12 @@ class Session(ABC):
                                                 Defaults to "/sandbox".
             security_policy (SecurityPolicy | None, optional): The security policy to apply to the container.
                                                     Defaults to None.
+            default_timeout (float | None, optional): The default timeout for the session.
+                                                    Defaults to None.
+            execution_timeout (float | None, optional): The timeout for the execution of the code.
+                                                    Defaults to None.
+            session_timeout (float | None, optional): The timeout for the session.
+                                                    Defaults to None.
 
         Raises:
             CommandFailedError: If an internal command fails during session initialization.
@@ -72,7 +85,14 @@ class Session(ABC):
         self.workdir = workdir
         self.security_policy = security_policy
 
+        self.default_timeout = default_timeout or 30.0
+        self.execution_timeout = execution_timeout or self.default_timeout
+        self.session_timeout = session_timeout
+
         self.language_handler: AbstractLanguageHandler = LanguageHandlerFactory.create_handler(self.lang, self.logger)
+
+        self._session_start_time: float | None = None
+        self._session_timer: threading.Timer | None = None
 
     def _log(self, message: str, level: str = "info") -> None:
         r"""Log a message if verbose logging is enabled.
@@ -86,15 +106,108 @@ class Session(ABC):
         if self.verbose:
             getattr(self.logger, level)(message)
 
+    def _check_session_timeout(self) -> None:
+        """Check if session has exceeded its maximum lifetime based on time."""
+        if self.session_timeout and self._session_start_time:
+            elapsed = time.time() - self._session_start_time
+            if elapsed > self.session_timeout:
+                msg = f"Session exceeded maximum lifetime of {self.session_timeout} seconds"
+                raise SandboxTimeoutError(msg)
+
+    def _start_session_timer(self) -> None:
+        """Start the session timeout timer."""
+        self._session_start_time = time.time()
+
+        if self.session_timeout:
+
+            def session_timeout_handler() -> None:
+                self._log(f"Session timed out after {self.session_timeout} seconds", "warning")
+                try:
+                    self.close()
+                except Exception as e:  # noqa: BLE001
+                    self._log(f"Error during timeout cleanup: {e}", "error")
+
+            self._session_timer = threading.Timer(self.session_timeout, session_timeout_handler)
+            self._session_timer.daemon = True
+            self._session_timer.start()
+
+    def _stop_session_timer(self) -> None:
+        """Stop the session timeout timer."""
+        if self._session_timer:
+            self._session_timer.cancel()
+            self._session_timer = None
+
+    def _execute_with_timeout(self, func: Any, timeout: float | None = None, *args: Any, **kwargs: Any) -> Any:
+        """Execute a function with timeout monitoring.
+
+        Uses signal-based timeout on Unix systems and threading-based timeout on Windows.
+
+        Args:
+            func: The function to execute
+            timeout: Timeout in seconds
+            *args: Arguments to pass to the function
+            **kwargs: Keyword arguments to pass to the function
+
+        Returns:
+            The result from the function execution
+
+        Raises:
+            SandboxTimeoutError: If the function execution times out
+
+        """
+        if timeout is None:
+            return func(*args, **kwargs)
+
+        # For Unix systems with SIGALRM, use signal-based timeout
+        if hasattr(signal, "SIGALRM"):
+
+            def timeout_handler(signum: int, frame: types.FrameType | None) -> None:  # noqa: ARG001
+                msg = f"Operation timed out after {timeout} seconds"
+                raise SandboxTimeoutError(msg)
+
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(int(timeout))
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+
+        # For Windows or systems without SIGALRM, use threading
+        result: list[Any] = [None]
+        exception: list[Exception | None] = [None]
+
+        def target() -> None:
+            try:
+                result[0] = func(*args, **kwargs)
+            except Exception as e:  # noqa: BLE001
+                exception[0] = e
+
+        thread = threading.Thread(target=target)
+        thread.daemon = True
+        thread.start()
+        thread.join(timeout)
+
+        if thread.is_alive():
+            # Note: We can't actually kill the thread, but we can timeout
+            msg = f"Operation timed out after {timeout} seconds"
+            raise SandboxTimeoutError(msg)
+
+        if exception[0]:
+            raise exception[0]
+
+        return result[0]
+
     @abstractmethod
     def open(self) -> None:
         r"""Open the sandbox session.
 
         This method prepares the sandbox environment for code execution. This may involve
         starting a container, setting up networking, and creating necessary directories.
-        Must be implemented by subclasses.
+        Must be overridden by subclasses.
         """
-        raise NotImplementedError
+        self._start_session_timer()
 
     @abstractmethod
     def close(self) -> None:
@@ -102,12 +215,14 @@ class Session(ABC):
 
         This method cleans up any resources used by the sandbox session. This may involve
         stopping and removing containers, deleting temporary files, and releasing network ports.
-        Must be implemented by subclasses.
+        Must be overridden by subclasses.
         """
-        raise NotImplementedError
+        self._stop_session_timer()
 
     @abstractmethod
-    def run(self, code: str, libraries: list | None = None) -> ConsoleOutput | ExecutionResult:
+    def run(
+        self, code: str, libraries: list | None = None, timeout: float | None = None
+    ) -> ConsoleOutput | ExecutionResult:
         r"""Run the provided code within the sandbox session.
 
         This is the primary method for executing user code. It handles code execution,
@@ -117,6 +232,8 @@ class Session(ABC):
         Args:
             code (str): The code string to execute in the sandbox.
             libraries (list | None, optional): A list of libraries to install before running the code.
+                                            Defaults to None.
+            timeout (float | None, optional): The timeout for the execution of the code.
                                             Defaults to None.
 
         Returns:

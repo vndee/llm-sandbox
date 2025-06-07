@@ -37,6 +37,9 @@ class MicromambaSession(SandboxDockerSession):
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         security_policy: SecurityPolicy | None = None,
+        default_timeout: float | None = None,
+        execution_timeout: float | None = None,
+        session_timeout: float | None = None,
         **kwargs: dict[str, Any],  # For any other unforeseen or future parent args
     ) -> None:
         r"""Initialize a new Micromamba-enabled sandbox session.
@@ -68,6 +71,12 @@ class MicromambaSession(SandboxDockerSession):
                 Inherited from `SandboxDockerSession`. Defaults to "/sandbox".
             security_policy (SecurityPolicy | None, optional): The security policy to use for the session.
                 Inherited from `SandboxDockerSession`. Defaults to None.
+            default_timeout (float | None, optional): The default timeout for the session.
+                Inherited from `SandboxDockerSession`. Defaults to None.
+            execution_timeout (float | None, optional): The execution timeout for the session.
+                Inherited from `SandboxDockerSession`. Defaults to None.
+            session_timeout (float | None, optional): The session timeout for the session.
+                Inherited from `SandboxDockerSession`. Defaults to None.
             **kwargs: Additional keyword arguments to pass to the `SandboxDockerSession` parent constructor.
 
         """
@@ -90,7 +99,10 @@ class MicromambaSession(SandboxDockerSession):
             runtime_configs=runtime_configs,
             workdir=workdir,
             security_policy=security_policy,
-            **kwargs,  # Pass any remaining kwargs
+            default_timeout=default_timeout,
+            execution_timeout=execution_timeout,
+            session_timeout=session_timeout,
+            **kwargs,
         )
 
     def execute_command(self, command: str | None, workdir: str | None = None) -> ConsoleOutput:
