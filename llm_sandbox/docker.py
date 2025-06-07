@@ -136,7 +136,11 @@ class SandboxDockerSession(BaseSession):
                 DeprecationWarning,
                 stacklevel=2,
             )
-            self.config.runtime_configs.setdefault("mounts", []).append(mounts)
+            existing_mounts = self.config.runtime_configs.setdefault("mounts", [])
+            if isinstance(mounts, list):
+                existing_mounts.extend(mounts)
+            else:
+                existing_mounts.append(mounts)
 
     def _ensure_directory_exists(self, path: str) -> None:
         r"""Ensure the directory exists.
