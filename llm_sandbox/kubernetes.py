@@ -207,13 +207,10 @@ class KubernetesContainerAPI:
         )
 
         stdout_output = ""
-        stderr_output = ""
         while resp.is_open():
             resp.update(timeout=1)
             if resp.peek_stdout():
                 stdout_output += resp.read_stdout()
-            if resp.peek_stderr():
-                stderr_output += resp.read_stderr()
 
         if not stdout_output.strip():
             return b"", {"size": 0}

@@ -550,7 +550,7 @@ class TestBaseSessionCodeExecution:
             self.session.run("print('hello')", timeout=5.0)
 
             mock_timeout.assert_called_once()
-            args, kwargs = mock_timeout.call_args
+            args, _ = mock_timeout.call_args
             assert len(args) >= 2  # function and timeout
             assert abs(args[1] - 5.0) < 0.0001  # timeout value
 
