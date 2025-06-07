@@ -22,6 +22,15 @@ from llm_sandbox.exceptions import (
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
 
+PYTHON_VENV_DIR = "/tmp/venv"
+PYTHON_PIP_CACHE_DIR = "/tmp/pip_cache"
+PYTHON_CREATE_VENV_COMMAND = "python -m venv /tmp/venv"
+PYTHON_CREATE_PIP_CACHE_COMMAND = "mkdir -p /tmp/pip_cache"
+PYTHON_UPGRADE_PIP_COMMAND = "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache"
+
+GO_CREATE_MODULE_COMMAND = "go mod init sandbox"
+GO_TIDY_MODULE_COMMAND = "go mod tidy"
+
 
 class BaseSession(
     ABC,
@@ -306,23 +315,23 @@ class BaseSession(
             case SupportedLanguage.PYTHON:
                 # Create venv and cache directory first
                 self.execute_commands([
-                    ("python -m venv /tmp/venv", None),
-                    ("mkdir -p /tmp/pip_cache", None),
+                    (PYTHON_CREATE_VENV_COMMAND, None),
+                    (PYTHON_CREATE_PIP_CACHE_COMMAND, None),
                 ])
 
-                self._ensure_ownership(["/tmp/venv", "/tmp/pip_cache"])
+                self._ensure_ownership([PYTHON_VENV_DIR, PYTHON_PIP_CACHE_DIR])
 
                 # Now upgrade pip with proper ownership and cache
                 self.execute_commands([
                     (
-                        "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache",
+                        PYTHON_UPGRADE_PIP_COMMAND,
                         None,
                     ),
                 ])
             case SupportedLanguage.GO:
                 self.execute_commands([
-                    ("go mod init sandbox", self.config.workdir),
-                    ("go mod tidy", self.config.workdir),
+                    (GO_CREATE_MODULE_COMMAND, self.config.workdir),
+                    (GO_TIDY_MODULE_COMMAND, self.config.workdir),
                 ])
 
     def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
