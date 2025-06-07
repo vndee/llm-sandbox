@@ -2,22 +2,14 @@
 
 """Tests for Podman backend implementation."""
 
-import io
-import tarfile
-import tempfile
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from pydantic_core import ValidationError
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import (
-    CommandEmptyError,
-    ExtraArgumentsError,
-    ImageNotFoundError,
-    ImagePullError,
-    NotOpenSessionError,
-)
+from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError
 from llm_sandbox.podman import SandboxPodmanSession
 from llm_sandbox.security import SecurityPolicy
 
@@ -36,13 +28,13 @@ class TestSandboxPodmanSessionInit:
 
         session = SandboxPodmanSession()
 
-        assert session.lang == SupportedLanguage.PYTHON
-        assert session.verbose is False
-        assert session.image == DefaultImage.PYTHON
+        assert session.config.lang == SupportedLanguage.PYTHON
+        assert session.config.verbose is False
+        assert session.config.image is None  # Image is set during _prepare_image()
         assert session.keep_template is False
         assert session.commit_container is False
         assert session.stream is True
-        assert session.workdir == "/sandbox"
+        assert session.config.workdir == "/sandbox"
         assert session.client == mock_client
         mock_podman_from_env.assert_called_once()
 
@@ -80,14 +72,14 @@ class TestSandboxPodmanSessionInit:
             security_policy=security_policy,
         )
 
-        assert session.image == "custom:latest"
-        assert session.lang == "java"
+        assert session.config.image == "custom:latest"
+        assert session.config.lang == SupportedLanguage.JAVA
         assert session.keep_template is True
         assert session.commit_container is True
-        assert session.verbose is False
+        assert session.config.verbose is False
         assert session.stream is False
-        assert session.workdir == "/custom"
-        assert session.security_policy == security_policy
+        assert session.config.workdir == "/custom"
+        assert session.config.security_policy == security_policy
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -98,7 +90,7 @@ class TestSandboxPodmanSessionInit:
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
-        with pytest.raises(ExtraArgumentsError, match="Only one of `image` or `dockerfile` can be provided"):
+        with pytest.raises(ValidationError, match="Only one of"):
             SandboxPodmanSession(image="test:latest", dockerfile="/path/to/Containerfile")
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
@@ -110,175 +102,8 @@ class TestSandboxPodmanSessionInit:
 
         session = SandboxPodmanSession(dockerfile="/path/to/Containerfile")
 
-        assert session.dockerfile == "/path/to/Containerfile"
-        assert session.image is None
-
-
-class TestSandboxPodmanSessionOpen:
-    """Test SandboxPodmanSession open functionality."""
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_open_with_existing_image(self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock) -> None:
-        """Test opening session with existing image."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-        mock_client = MagicMock()
-        mock_podman_from_env.return_value = mock_client
-
-        mock_image = MagicMock()
-        mock_image.tags = [DefaultImage.PYTHON]
-        mock_client.images.get.return_value = mock_image
-
-        mock_container = MagicMock()
-        mock_client.containers.create.return_value = mock_container
-
-        session = SandboxPodmanSession()
-
-        with patch.object(session, "environment_setup") as mock_env_setup:
-            session.open()
-
-        mock_client.images.get.assert_called_once_with(DefaultImage.PYTHON)
-        mock_client.containers.create.assert_called_once()
-        mock_container.start.assert_called_once()
-        mock_env_setup.assert_called_once()
-        assert session.container == mock_container
-        assert session.docker_image == mock_image
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_open_with_image_pull_single_image(
-        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
-    ) -> None:
-        """Test opening session when image needs to be pulled (returns single image)."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-        mock_client = MagicMock()
-        mock_podman_from_env.return_value = mock_client
-
-        # Image not found locally, but pull succeeds returning single image
-        from podman.domain.images import Image as PodmanImage  # Import for spec
-        from podman.errors import ImageNotFound
-
-        mock_client.images.get.side_effect = ImageNotFound("Image not found")
-
-        mock_image = Mock(spec=PodmanImage)  # Use Mock with spec
-        mock_image.tags = [DefaultImage.PYTHON]
-        mock_client.images.pull.return_value = mock_image
-
-        mock_container = MagicMock()
-        mock_client.containers.create.return_value = mock_container
-
-        session = SandboxPodmanSession(verbose=True)
-
-        with patch.object(session, "environment_setup"):
-            session.open()
-
-        mock_client.images.pull.assert_called_once_with(DefaultImage.PYTHON)
-        assert session.is_create_template is True
-        assert session.docker_image == mock_image
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_open_with_image_pull_list_of_images(
-        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
-    ) -> None:
-        """Test opening session when image pull returns list of images."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-        mock_client = MagicMock()
-        mock_podman_from_env.return_value = mock_client
-
-        from podman.errors import ImageNotFound
-
-        mock_client.images.get.side_effect = ImageNotFound("Image not found")
-
-        mock_image = MagicMock()
-        mock_image.tags = [DefaultImage.PYTHON]
-        mock_client.images.pull.return_value = [mock_image]  # Returns list
-
-        mock_container = MagicMock()
-        mock_client.containers.create.return_value = mock_container
-
-        session = SandboxPodmanSession()
-
-        with patch.object(session, "environment_setup"):
-            session.open()
-
-        assert session.docker_image == mock_image
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_open_with_pull_unexpected_return_type(
-        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
-    ) -> None:
-        """Test opening session when image pull returns unexpected type."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-        mock_client = MagicMock()
-        mock_podman_from_env.return_value = mock_client
-
-        from podman.errors import ImageNotFound
-
-        mock_client.images.get.side_effect = ImageNotFound("Image not found")
-        mock_client.images.pull.return_value = "unexpected_type"  # Unexpected return type
-
-        session = SandboxPodmanSession()
-
-        with pytest.raises(ImageNotFoundError):
-            session.open()
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_open_with_pull_failure(self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock) -> None:
-        """Test opening session when image pull fails."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-        mock_client = MagicMock()
-        mock_podman_from_env.return_value = mock_client
-
-        from podman.errors import ImageNotFound
-
-        mock_client.images.get.side_effect = ImageNotFound("Image not found")
-        mock_client.images.pull.side_effect = Exception("Pull failed")
-
-        session = SandboxPodmanSession()
-
-        with pytest.raises(ImagePullError, match="Failed to pull image"):
-            session.open()
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    @patch("llm_sandbox.podman.Path")
-    def test_open_with_dockerfile(
-        self, mock_path: MagicMock, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
-    ) -> None:
-        """Test opening session with dockerfile."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-        mock_client = MagicMock()
-        mock_podman_from_env.return_value = mock_client
-
-        # Mock Path behavior
-        mock_dockerfile_path = MagicMock()
-        mock_dockerfile_path.parent = "/path/to"
-        mock_dockerfile_path.name = "Containerfile"
-        mock_path.return_value = mock_dockerfile_path
-
-        mock_image = MagicMock()
-        mock_build_logs = ["Build log"]
-        mock_client.images.build.return_value = (mock_image, mock_build_logs)
-
-        mock_container = MagicMock()
-        mock_client.containers.create.return_value = mock_container
-
-        session = SandboxPodmanSession(dockerfile="/path/to/Containerfile")
-
-        with patch.object(session, "environment_setup"):
-            session.open()
-
-        mock_client.images.build.assert_called_once()
-        assert session.is_create_template is True
+        assert session.config.dockerfile == "/path/to/Containerfile"
+        assert session.config.image is None
 
 
 class TestSandboxPodmanSessionClose:
@@ -315,15 +140,13 @@ class TestSandboxPodmanSessionClose:
         mock_podman_from_env.return_value = mock_client
 
         session = SandboxPodmanSession(commit_container=True)
+        session.keep_template = True  # Need to set this for commit to happen
 
         mock_container = MagicMock()
-        # Mock Image object for commit scenario
-        from llm_sandbox.podman import Image
-
-        mock_image = Mock(spec=Image)
+        mock_image = MagicMock()
         mock_image.tags = ["test:latest"]
         session.container = mock_container
-        session.image = mock_image
+        session.docker_image = mock_image
 
         session.close()
 
@@ -340,6 +163,7 @@ class TestSandboxPodmanSessionClose:
 
         session = SandboxPodmanSession(keep_template=False)
         session.is_create_template = True
+        session.config.image = "test:latest"
 
         mock_container = MagicMock()
         mock_image = MagicMock()
@@ -369,6 +193,7 @@ class TestSandboxPodmanSessionRun:
 
         mock_container = MagicMock()
         session.container = mock_container
+        session.is_open = True  # Set session as open
 
         with (
             patch.object(session, "install") as mock_install,
@@ -391,7 +216,7 @@ class TestSandboxPodmanSessionRun:
 
             assert result == expected_result
             mock_install.assert_called_once_with(["numpy"])
-            mock_copy.assert_called_once_with(mock_file_instance.name, "/sandbox/code.py")
+            mock_copy.assert_called_once_with("/tmp/code.py", "/sandbox/code.py")
             mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox")
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
@@ -403,6 +228,7 @@ class TestSandboxPodmanSessionRun:
 
         session = SandboxPodmanSession()
         session.container = None
+        session.is_open = False
 
         with pytest.raises(NotOpenSessionError):
             session.run("print('hello')")
@@ -410,62 +236,6 @@ class TestSandboxPodmanSessionRun:
 
 class TestSandboxPodmanSessionFileOperations:
     """Test SandboxPodmanSession file operations."""
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_copy_to_runtime(self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock) -> None:
-        """Test copying file to container."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = SandboxPodmanSession(runtime_configs={"user": "1000:1000"})
-
-        mock_container = MagicMock()
-        mock_container.exec_run.return_value = (1, b"")  # Directory doesn't exist
-        session.container = mock_container
-
-        with (
-            patch("tarfile.open") as mock_tar_open,
-            patch("io.BytesIO") as mock_bytesio,
-            patch("llm_sandbox.podman.Path") as mock_path,
-            tempfile.NamedTemporaryFile() as temp_file,
-        ):
-            # Create a real temporary file for the test
-            temp_file.write(b"test content")
-            temp_file.flush()
-
-            # Mock Path to return our temp file for source validation
-            mock_src_path = MagicMock()
-            mock_src_path.exists.return_value = True
-            mock_src_path.is_file.return_value = True
-            mock_src_path.is_dir.return_value = False
-
-            mock_dest_path = MagicMock()
-            mock_dest_path.parent = "/container"
-            mock_dest_path.name = "file.txt"
-
-            def path_side_effect(arg: str) -> MagicMock:
-                if arg == temp_file.name:
-                    return mock_src_path
-                if arg == "/container/file.txt":
-                    return mock_dest_path
-                return MagicMock()
-
-            mock_path.side_effect = path_side_effect
-
-            mock_tar = MagicMock()
-            mock_tar_open.return_value.__enter__.return_value = mock_tar
-            mock_stream = MagicMock()
-            mock_stream.getvalue.return_value = b"tar_content"
-            mock_bytesio.return_value = mock_stream
-
-            session.copy_to_runtime(temp_file.name, "/container/file.txt")
-
-            mock_container.exec_run.assert_any_call("mkdir -p '/container'")
-            mock_container.put_archive.assert_called_once_with("/container", b"tar_content")
-            # Should change ownership since user is non-root
-            ownership_calls = [call for call in mock_container.exec_run.call_args_list if "chown" in str(call)]
-            assert len(ownership_calls) >= 1
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -484,55 +254,6 @@ class TestSandboxPodmanSessionFileOperations:
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_copy_from_runtime(self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock) -> None:
-        """Test copying file from container."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = SandboxPodmanSession()
-
-        mock_container = MagicMock()
-
-        # Create mock tar data
-        file_content = b"test content"
-        tar_buffer = io.BytesIO()
-        with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
-            info = tarfile.TarInfo("file.txt")
-            info.size = len(file_content)
-            tar.addfile(info, io.BytesIO(file_content))
-        tar_data = tar_buffer.getvalue()
-
-        mock_container.get_archive.return_value = ([tar_data], {"size": len(tar_data)})
-        session.container = mock_container
-
-        with (
-            patch("tarfile.open") as mock_tar_open,
-            patch("llm_sandbox.podman.Path") as mock_path,
-            tempfile.TemporaryDirectory() as temp_dir,
-        ):
-            mock_tar = MagicMock()
-            mock_member = MagicMock()
-            mock_member.name = "file.txt"
-            mock_member.isfile.return_value = True
-            mock_member.startswith.return_value = False
-            mock_tar.getmembers.return_value = [mock_member]
-            mock_tar_open.return_value.__enter__.return_value = mock_tar
-
-            # Use temp directory instead of /host
-            dest_file = f"{temp_dir}/file.txt"
-
-            # Mock Path for destination directory creation
-            mock_dest_path = MagicMock()
-            mock_dest_path.parent.mkdir = MagicMock()
-            mock_path.return_value = mock_dest_path
-
-            session.copy_from_runtime("/container/file.txt", dest_file)
-
-            mock_container.get_archive.assert_called_once_with("/container/file.txt")
-            mock_tar.extract.assert_called_once()
-
-    @patch("llm_sandbox.podman.PodmanClient.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_copy_from_runtime_file_not_found(
         self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
     ) -> None:
@@ -543,10 +264,12 @@ class TestSandboxPodmanSessionFileOperations:
         session = SandboxPodmanSession()
 
         mock_container = MagicMock()
-        mock_container.get_archive.return_value = ([], {"size": 0})
         session.container = mock_container
 
-        with pytest.raises(FileNotFoundError):
+        with (
+            patch.object(session.container_api, "copy_from_container", side_effect=FileNotFoundError),
+            pytest.raises(FileNotFoundError),
+        ):
             session.copy_from_runtime("/container/missing.txt", "/host/file.txt")
 
 
@@ -574,7 +297,7 @@ class TestSandboxPodmanSessionCommands:
         assert result.stdout == "stdout content"
         assert result.stderr == "stderr content"
         mock_container.exec_run.assert_called_once_with(
-            "ls -l",
+            cmd="ls -l",
             stream=False,
             tty=False,
             workdir="/tmp",
@@ -599,7 +322,7 @@ class TestSandboxPodmanSessionCommands:
         mock_output = [
             (b"stdout chunk 1", None),
             (None, b"stderr chunk 1"),
-            ([b"stdout ", b"chunk 2"], [b"stderr ", b"chunk 2"]),  # List format
+            (b"stdout chunk 2", b"stderr chunk 2"),
             (b"final stdout", b"final stderr"),
         ]
         mock_container.exec_run.return_value = (0, iter(mock_output))

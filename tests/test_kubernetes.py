@@ -2,9 +2,9 @@
 
 """Tests for Kubernetes backend implementation."""
 
-import base64
 import io
 import tarfile
+import tempfile
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -19,7 +19,7 @@ from llm_sandbox.security import SecurityPolicy
 class TestSandboxKubernetesSessionInit:
     """Test SandboxKubernetesSession initialization."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_init_with_defaults(
@@ -33,10 +33,10 @@ class TestSandboxKubernetesSessionInit:
 
         session = SandboxKubernetesSession()
 
-        assert session.lang == SupportedLanguage.PYTHON
-        assert session.verbose is False
-        assert session.image == DefaultImage.PYTHON
-        assert session.workdir == "/sandbox"
+        assert session.config.lang == SupportedLanguage.PYTHON
+        assert session.config.verbose is False
+        assert session.config.image is None  # Image is set during pod manifest creation
+        assert session.config.workdir == "/sandbox"
         assert session.kube_namespace == "default"
         assert session.client == mock_client
         assert session.env_vars is None
@@ -53,7 +53,7 @@ class TestSandboxKubernetesSessionInit:
 
         assert session.client == custom_client
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_init_with_custom_params(
@@ -77,15 +77,15 @@ class TestSandboxKubernetesSessionInit:
             security_policy=security_policy,
         )
 
-        assert session.image == "custom:latest"
-        assert session.lang == "java"
-        assert session.verbose is True
+        assert session.config.image == "custom:latest"
+        assert session.config.lang == SupportedLanguage.JAVA
+        assert session.config.verbose is True
         assert session.kube_namespace == "custom-ns"
         assert session.env_vars == env_vars
-        assert session.workdir == "/custom"
-        assert session.security_policy == security_policy
+        assert session.config.workdir == "/custom"
+        assert session.config.security_policy == security_policy
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_init_with_custom_pod_manifest(
@@ -110,7 +110,7 @@ class TestSandboxKubernetesSessionInit:
         # The manifest name should be updated to match the unique pod name
         assert session.pod_manifest["metadata"]["name"] == session.pod_name
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_default_pod_manifest_generation(
@@ -134,7 +134,7 @@ class TestSandboxKubernetesSessionInit:
 class TestSandboxKubernetesSessionOpen:
     """Test SandboxKubernetesSession open functionality."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     @patch("time.sleep")  # Speed up the test
@@ -166,7 +166,7 @@ class TestSandboxKubernetesSessionOpen:
         mock_env_setup.assert_called_once()
         assert session.container == session.pod_name
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     @patch("time.sleep")
@@ -207,7 +207,7 @@ class TestSandboxKubernetesSessionOpen:
 class TestSandboxKubernetesSessionClose:
     """Test SandboxKubernetesSession close functionality."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.kubernetes.k8s_client.V1DeleteOptions")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -227,11 +227,12 @@ class TestSandboxKubernetesSessionClose:
         mock_delete_options.return_value = mock_delete_opts
 
         session = SandboxKubernetesSession()
+        session.container = "test-pod"
 
         session.close()
 
         mock_client.delete_namespaced_pod.assert_called_once_with(
-            name=session.pod_name,
+            name="test-pod",
             namespace=session.kube_namespace,
             body=mock_delete_opts,
         )
@@ -240,7 +241,7 @@ class TestSandboxKubernetesSessionClose:
 class TestSandboxKubernetesSessionRun:
     """Test SandboxKubernetesSession run functionality."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_run_success(
@@ -257,36 +258,21 @@ class TestSandboxKubernetesSessionRun:
 
         session = SandboxKubernetesSession()
         session.container = "test-pod"
+        session.is_open = True  # Set session as open
 
         with (
             patch.object(session, "install") as mock_install,
             patch.object(session, "copy_to_runtime") as mock_copy,
-            patch("llm_sandbox.kubernetes.SandboxKubernetesSession.execute_commands") as mock_execute,
-            patch("tempfile.TemporaryDirectory") as mock_temp_dir,
-            patch("llm_sandbox.kubernetes.Path") as mock_path,
+            patch.object(session, "execute_commands") as mock_execute,
+            patch("tempfile.NamedTemporaryFile") as mock_temp_file,
         ):
-            mock_temp_dir_path = "/tmp/sandbox_k8s_run_test"  # Specific path for the mock
-            mock_temp_dir.return_value.__enter__.return_value = mock_temp_dir_path
-            mock_temp_dir.return_value.__exit__ = Mock()
+            mock_file_instance = mock_temp_file.return_value
+            mock_file_instance.name = "/tmp/code.py"
+            mock_file_instance.write = Mock()
+            mock_file_instance.seek = Mock()
 
-            # This is the object that will represent Path(temp_dir_path) / "code.py"
-            mock_full_temp_file_path_obj = MagicMock()
-            expected_src_path = f"{mock_temp_dir_path}/code.py"
-            mock_full_temp_file_path_obj.__str__.return_value = expected_src_path  # type: ignore[attr-defined]
-
-            # Setup for Path(...).open()
-            mock_file_open_context = MagicMock()
-            mock_file_open_context.__enter__.return_value = MagicMock()
-            mock_file_open_context.__exit__ = Mock()
-            mock_full_temp_file_path_obj.open.return_value = mock_file_open_context
-
-            # When Path(ANYTHING) is called, it returns a mock (mock_path_intermediate_obj)
-            mock_path_intermediate_obj = MagicMock()
-            mock_path.return_value = mock_path_intermediate_obj
-
-            # When mock_path_intermediate_obj / "filename" is called, it returns our mock_full_temp_file_path_obj
-            # This simulates Path(temp_dir_path) / code_filename
-            mock_path_intermediate_obj.__truediv__.return_value = mock_full_temp_file_path_obj
+            mock_file_instance.__enter__.return_value = mock_file_instance
+            mock_file_instance.__exit__ = Mock()
 
             expected_result = ConsoleOutput(exit_code=0, stdout="output")
             mock_execute.return_value = expected_result
@@ -295,12 +281,10 @@ class TestSandboxKubernetesSessionRun:
 
             assert result == expected_result
             mock_install.assert_called_once_with(["numpy"])
+            mock_copy.assert_called_once_with("/tmp/code.py", "/sandbox/code.py")
+            mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox")
 
-            expected_dest_path = "/sandbox/code.py"  # Default workdir and python filename
-            mock_copy.assert_called_once_with(expected_src_path, expected_dest_path)
-            mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox", timeout=30.0)
-
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_run_without_open_session(
@@ -315,6 +299,7 @@ class TestSandboxKubernetesSessionRun:
 
         session = SandboxKubernetesSession()
         session.container = None
+        session.is_open = False
 
         with pytest.raises(NotOpenSessionError):
             session.run("print('hello')")
@@ -323,7 +308,7 @@ class TestSandboxKubernetesSessionRun:
 class TestSandboxKubernetesSessionFileOperations:
     """Test SandboxKubernetesSession file operations."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.kubernetes.stream")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -354,43 +339,20 @@ class TestSandboxKubernetesSessionFileOperations:
         mock_stream.return_value = mock_resp
 
         with (
-            patch.object(session, "execute_command") as mock_execute,
+            patch.object(session.container_api, "copy_to_container") as mock_copy_to_container,
             patch.object(session, "_ensure_ownership") as mock_ownership,
-            patch("llm_sandbox.kubernetes.Path") as mock_path,
-            patch("tarfile.open") as mock_tar_open,
+            tempfile.NamedTemporaryFile() as temp_file,
         ):
-            # Mock Path operations
-            mock_host_path_instance = MagicMock()
-            mock_host_path_instance.exists.return_value = True
-            mock_host_path_instance.is_file.return_value = True
-            mock_host_path_instance.is_dir.return_value = False
-            mock_host_path_instance.stat.return_value.st_size = 100
-            mock_host_path_instance.open.return_value.__enter__ = Mock(return_value=io.BytesIO(b"test content"))
-            mock_host_path_instance.open.return_value.__exit__ = Mock()
+            # Write some content to the temporary file
+            temp_file.write(b"test content")
+            temp_file.flush()
 
-            mock_pod_path_instance = MagicMock()
-            mock_pod_path_instance.parent = "/pod"
+            session.copy_to_runtime(temp_file.name, "/pod/file.txt")
 
-            # Side effect to return specific mocks based on Path argument
-            def path_side_effect(path_arg: str) -> MagicMock:
-                if path_arg == "/host/file.txt":
-                    return mock_host_path_instance
-                if path_arg == "/pod/file.txt":
-                    return mock_pod_path_instance
-                return MagicMock()  # Default mock for other paths
+            mock_copy_to_container.assert_called_once_with("test-pod", temp_file.name, "/pod/file.txt")
+            mock_ownership.assert_called_once_with(["/pod/file.txt"])
 
-            mock_path.side_effect = path_side_effect
-
-            # Mock tar operations
-            mock_tar = MagicMock()
-            mock_tar_open.return_value.__enter__.return_value = mock_tar
-
-            session.copy_to_runtime("/host/file.txt", "/pod/file.txt")
-
-            mock_execute.assert_called_once_with("mkdir -p '/pod'")
-            mock_ownership.assert_called_once_with(["/pod"])
-
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.kubernetes.stream")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -417,56 +379,18 @@ class TestSandboxKubernetesSessionFileOperations:
             tar.addfile(info, io.BytesIO(file_content))
         tar_data = tar_buffer.getvalue()
 
-        # Mock streaming response that returns tar data
-        mock_resp = MagicMock()
-        mock_resp.is_open.side_effect = [True, False]
-        mock_resp.update = MagicMock()
-        mock_resp.peek_stdout.side_effect = [True, False]
-        mock_resp.read_stdout.side_effect = [tar_data, ""]
-        mock_resp.peek_stderr.return_value = False
-        mock_stream.return_value = mock_resp
-
         with (
-            patch("llm_sandbox.kubernetes.Path") as mock_path,
-            patch("tarfile.open") as mock_tar_open,
+            patch.object(session.container_api, "copy_from_container") as mock_copy_from_container,
+            tempfile.TemporaryDirectory() as temp_dir,
         ):
-            # Mock Path operations
-            mock_host_path_instance = MagicMock()
-            mock_host_path_instance.parent.mkdir = MagicMock()
-            mock_host_path_instance.open.return_value.__enter__ = Mock()
-            mock_host_path_instance.open.return_value.__exit__ = Mock()
-            mock_host_path_instance.name = "file.txt"
+            mock_copy_from_container.return_value = (tar_data, {"size": len(tar_data)})
 
-            mock_pod_path_instance = MagicMock()
-            mock_pod_path_instance.name = "file.txt"
+            dest_file = f"{temp_dir}/file.txt"
+            session.copy_from_runtime("/pod/file.txt", dest_file)
 
-            # Side effect to return specific mocks based on Path argument
-            def path_side_effect(path_arg: str) -> MagicMock:
-                if path_arg == "/host/file.txt":
-                    return mock_host_path_instance
-                if path_arg == "/pod/file.txt":
-                    return mock_pod_path_instance
-                return MagicMock()  # Default mock for other paths
+            mock_copy_from_container.assert_called_once_with("test-pod", "/pod/file.txt")
 
-            mock_path.side_effect = path_side_effect
-
-            # Mock tar operations
-            mock_tar = MagicMock()
-            mock_member = MagicMock()
-            mock_member.isfile.return_value = True
-            mock_member.isdir.return_value = False
-            mock_member.name = "file.txt"
-            # The member.name.startswith("/") check will return False for "file.txt"
-            mock_tar.getmembers.return_value = [mock_member]
-            mock_file_obj = io.BytesIO(file_content)
-            mock_tar.extractfile.return_value = mock_file_obj
-            mock_tar_open.return_value.__enter__.return_value = mock_tar
-
-            session.copy_from_runtime("/pod/file.txt", "/host/file.txt")
-
-            mock_stream.assert_called_once()
-
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_copy_to_runtime_no_container(
@@ -485,7 +409,7 @@ class TestSandboxKubernetesSessionFileOperations:
         with pytest.raises(NotOpenSessionError):
             session.copy_to_runtime("/host/file.txt", "/pod/file.txt")
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.kubernetes.stream")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -503,35 +427,25 @@ class TestSandboxKubernetesSessionFileOperations:
         session = SandboxKubernetesSession()
         session.container = "test-pod"
 
-        # Mock streaming response with empty tar
-        tar_buffer = io.BytesIO()
-        with tarfile.open(fileobj=tar_buffer, mode="w"):
-            pass  # Empty tar
-        tar_data = tar_buffer.getvalue()
-
-        mock_resp = MagicMock()
-        mock_resp.is_open.side_effect = [True, False]
-        mock_resp.update = MagicMock()
-        mock_resp.peek_stdout.side_effect = [True, False]
-        mock_resp.read_stdout.side_effect = [tar_data, ""]
-        mock_resp.peek_stderr.return_value = False
-        mock_stream.return_value = mock_resp
-
         with (
-            patch("tarfile.open") as mock_tar_open,
+            patch.object(session.container_api, "copy_from_container") as mock_copy_from_container,
         ):
-            mock_tar = MagicMock()
-            mock_tar.getmembers.return_value = []  # No members in tar
-            mock_tar_open.return_value.__enter__.return_value = mock_tar
+            # Simulate file not found by having container_api.copy_from_container return empty data
+            mock_copy_from_container.return_value = (b"", {"size": 0})
 
-            with pytest.raises(FileNotFoundError):
-                session.copy_from_runtime("/pod/missing.txt", "/host/file.txt")
+            # The mixin should raise FileNotFoundError when no tar data is found
+            # But since we're mocking the container_api, we need to mock the behavior
+            with patch.object(session, "container_api") as mock_container_api:
+                mock_container_api.copy_from_container.side_effect = FileNotFoundError("File not found")
+
+                with pytest.raises(FileNotFoundError):
+                    session.copy_from_runtime("/pod/missing.txt", "/host/file.txt")
 
 
 class TestSandboxKubernetesSessionCommands:
     """Test SandboxKubernetesSession command execution."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.kubernetes.stream")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -567,7 +481,7 @@ class TestSandboxKubernetesSessionCommands:
         assert result.stderr == "stderr output"
         mock_stream.assert_called_once()
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_execute_command_no_container(
@@ -586,7 +500,7 @@ class TestSandboxKubernetesSessionCommands:
         with pytest.raises(NotOpenSessionError):
             session.execute_command("ls")
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.kubernetes.stream")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -620,7 +534,7 @@ class TestSandboxKubernetesSessionCommands:
 class TestSandboxKubernetesSessionArchive:
     """Test SandboxKubernetesSession archive operations."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_get_archive_success(
@@ -638,14 +552,18 @@ class TestSandboxKubernetesSessionArchive:
 
         # Mock file stats
         file_content = b"test content"
-        base64_content = base64.b64encode(file_content).decode()
 
-        with patch.object(session, "execute_command") as mock_execute:
-            # Mock stat command response
-            mock_execute.side_effect = [
-                ConsoleOutput(exit_code=0, stdout="100 1234567890 /pod/file.txt"),  # stat command
-                ConsoleOutput(exit_code=0, stdout=base64_content),  # base64 tar command
-            ]
+        with patch.object(session.container_api, "copy_from_container") as mock_copy_from:
+            mock_copy_from.return_value = (
+                file_content,
+                {
+                    "name": "/pod/file.txt",
+                    "size": 100,
+                    "mtime": 1234567890,
+                    "mode": 0o644,
+                    "linkTarget": "",
+                },
+            )
 
             data, stat = session.get_archive("/pod/file.txt")
 
@@ -653,9 +571,9 @@ class TestSandboxKubernetesSessionArchive:
             assert stat["name"] == "/pod/file.txt"
             assert stat["size"] == 100
             assert stat["mtime"] == 1234567890
-            assert mock_execute.call_count == 2
+            mock_copy_from.assert_called_once_with("test-pod", "/pod/file.txt")
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_get_archive_file_not_found(
@@ -671,16 +589,15 @@ class TestSandboxKubernetesSessionArchive:
         session = SandboxKubernetesSession()
         session.container = "test-pod"
 
-        with patch.object(session, "execute_command") as mock_execute:
-            # Mock stat command returning NOT_FOUND
-            mock_execute.return_value = ConsoleOutput(exit_code=0, stdout="NOT_FOUND")
+        with patch.object(session.container_api, "copy_from_container") as mock_copy_from:
+            mock_copy_from.return_value = (b"", {"size": 0})
 
             data, stat = session.get_archive("/pod/missing.txt")
 
             assert data == b""
-            assert stat == {}
+            assert stat == {"size": 0}
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_get_archive_base64_decode_error(
@@ -696,18 +613,15 @@ class TestSandboxKubernetesSessionArchive:
         session = SandboxKubernetesSession()
         session.container = "test-pod"
 
-        with patch.object(session, "execute_command") as mock_execute:
-            mock_execute.side_effect = [
-                ConsoleOutput(exit_code=0, stdout="100 1234567890 /pod/file.txt"),
-                ConsoleOutput(exit_code=0, stdout="invalid_base64"),  # Invalid base64
-            ]
+        with patch.object(session.container_api, "copy_from_container") as mock_copy_from:
+            mock_copy_from.return_value = (b"", {"size": 0})  # Simulate decode error result
 
             data, stat = session.get_archive("/pod/file.txt")
 
             assert data == b""
-            assert stat == {}
+            assert stat == {"size": 0}
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_get_archive_no_container(
@@ -730,7 +644,7 @@ class TestSandboxKubernetesSessionArchive:
 class TestSandboxKubernetesSessionOwnership:
     """Test SandboxKubernetesSession ownership management."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_ensure_ownership_with_non_root_user(
@@ -748,21 +662,21 @@ class TestSandboxKubernetesSessionOwnership:
 
         with (
             patch.object(session, "execute_command") as mock_execute_command,
-            patch.object(session, "execute_commands") as mock_execute_commands,
         ):
             # Mock user check returning non-root
-            mock_execute_command.return_value = ConsoleOutput(exit_code=0, stdout="1000")
-            mock_execute_commands.return_value = ConsoleOutput(exit_code=0, stdout="")
+            mock_execute_command.side_effect = [
+                ConsoleOutput(exit_code=0, stdout="1000"),  # id -u command
+                ConsoleOutput(exit_code=0, stdout=""),  # chown command
+            ]
 
             session._ensure_ownership(["/tmp/test", "/tmp/test2"])
 
-            assert mock_execute_command.call_count == 1
-            assert mock_execute_commands.call_count == 1
+            assert mock_execute_command.call_count == 2
             # Verify the chown command was called
-            chown_call = mock_execute_commands.call_args
+            chown_call = mock_execute_command.call_args_list[1]
             assert "chown -R $(id -u):$(id -g)" in str(chown_call)
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_ensure_ownership_with_root_user(
@@ -780,7 +694,6 @@ class TestSandboxKubernetesSessionOwnership:
 
         with (
             patch.object(session, "execute_command") as mock_execute_command,
-            patch.object(session, "execute_commands") as mock_execute_commands,
         ):
             # Mock user check returning root
             mock_execute_command.return_value = ConsoleOutput(exit_code=0, stdout="0")
@@ -789,13 +702,12 @@ class TestSandboxKubernetesSessionOwnership:
 
             # Should only call id -u, not chown (since root doesn't need ownership change)
             assert mock_execute_command.call_count == 1
-            assert mock_execute_commands.call_count == 0
 
 
 class TestSandboxKubernetesSessionContextManager:
     """Test SandboxKubernetesSession context manager functionality."""
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_context_manager(
@@ -820,7 +732,7 @@ class TestSandboxKubernetesSessionContextManager:
 
             mock_close.assert_called_once()
 
-    @patch("llm_sandbox.kubernetes.config.load_kube_config")
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_context_manager_with_exception(

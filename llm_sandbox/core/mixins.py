@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import NotOpenSessionError, SandboxTimeoutError
+from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
 
 
 class ContainerAPI(Protocol):
@@ -207,8 +207,7 @@ class CommandExecutionMixin:
     def execute_command(self, command: str, workdir: str | None = None) -> ConsoleOutput:
         """Execute command with common logic."""
         if not command:
-            msg = "Command cannot be empty"
-            raise ValueError(msg)
+            raise CommandEmptyError
 
         if not self.container:
             raise NotOpenSessionError
