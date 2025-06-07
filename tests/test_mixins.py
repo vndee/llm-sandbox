@@ -104,10 +104,10 @@ class TestFileOperationsMixin:
         # Create a concrete implementation for testing
         class ConcreteFileOperationsMixin(FileOperationsMixin):
             def _ensure_directory_exists(self, path: str) -> None:
-                pass
+                """Ensure directory exists."""
 
             def _ensure_ownership(self, paths: list[str]) -> None:
-                pass
+                """Ensure ownership."""
 
         self.mixin = ConcreteFileOperationsMixin()
         self.mixin.container_api = MockContainerAPI()

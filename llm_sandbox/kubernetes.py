@@ -15,6 +15,8 @@ from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.exceptions import NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
+SH_SHELL = "/bin/sh"
+
 
 class KubernetesContainerAPI:
     """Kubernetes implementation of the ContainerAPI protocol."""
@@ -60,7 +62,7 @@ class KubernetesContainerAPI:
         """Execute command in Kubernetes pod."""
         workdir = kwargs.get("workdir")
 
-        exec_command = ["sh", "-c", f"cd {workdir} && {command}"] if workdir else ["/bin/sh", "-c", command]
+        exec_command = [SH_SHELL, "-c", f"cd {workdir} && {command}"] if workdir else [SH_SHELL, "-c", command]
 
         resp = stream(
             self.client.connect_get_namespaced_pod_exec,
@@ -151,7 +153,7 @@ class KubernetesContainerAPI:
         """Copy file from Kubernetes pod."""
         # First check if the path exists and get its stats
         stat_command = f"stat -c '%s %Y %n' {src} 2>/dev/null || echo 'NOT_FOUND'"
-        exec_command = ["/bin/sh", "-c", stat_command]
+        exec_command = [SH_SHELL, "-c", stat_command]
 
         resp = stream(
             self.client.connect_get_namespaced_pod_exec,
@@ -190,7 +192,7 @@ class KubernetesContainerAPI:
         parent_dir = src_path.parent
         target_name = src_path.name
         base64_command = f"tar -C {parent_dir} -cf - {target_name} | base64 -w 0"
-        exec_command = ["/bin/sh", "-c", base64_command]
+        exec_command = [SH_SHELL, "-c", base64_command]
 
         resp = stream(
             self.client.connect_get_namespaced_pod_exec,
