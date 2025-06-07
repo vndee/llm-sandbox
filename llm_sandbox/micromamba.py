@@ -34,7 +34,7 @@ class MicromambaSession(SandboxDockerSession):
     """
 
     def __init__(
-        self,
+        self,  # NOSONAR
         client: docker.DockerClient | None = None,
         image: str = "mambaorg/micromamba:latest",
         dockerfile: str | None = None,

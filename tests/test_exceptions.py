@@ -261,7 +261,8 @@ class TestSandboxTimeoutError:
         # This should cover lines 153-154 which were missing
         error = SandboxTimeoutError("Operation timed out after 30 seconds", timeout_duration=30.0)
         assert str(error) == "Operation timed out after 30 seconds"
-        assert error.timeout_duration == 30.0
+        assert error.timeout_duration is not None
+        assert abs(error.timeout_duration - 30.0) < 1e-6
         assert isinstance(error, SandboxError)
 
     def test_sandbox_timeout_error_none_duration(self) -> None:
@@ -274,7 +275,8 @@ class TestSandboxTimeoutError:
         """Test SandboxTimeoutError with zero duration."""
         error = SandboxTimeoutError("Immediate timeout", timeout_duration=0.0)
         assert str(error) == "Immediate timeout"
-        assert error.timeout_duration == 0.0
+        assert error.timeout_duration is not None
+        assert abs(error.timeout_duration - 0.0) < 1e-6
 
     def test_sandbox_timeout_error_inheritance(self) -> None:
         """Test SandboxTimeoutError inheritance chain."""

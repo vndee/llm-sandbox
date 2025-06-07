@@ -84,8 +84,7 @@ class TestSecurityPattern:
         )
 
         # Test that the pattern can be compiled
-        compiled_pattern = re.compile(complex_pattern.pattern)
-        assert compiled_pattern is not None
+        _ = re.compile(complex_pattern.pattern)
 
 
 class TestRestrictedModule:

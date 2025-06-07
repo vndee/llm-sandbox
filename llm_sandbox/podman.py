@@ -50,7 +50,7 @@ class SandboxPodmanSession(SandboxDockerSession):
     """
 
     def __init__(
-        self,
+        self,  # NOSONAR
         client: PodmanClient | None = None,
         image: str | None = None,
         dockerfile: str | None = None,
