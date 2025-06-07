@@ -2,11 +2,14 @@
 
 *Securely Execute LLM-Generated Code with Ease*
 
+[![SonarQube Cloud](https://sonarcloud.io/images/project_badges/sonarcloud-light.svg)](https://sonarcloud.io/summary/new_code?id=vndee_llm-sandbox)
+
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=vndee_llm-sandbox&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=vndee_llm-sandbox)
 [![PyPI Downloads](https://static.pepy.tech/badge/llm-sandbox)](https://pypi.org/project/llm-sandbox/)
 [![Release](https://img.shields.io/github/v/release/vndee/llm-sandbox)](https://img.shields.io/github/v/release/vndee/llm-sandbox)
 [![Build status](https://img.shields.io/github/actions/workflow/status/vndee/llm-sandbox/main.yml?branch=main)](https://github.com/vndee/llm-sandbox/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg)](https://codecov.io/gh/vndee/llm-sandbox)
 [![CodeFactor](https://www.codefactor.io/repository/github/vndee/llm-sandbox/badge)](https://www.codefactor.io/repository/github/vndee/llm-sandbox)
+[![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg)](https://codecov.io/gh/vndee/llm-sandbox)
 [![License](https://img.shields.io/github/license/vndee/llm-sandbox)](https://img.shields.io/github/license/vndee/llm-sandbox)
 [![Python Version](https://img.shields.io/pypi/pyversions/llm-sandbox)](https://pypi.org/project/llm-sandbox/)
 
