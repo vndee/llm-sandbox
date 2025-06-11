@@ -68,7 +68,30 @@ class SandboxPodmanSession(SandboxDockerSession):
         session_timeout: float | None = None,
         **kwargs: dict[str, Any],
     ) -> None:
-        """Initialize Podman session."""
+        r"""Initialize Podman session.
+
+        Args:
+            client (PodmanClient | None): The Podman client to use.
+            image (str | None): The image to use.
+            dockerfile (str | None): The Dockerfile to use.
+            lang (str): The language to use.
+            keep_template (bool): Whether to keep the template image.
+            commit_container (bool): Whether to commit the container to a new image.
+            verbose (bool): Whether to enable verbose output.
+            mounts (list | None): The mounts to use.
+            stream (bool): Whether to stream the output.
+            runtime_configs (dict | None): The runtime configurations to use.
+            workdir (str | None): The working directory to use.
+            security_policy (SecurityPolicy | None): The security policy to use.
+            default_timeout (float | None): The default timeout to use.
+            execution_timeout (float | None): The execution timeout to use.
+            session_timeout (float | None): The session timeout to use.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None
+
+        """
         config = SessionConfig(
             image=image,
             dockerfile=dockerfile,
