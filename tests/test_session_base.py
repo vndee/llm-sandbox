@@ -15,7 +15,6 @@ from llm_sandbox.core.mixins import ContainerAPI
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import (
-    CommandFailedError,
     LanguageHandlerNotInitializedError,
     LibraryInstallationNotSupportedError,
     NotOpenSessionError,
@@ -441,12 +440,8 @@ class TestBaseSessionCommandExecution:
             ConsoleOutput(exit_code=1, stdout="", stderr="error"),
         ]
 
-        with pytest.raises(CommandFailedError) as exc_info:
-            self.session.execute_commands(["ls", "invalid_command"])
-
-        # CommandFailedError stores the error info in the message, not as attributes
-        assert "invalid_command" in str(exc_info.value)
-        assert "exit code 1" in str(exc_info.value)
+        result = self.session.execute_commands(["ls", "invalid_command"])
+        assert result.exit_code == 1
 
 
 class TestBaseSessionEnvironmentSetup:

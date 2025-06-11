@@ -12,7 +12,6 @@ from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.mixins import CommandExecutionMixin, ContainerAPI, FileOperationsMixin, TimeoutMixin
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import (
-    CommandFailedError,
     LanguageHandlerNotInitializedError,
     LibraryInstallationNotSupportedError,
     NotOpenSessionError,
@@ -284,11 +283,10 @@ class BaseSession(
                 cmd_str, cmd_workdir = command
                 output = self.execute_command(cmd_str, workdir=cmd_workdir)
             else:
-                cmd_str = command
                 output = self.execute_command(command, workdir=workdir)
 
             if output.exit_code:
-                raise CommandFailedError(cmd_str, output.exit_code, output.stdout)
+                return output
 
         return output
 
