@@ -1,6 +1,6 @@
 [project]
 name = "llm-sandbox"
-version = "0.3.2"
+version = "0.3.7"
 description = "LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated mode."
 authors = [{ name = "Duy Huynh", email = "vndee.huynh@gmail.com" }]
 readme = "README.md"
