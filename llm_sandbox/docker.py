@@ -88,7 +88,7 @@ class SandboxDockerSession(BaseSession):
         keep_template: bool = False,
         commit_container: bool = False,
         verbose: bool = False,
-        stream: bool = True,
+        stream: bool = False,
         runtime_configs: dict | None = None,
         workdir: str = "/sandbox",
         security_policy: SecurityPolicy | None = None,

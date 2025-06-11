@@ -37,7 +37,7 @@ class TestSandboxDockerSessionInit:
         assert session.config.image is None  # Image is set during _prepare_image()
         assert session.keep_template is False
         assert session.commit_container is False
-        assert session.stream is True
+        assert session.stream is False
         assert session.config.workdir == "/sandbox"
         assert session.client == mock_client
         mock_docker_from_env.assert_called_once()

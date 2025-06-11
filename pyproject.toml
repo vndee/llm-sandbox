@@ -1,6 +1,6 @@
 [project]
 name = "llm-sandbox"
-version = "0.3.2"
+version = "0.3.7"
 description = "LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated mode."
 authors = [{ name = "Duy Huynh", email = "vndee.huynh@gmail.com" }]
 readme = "README.md"
@@ -25,7 +25,7 @@ Documentation = "https://vndee.github.io/llm-sandbox/"
 [project.optional-dependencies]
 docker = ["docker>=7.1.0"]
 k8s = ["kubernetes>=32.0.1"]
-podman = ["podman>=5.4.0.1"]
+podman = ["docker>=7.1.0", "podman>=5.4.0.1"]
 
 [dependency-groups]
 dev = [

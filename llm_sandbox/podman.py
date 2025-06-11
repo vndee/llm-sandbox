@@ -59,7 +59,7 @@ class SandboxPodmanSession(SandboxDockerSession):
         commit_container: bool = False,
         verbose: bool = False,
         mounts: list | None = None,
-        stream: bool = True,
+        stream: bool = False,
         runtime_configs: dict | None = None,
         workdir: str | None = "/sandbox",
         security_policy: SecurityPolicy | None = None,
