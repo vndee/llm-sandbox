@@ -252,8 +252,9 @@ class BaseSession(
     ) -> ConsoleOutput:
         r"""Execute a sequence of commands within the sandbox container.
 
-        This method iterates through a list of commands, executing them one by one.
-        If any command fails (returns a non-zero exit code), it raises a CommandFailedError.
+        This method executes the commands in order and returns the
+        ConsoleOutput of the first command that fails or, if all succeed,
+        the output of the last command.
 
         Args:
             commands (list[str | tuple[str, str | None]]): A list of commands to execute.
@@ -266,9 +267,6 @@ class BaseSession(
 
         Returns:
             ConsoleOutput: The output of the last successfully executed command.
-
-        Raises:
-            CommandFailedError: If any command in the sequence returns a non-zero exit code.
 
         """
         output = ConsoleOutput(exit_code=0)

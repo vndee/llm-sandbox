@@ -274,7 +274,27 @@ class SandboxKubernetesSession(BaseSession):
         session_timeout: float | None = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize Kubernetes session."""
+        r"""Initialize Kubernetes session.
+
+        Args:
+            client (CoreV1Api | None): The Kubernetes client to use.
+            image (str | None): The image to use.
+            lang (str): The language to use.
+            verbose (bool): Whether to enable verbose output.
+            kube_namespace (str): The Kubernetes namespace to use.
+            env_vars (dict[str, str] | None): The environment variables to use.
+            pod_manifest (dict | None): The Kubernetes pod manifest to use.
+            workdir (str): The working directory to use.
+            security_policy (SecurityPolicy | None): The security policy to use.
+            default_timeout (float | None): The default timeout to use.
+            execution_timeout (float | None): The execution timeout to use.
+            session_timeout (float | None): The session timeout to use.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None
+
+        """
         config = SessionConfig(
             image=image,
             lang=SupportedLanguage(lang.upper()),

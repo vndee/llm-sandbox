@@ -748,7 +748,7 @@ class TestDockerContainerAPI:
         api = DockerContainerAPI(mock_client)
 
         assert api.client == mock_client
-        assert api.stream is True
+        assert api.stream is False
 
     def test_create_container(self) -> None:
         """Test container creation."""
