@@ -1413,7 +1413,7 @@ wheels = [
 
 [[package]]
 name = "llm-sandbox"
-version = "0.3.2"
+version = "0.3.7"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
