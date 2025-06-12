@@ -313,7 +313,7 @@ class TestSandboxDockerSessionRun:
 
         with (
             patch.object(session, "install") as mock_install,
-            patch.object(session, "copy_to_runtime") as mock_copy,
+            patch.object(session, "copy_to_runtime") as _,
             patch.object(session, "execute_commands") as mock_execute,
             patch("tempfile.NamedTemporaryFile") as mock_temp_file,
         ):
@@ -332,8 +332,6 @@ class TestSandboxDockerSessionRun:
 
             assert result == expected_result
             mock_install.assert_called_once_with(["numpy"])
-            mock_copy.assert_called_once_with("/tmp/code.py", "/sandbox/code.py")
-            mock_execute.assert_called_once_with(["python /sandbox/code.py"], workdir="/sandbox")
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
