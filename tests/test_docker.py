@@ -302,7 +302,6 @@ class TestSandboxDockerSessionRun:
         """Test successful code execution."""
         mock_handler = MagicMock()
         mock_handler.file_extension = "py"
-        mock_handler.get_execution_commands.return_value = ["python /sandbox/code.py"]
         mock_create_handler.return_value = mock_handler
 
         session = SandboxDockerSession()

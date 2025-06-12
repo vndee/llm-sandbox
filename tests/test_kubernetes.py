@@ -1635,7 +1635,6 @@ class TestSandboxKubernetesSessionComplexScenarios:
         """Test complete session lifecycle: init -> open -> run -> close."""
         mock_handler = MagicMock()
         mock_handler.file_extension = "py"
-        mock_handler.get_execution_commands.return_value = ["python /sandbox/code.py"]
         mock_create_handler.return_value = mock_handler
 
         mock_client = MagicMock()

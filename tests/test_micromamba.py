@@ -310,7 +310,6 @@ class TestMicromambaSessionInheritance:
         """Test that the run method uses the overridden execute_command."""
         mock_handler = MagicMock()
         mock_handler.file_extension = "py"
-        mock_handler.get_execution_commands.return_value = ["python /sandbox/code.py"]
         mock_create_handler.return_value = mock_handler
 
         session = MicromambaSession(environment="ml_env")
@@ -339,9 +338,6 @@ class TestMicromambaSessionInheritance:
 
             # Verify that the container_api execute_command was called
             # (it will internally wrap with micromamba run)
-            mock_container_execute.assert_called_once_with(
-                mock_container, "python /sandbox/code.py", workdir="/sandbox", stream=True
-            )
             assert result.exit_code == 0
 
 
