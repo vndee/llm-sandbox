@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import types
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, cast
 
@@ -371,7 +372,7 @@ class BaseSession(
                 code_file.write(code.encode("utf-8"))
                 code_file.seek(0)
 
-                code_dest_file = f"{self.config.workdir}/code.{self.language_handler.file_extension}"
+                code_dest_file = f"{self.config.workdir}/{uuid.uuid4().hex}.{self.language_handler.file_extension}"
                 self.copy_to_runtime(code_file.name, code_dest_file)
 
                 commands = self.language_handler.get_execution_commands(code_dest_file)

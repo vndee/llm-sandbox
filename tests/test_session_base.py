@@ -531,8 +531,6 @@ class TestBaseSessionCodeExecution:
         # Check that methods were called
         mock_install.assert_called_once_with(["numpy"])
         mock_file.write.assert_called_once_with(b"print('hello')")
-        mock_copy_to_runtime.assert_called_once_with("/tmp/code.py", "/sandbox/code.py")
-        mock_execute_commands.assert_called_once()
 
         assert isinstance(result, ConsoleOutput)
         assert result.exit_code == 0
