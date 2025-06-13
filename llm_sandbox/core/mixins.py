@@ -3,7 +3,6 @@
 import io
 import tarfile
 import threading
-import types
 from abc import abstractmethod
 from pathlib import Path
 from typing import Any, Protocol
@@ -48,7 +47,7 @@ class TimeoutMixin:
 
         Uses threading-based timeout that works in all contexts:
         - Main thread
-        - Worker threads  
+        - Worker threads
         - Async contexts (asyncio.run_in_executor)
         - Any other execution context
 
@@ -82,7 +81,7 @@ class TimeoutMixin:
 
         thread = threading.Thread(target=target, daemon=True)
         thread.start()
-        
+
         # Wait for completion or timeout
         if not completed.wait(timeout):
             msg = f"Operation timed out after {timeout} seconds"
