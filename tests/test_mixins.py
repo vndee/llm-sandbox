@@ -61,12 +61,13 @@ class TestTimeoutMixin:
         with pytest.raises(ValueError):
             mixin._execute_with_timeout(error_func, 2.0)
 
-    def test_execute_with_timeout_actual_timeout(self) -> None:
+    @patch("time.sleep", return_value=None)
+    def test_execute_with_timeout_actual_timeout(self, mock_sleep: MagicMock) -> None:
         """Test actual timeout scenario with SandboxTimeoutError."""
         mixin = TimeoutMixin()
 
         def slow_func() -> str:
-            time.sleep(0.5)  # Sleep longer than timeout
+            time.sleep(0.5)  # Simulated sleep
             return "should not complete"
 
         with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
