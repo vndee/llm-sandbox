@@ -107,10 +107,16 @@ class TimeoutMixin:
                 # Optional: Force container-level kill for true cancellation
                 handler = getattr(self, "_handle_timeout", None)
                 if force_kill_on_timeout and callable(handler):
-                    try:
-                        handler()  # pyright: ignore[reportAttributeAccess]
-                    except Exception:  # noqa: BLE001
-                        self.logger.warning("Failed to cleanup container after timeout")
+
+                    def cleanup_async() -> None:
+                        try:
+                            handler()  # pyright: ignore[reportAttributeAccess]
+                        except Exception:  # noqa: BLE001
+                            self.logger.warning("Failed to cleanup container after timeout")
+
+                    # Run cleanup in a separate daemon thread to avoid blocking
+                    cleanup_thread = threading.Thread(target=cleanup_async, daemon=True)
+                    cleanup_thread.start()
 
                 raise SandboxTimeoutError(msg, timeout_duration=timeout)
 
