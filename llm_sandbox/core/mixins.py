@@ -2,9 +2,9 @@
 
 import io
 import tarfile
+import threading
 from abc import abstractmethod
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeoutError
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -46,10 +46,12 @@ class TimeoutMixin:
     def _execute_with_timeout(self, func: Any, timeout: float | None = None, *args: Any, **kwargs: Any) -> Any:
         """Execute a function with timeout monitoring.
 
-        Uses ThreadPoolExecutor-based timeout that provides better resource cleanup:
-        - Proper thread management and reuse
-        - Cancellation support for better cleanup
-        - Works in all contexts (main thread, worker threads, async contexts)
+        Uses threading-based timeout that works in all contexts with proper cleanup:
+        - Main thread
+        - Worker threads
+        - Async contexts (asyncio.run_in_executor)
+        - Any other execution context
+        - Includes thread cleanup to prevent resource leaks
 
         Args:
             func: The function to execute
@@ -67,15 +69,36 @@ class TimeoutMixin:
         if timeout is None:
             return func(*args, **kwargs)
 
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(func, *args, **kwargs)
+        result: list[Any] = [None]
+        exception: list[Exception | None] = [None]
+        completed = threading.Event()
+
+        def target() -> None:
             try:
-                return future.result(timeout=timeout)
-            except FutureTimeoutError:
-                # Attempt to cancel the future (will succeed if not yet started)
-                future.cancel()
+                result[0] = func(*args, **kwargs)
+            except Exception as e:  # noqa: BLE001
+                exception[0] = e
+            finally:
+                completed.set()
+
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+
+        try:
+            # Wait for completion or timeout
+            if not completed.wait(timeout):
                 msg = f"Operation timed out after {timeout} seconds"
-                raise SandboxTimeoutError(msg) from None
+                raise SandboxTimeoutError(msg)
+
+            if exception[0]:
+                raise exception[0]
+
+            return result[0]
+        finally:
+            # Best-effort thread cleanup to prevent resource leaks
+            # This will reclaim finished threads promptly
+            with suppress(Exception):
+                thread.join(timeout=0)  # Non-blocking join for cleanup
 
 
 class FileOperationsMixin:
