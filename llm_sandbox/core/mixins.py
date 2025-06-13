@@ -1,7 +1,6 @@
 """Mixins for common functionality."""
 
 import io
-import signal
 import tarfile
 import threading
 import types
@@ -47,7 +46,11 @@ class TimeoutMixin:
     def _execute_with_timeout(self, func: Any, timeout: float | None = None, *args: Any, **kwargs: Any) -> Any:
         """Execute a function with timeout monitoring.
 
-        Uses signal-based timeout on Unix systems and threading-based timeout on Windows.
+        Uses threading-based timeout that works in all contexts:
+        - Main thread
+        - Worker threads  
+        - Async contexts (asyncio.run_in_executor)
+        - Any other execution context
 
         Args:
             func: The function to execute
@@ -65,39 +68,23 @@ class TimeoutMixin:
         if timeout is None:
             return func(*args, **kwargs)
 
-        # For Unix systems with SIGALRM, use signal-based timeout
-        if hasattr(signal, "SIGALRM"):
-
-            def timeout_handler(signum: int, frame: types.FrameType | None) -> None:  # noqa: ARG001
-                msg = f"Operation timed out after {timeout} seconds"
-                raise SandboxTimeoutError(msg)
-
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(int(timeout))
-
-            try:
-                return func(*args, **kwargs)
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
-
-        # For Windows or systems without SIGALRM, use threading
         result: list[Any] = [None]
         exception: list[Exception | None] = [None]
+        completed = threading.Event()
 
         def target() -> None:
             try:
                 result[0] = func(*args, **kwargs)
             except Exception as e:  # noqa: BLE001
                 exception[0] = e
+            finally:
+                completed.set()
 
-        thread = threading.Thread(target=target)
-        thread.daemon = True
+        thread = threading.Thread(target=target, daemon=True)
         thread.start()
-        thread.join(timeout)
-
-        if thread.is_alive():
-            # Note: We can't actually kill the thread, but we can timeout
+        
+        # Wait for completion or timeout
+        if not completed.wait(timeout):
             msg = f"Operation timed out after {timeout} seconds"
             raise SandboxTimeoutError(msg)
 
@@ -176,7 +163,7 @@ class FileOperationsMixin:
                 continue
             if self._is_symlink(member):
                 if self.verbose:
-                    self.logger.warning("Skipping symlink: %s", member.name)
+                    self.logger.warning("Skipping unsafe path: %s", member.name)
                 continue
             safe_members.append(member)
         return safe_members
