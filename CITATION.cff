@@ -5,7 +5,7 @@ title: "LLM Sandbox"
 abstract: "A lightweight and portable sandbox environment designed to run Large Language Model (LLM) generated code in a safe and isolated mode. It provides a secure execution environment for AI-generated code while offering flexibility in container backends and comprehensive language support."
 authors:
   - family-names: "Huynh"
-    given-names: "Duy"
+    given-names: "Duy V."
     email: "vndee.huynh@gmail.com"
     orcid: "https://orcid.org/0000-0000-0000-0000"  # Add your ORCID if available
 identifiers:
@@ -40,7 +40,7 @@ preferred-citation:
   title: "LLM Sandbox: Secure Execution Environment for AI-Generated Code"
   authors:
     - family-names: "Huynh"
-      given-names: "Duy"
+      given-names: "Duy V."
       email: "vndee.huynh@gmail.com"
   version: "0.3.8"
   date-released: "2025-06-13"  # Update this to the actual release date
