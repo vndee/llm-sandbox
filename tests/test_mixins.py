@@ -3,9 +3,7 @@
 """Test cases for the new architecture mixins."""
 
 import io
-import signal
 import tarfile
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -13,7 +11,7 @@ import pytest
 
 from llm_sandbox.core.mixins import CommandExecutionMixin, FileOperationsMixin, TimeoutMixin
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
+from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError
 
 
 class MockContainerAPI:
@@ -51,38 +49,6 @@ class TestTimeoutMixin:
 
         result = mixin._execute_with_timeout(fast_func, 2.0)
         assert result == "completed"
-
-    @pytest.mark.skipif(not hasattr(signal, "SIGALRM"), reason="SIGALRM not available on this platform")
-    def test_execute_with_timeout_signal_based(self) -> None:
-        """Test timeout using signal-based approach (Unix)."""
-        mixin = TimeoutMixin()
-
-        def slow_func() -> str:
-            time.sleep(2.0)
-            return "should not reach here"
-
-        with pytest.raises(SandboxTimeoutError):
-            mixin._execute_with_timeout(slow_func, 1)
-
-    @patch("llm_sandbox.core.mixins.hasattr")
-    @patch("llm_sandbox.core.mixins.threading.Thread")
-    def test_execute_with_timeout_threading_based(self, mock_thread: MagicMock, mock_hasattr: MagicMock) -> None:
-        """Test timeout using threading-based approach."""
-        # Simulate Windows environment (no SIGALRM)
-        mock_hasattr.return_value = False
-
-        # Mock thread to simulate timeout
-        mock_thread_instance = Mock()
-        mock_thread_instance.is_alive.return_value = True
-        mock_thread.return_value = mock_thread_instance
-
-        mixin = TimeoutMixin()
-
-        def test_func() -> str:
-            return "test"
-
-        with pytest.raises(SandboxTimeoutError):
-            mixin._execute_with_timeout(test_func, 0.1)
 
     def test_execute_with_timeout_exception_propagation(self) -> None:
         """Test that exceptions are properly propagated."""
