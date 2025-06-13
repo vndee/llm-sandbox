@@ -38,7 +38,7 @@ class TestTimeoutMixin:
         def test_func(x: int, y: int) -> int:
             return x + y
 
-        result = mixin._execute_with_timeout(test_func, None, False, 2, 3)
+        result = mixin._execute_with_timeout(test_func, 2, 3, timeout=None, force_kill_on_timeout=False)
         assert result == 5
 
     def test_execute_with_timeout_success(self) -> None:
@@ -48,7 +48,7 @@ class TestTimeoutMixin:
         def fast_func() -> str:
             return "completed"
 
-        result = mixin._execute_with_timeout(fast_func, 2.0)
+        result = mixin._execute_with_timeout(fast_func, timeout=2.0)
         assert result == "completed"
 
     def test_execute_with_timeout_exception_propagation(self) -> None:
@@ -59,7 +59,7 @@ class TestTimeoutMixin:
             raise ValueError
 
         with pytest.raises(ValueError):
-            mixin._execute_with_timeout(error_func, 2.0)
+            mixin._execute_with_timeout(error_func, timeout=2.0)
 
     def test_execute_with_timeout_actual_timeout(self) -> None:
         """Test actual timeout scenario with SandboxTimeoutError."""
@@ -70,7 +70,7 @@ class TestTimeoutMixin:
             return "should not complete"
 
         with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
-            mixin._execute_with_timeout(slow_func, 0.1)
+            mixin._execute_with_timeout(slow_func, timeout=0.1)
 
 
 class TestFileOperationsMixin:

@@ -543,9 +543,10 @@ class TestBaseSessionCodeExecution:
             self.session.run("print('hello')", timeout=5.0)
 
             mock_timeout.assert_called_once()
-            args, _ = mock_timeout.call_args
-            assert len(args) >= 2  # function and timeout
-            assert abs(args[1] - 5.0) < 0.0001  # timeout value
+            args, kwargs = mock_timeout.call_args
+            assert len(args) >= 1  # function
+            assert "timeout" in kwargs
+            assert abs(kwargs["timeout"] - 5.0) < 0.0001  # timeout value
 
     @patch.object(MockBaseSession, "_handle_timeout")
     def test_run_timeout_exception(self, mock_handle_timeout: Mock) -> None:

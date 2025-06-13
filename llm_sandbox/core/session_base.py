@@ -382,7 +382,7 @@ class BaseSession(
                 )
 
         try:
-            result = self._execute_with_timeout(_run_code, actual_timeout)
+            result = self._execute_with_timeout(_run_code, timeout=actual_timeout)
             return cast("ConsoleOutput", result)
         except SandboxTimeoutError:
             self._handle_timeout()

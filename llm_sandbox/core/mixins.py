@@ -46,7 +46,7 @@ class TimeoutMixin:
     logger: Any
 
     def _execute_with_timeout(
-        self, func: Any, timeout: float | None = None, force_kill_on_timeout: bool = True, *args: Any, **kwargs: Any
+        self, func: Any, *args: Any, timeout: float | None = None, force_kill_on_timeout: bool = True, **kwargs: Any
     ) -> Any:
         """Execute a function with timeout monitoring.
 
@@ -84,13 +84,13 @@ class TimeoutMixin:
             return func(*args, **kwargs)
 
         result: list[Any] = [None]
-        exception: list[Exception | None] = [None]
+        exception: list[BaseException | None] = [None]
         completed = threading.Event()
 
         def target() -> None:
             try:
                 result[0] = func(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001
+            except BaseException as e:  # noqa: BLE001 # NOSONAR
                 exception[0] = e
             finally:
                 completed.set()
@@ -104,13 +104,14 @@ class TimeoutMixin:
                 msg = f"Operation timed out after {timeout} seconds"
 
                 # Optional: Force container-level kill for true cancellation
-                if force_kill_on_timeout and hasattr(self, "_handle_timeout"):
+                handler = getattr(self, "_handle_timeout", None)
+                if force_kill_on_timeout and callable(handler):
                     try:
-                        self._handle_timeout()  # pyright: ignore[reportAttributeAccess]
+                        handler()  # pyright: ignore[reportAttributeAccess]
                     except Exception:  # noqa: BLE001
                         self.logger.warning("Failed to cleanup container after timeout")
 
-                raise SandboxTimeoutError(msg)
+                raise SandboxTimeoutError(msg, timeout_duration=timeout)
 
             if exception[0]:
                 raise exception[0]
@@ -120,7 +121,8 @@ class TimeoutMixin:
             # Best-effort thread cleanup to prevent resource leaks
             # This will reclaim finished threads promptly
             with suppress(Exception):
-                thread.join(timeout=0)  # Non-blocking join for cleanup
+                if not thread.is_alive():
+                    thread.join(timeout=0.1)  # Non-blocking join for cleanup
 
 
 class FileOperationsMixin:
