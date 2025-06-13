@@ -1,16 +1,20 @@
 """Mixins for common functionality."""
 
 import io
-import signal
 import tarfile
 import threading
-import types
 from abc import abstractmethod
+from contextlib import suppress
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
+
+CLEANUP_THREAD_TIMEOUT = 0.1
 
 
 class ContainerAPI(Protocol):
@@ -44,14 +48,32 @@ class ContainerAPI(Protocol):
 class TimeoutMixin:
     """Mixin for timeout functionality."""
 
-    def _execute_with_timeout(self, func: Any, timeout: float | None = None, *args: Any, **kwargs: Any) -> Any:
+    logger: Any
+
+    def _execute_with_timeout(
+        self, func: Any, *args: Any, timeout: float | None = None, force_kill_on_timeout: bool = True, **kwargs: Any
+    ) -> Any:
         """Execute a function with timeout monitoring.
 
-        Uses signal-based timeout on Unix systems and threading-based timeout on Windows.
+        Uses threading-based timeout that works in all contexts with proper cleanup:
+        - Main thread
+        - Worker threads
+        - Async contexts (asyncio.run_in_executor)
+        - Any other execution context
+        - Includes thread cleanup to prevent resource leaks
+
+        **Thread Limitation**: This implementation cannot forcefully terminate running threads.
+        If the operation involves long-running C extensions or I/O-bound code, the daemon
+        thread may continue executing in the background even after timeout. True cancellation
+        is achieved at the container level via `_handle_timeout()` which kills/stops the
+        entire container process.
 
         Args:
             func: The function to execute
             timeout: Timeout in seconds
+            force_kill_on_timeout: If True, calls `_handle_timeout()` directly on timeout
+                for immediate container-level cancellation. Use with caution as this
+                terminates the entire container.
             *args: Arguments to pass to the function
             **kwargs: Keyword arguments to pass to the function
 
@@ -59,52 +81,61 @@ class TimeoutMixin:
             The result from the function execution
 
         Raises:
-            SandboxTimeoutError: If the function execution times out
+            SandboxTimeoutError: If the function execution times out. The calling code
+                should handle this by invoking container-level cleanup via `_handle_timeout()`.
 
         """
         if timeout is None:
             return func(*args, **kwargs)
 
-        # For Unix systems with SIGALRM, use signal-based timeout
-        if hasattr(signal, "SIGALRM"):
-
-            def timeout_handler(signum: int, frame: types.FrameType | None) -> None:  # noqa: ARG001
-                msg = f"Operation timed out after {timeout} seconds"
-                raise SandboxTimeoutError(msg)
-
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(int(timeout))
-
-            try:
-                return func(*args, **kwargs)
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
-
-        # For Windows or systems without SIGALRM, use threading
         result: list[Any] = [None]
-        exception: list[Exception | None] = [None]
+        exception_info: list[tuple[type[BaseException], BaseException, TracebackType | Any] | None] = [None]
+        completed = threading.Event()
 
         def target() -> None:
             try:
                 result[0] = func(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001
-                exception[0] = e
+            except BaseException as e:  # noqa: BLE001 # NOSONAR
+                exception_info[0] = (type(e), e, e.__traceback__)
+            finally:
+                completed.set()
 
-        thread = threading.Thread(target=target)
-        thread.daemon = True
+        thread = threading.Thread(target=target, daemon=True)
         thread.start()
-        thread.join(timeout)
 
-        if thread.is_alive():
-            # Note: We can't actually kill the thread, but we can timeout
-            msg = f"Operation timed out after {timeout} seconds"
-            raise SandboxTimeoutError(msg)
+        try:
+            # Wait for completion or timeout
+            if not completed.wait(timeout):
+                msg = f"Operation timed out after {timeout} seconds"
 
-        if exception[0]:
-            raise exception[0]
+                # Optional: Force container-level kill for true cancellation
+                handler = getattr(self, "_handle_timeout", None)
+                if force_kill_on_timeout and callable(handler):
 
-        return result[0]
+                    def cleanup_async() -> None:
+                        try:
+                            handler()  # pyright: ignore[reportAttributeAccess]
+                        except Exception:  # noqa: BLE001
+                            self.logger.warning("Failed to cleanup container after timeout")
+
+                    # Run cleanup in a separate daemon thread to avoid blocking
+                    cleanup_thread = threading.Thread(target=cleanup_async, daemon=True)
+                    cleanup_thread.start()
+
+                raise SandboxTimeoutError(msg, timeout_duration=timeout)
+
+            if exception_info[0]:
+                _, exc_value, exc_traceback = exception_info[0]
+                raise exc_value.with_traceback(exc_traceback)
+
+            return result[0]
+        finally:
+            # Best-effort thread cleanup to prevent resource leaks
+            # This will reclaim finished threads promptly
+            with suppress(Exception):
+                thread.join(
+                    timeout=0.0 if completed.is_set() else CLEANUP_THREAD_TIMEOUT
+                )  # Non-blocking join for cleanup
 
 
 class FileOperationsMixin:
