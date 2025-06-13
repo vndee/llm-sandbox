@@ -43,7 +43,11 @@ class ContainerAPI(Protocol):
 class TimeoutMixin:
     """Mixin for timeout functionality."""
 
-    def _execute_with_timeout(self, func: Any, timeout: float | None = None, *args: Any, **kwargs: Any) -> Any:
+    logger: Any
+
+    def _execute_with_timeout(
+        self, func: Any, timeout: float | None = None, force_kill_on_timeout: bool = False, *args: Any, **kwargs: Any
+    ) -> Any:
         """Execute a function with timeout monitoring.
 
         Uses threading-based timeout that works in all contexts with proper cleanup:
@@ -53,9 +57,18 @@ class TimeoutMixin:
         - Any other execution context
         - Includes thread cleanup to prevent resource leaks
 
+        **Thread Limitation**: This implementation cannot forcefully terminate running threads.
+        If the operation involves long-running C extensions or I/O-bound code, the daemon
+        thread may continue executing in the background even after timeout. True cancellation
+        is achieved at the container level via `_handle_timeout()` which kills/stops the
+        entire container process.
+
         Args:
             func: The function to execute
             timeout: Timeout in seconds
+            force_kill_on_timeout: If True, calls `_handle_timeout()` directly on timeout
+                for immediate container-level cancellation. Use with caution as this
+                terminates the entire container.
             *args: Arguments to pass to the function
             **kwargs: Keyword arguments to pass to the function
 
@@ -63,7 +76,8 @@ class TimeoutMixin:
             The result from the function execution
 
         Raises:
-            SandboxTimeoutError: If the function execution times out
+            SandboxTimeoutError: If the function execution times out. The calling code
+                should handle this by invoking container-level cleanup via `_handle_timeout()`.
 
         """
         if timeout is None:
@@ -88,6 +102,14 @@ class TimeoutMixin:
             # Wait for completion or timeout
             if not completed.wait(timeout):
                 msg = f"Operation timed out after {timeout} seconds"
+
+                # Optional: Force container-level kill for true cancellation
+                if force_kill_on_timeout and hasattr(self, "_handle_timeout"):
+                    try:
+                        self._handle_timeout()  # pyright: ignore[reportAttributeAccess]
+                    except Exception:  # noqa: BLE001
+                        self.logger.warning("Failed to cleanup container after timeout")
+
                 raise SandboxTimeoutError(msg)
 
             if exception[0]:

@@ -1,4 +1,4 @@
-# ruff: noqa: SLF001, PLR2004, ARG002, PT011
+# ruff: noqa: SLF001, PLR2004, ARG002, PT011, FBT003
 
 """Test cases for the new architecture mixins."""
 
@@ -38,7 +38,7 @@ class TestTimeoutMixin:
         def test_func(x: int, y: int) -> int:
             return x + y
 
-        result = mixin._execute_with_timeout(test_func, None, 2, 3)
+        result = mixin._execute_with_timeout(test_func, None, False, 2, 3)
         assert result == 5
 
     def test_execute_with_timeout_success(self) -> None:
