@@ -170,7 +170,7 @@ class FileOperationsMixin:
                 continue
             if self._is_symlink(member):
                 if self.verbose:
-                    self.logger.warning("Skipping unsafe path: %s", member.name)
+                    self.logger.warning("Skipping symlink (unsafe path): %s", member.name)
                 continue
             safe_members.append(member)
         return safe_members
