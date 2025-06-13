@@ -74,9 +74,10 @@ class TimeoutMixin:
         def target() -> None:
             try:
                 result[0] = func(*args, **kwargs)
-            except Exception as e:  # noqa: BLE001
+            except BaseException as e:  # noqa: BLE001
                 exception[0] = e
             finally:
+                ...
                 completed.set()
 
         thread = threading.Thread(target=target, daemon=True)
