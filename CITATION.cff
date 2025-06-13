@@ -1,0 +1,49 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "LLM Sandbox"
+abstract: "A lightweight and portable sandbox environment designed to run Large Language Model (LLM) generated code in a safe and isolated mode. It provides a secure execution environment for AI-generated code while offering flexibility in container backends and comprehensive language support."
+authors:
+  - family-names: "Huynh"
+    given-names: "Duy"
+    email: "vndee.huynh@gmail.com"
+    orcid: "https://orcid.org/0000-0000-0000-0000"  # Add your ORCID if available
+identifiers:
+  - type: url
+    value: "https://github.com/vndee/llm-sandbox"
+    description: "The GitHub repository"
+  - type: url
+    value: "https://pypi.org/project/llm-sandbox/"
+    description: "The PyPI package"
+repository-code: "https://github.com/vndee/llm-sandbox"
+url: "https://vndee.github.io/llm-sandbox/"
+repository-artifact: "https://pypi.org/project/llm-sandbox/"
+license: MIT
+version: "0.3.8"
+date-released: "2025-06-13"  # Update this to the actual release date
+keywords:
+  - "LLM"
+  - "sandbox"
+  - "code execution"
+  - "container"
+  - "docker"
+  - "kubernetes"
+  - "security"
+  - "python"
+  - "javascript"
+  - "java"
+  - "artificial intelligence"
+  - "large language models"
+  - "secure execution"
+preferred-citation:
+  type: software
+  title: "LLM Sandbox: Secure Execution Environment for AI-Generated Code"
+  authors:
+    - family-names: "Huynh"
+      given-names: "Duy"
+      email: "vndee.huynh@gmail.com"
+  version: "0.3.8"
+  date-released: "2025-06-13"  # Update this to the actual release date
+  url: "https://github.com/vndee/llm-sandbox"
+  license: MIT
+  repository-code: "https://github.com/vndee/llm-sandbox"
