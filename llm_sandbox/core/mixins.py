@@ -1,13 +1,15 @@
 """Mixins for common functionality."""
 
 import io
-import sys
 import tarfile
 import threading
 from abc import abstractmethod
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
@@ -85,14 +87,14 @@ class TimeoutMixin:
             return func(*args, **kwargs)
 
         result: list[Any] = [None]
-        exception_info: list[tuple[type[BaseException], BaseException, Any] | None] = [None]
+        exception_info: list[tuple[type[BaseException], BaseException, TracebackType | Any] | None] = [None]
         completed = threading.Event()
 
         def target() -> None:
             try:
                 result[0] = func(*args, **kwargs)
             except BaseException as e:  # noqa: BLE001 # NOSONAR
-                exception_info[0] = (type(e), e, sys.exc_info()[2])
+                exception_info[0] = (type(e), e, e.__traceback__)
             finally:
                 completed.set()
 
@@ -129,8 +131,7 @@ class TimeoutMixin:
             # Best-effort thread cleanup to prevent resource leaks
             # This will reclaim finished threads promptly
             with suppress(Exception):
-                if not thread.is_alive():
-                    thread.join(timeout=0.1)  # Non-blocking join for cleanup
+                thread.join(timeout=0.1)  # Non-blocking join for cleanup
 
 
 class FileOperationsMixin:
@@ -202,7 +203,7 @@ class FileOperationsMixin:
                 continue
             if self._is_symlink(member):
                 if self.verbose:
-                    self.logger.warning("Skipping symlink (unsafe path): %s", member.name)
+                    self.logger.warning("Skipping symlink: %s", member.name)
                 continue
             safe_members.append(member)
         return safe_members
