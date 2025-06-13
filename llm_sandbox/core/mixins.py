@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
 
+CLEANUP_THREAD_TIMEOUT = 0.1
+
 
 class ContainerAPI(Protocol):
     """Protocol for container operations."""
@@ -131,7 +133,7 @@ class TimeoutMixin:
             # Best-effort thread cleanup to prevent resource leaks
             # This will reclaim finished threads promptly
             with suppress(Exception):
-                thread.join(timeout=0.1)  # Non-blocking join for cleanup
+                thread.join(timeout=CLEANUP_THREAD_TIMEOUT)  # Non-blocking join for cleanup
 
 
 class FileOperationsMixin:
