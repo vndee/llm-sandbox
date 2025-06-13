@@ -133,7 +133,9 @@ class TimeoutMixin:
             # Best-effort thread cleanup to prevent resource leaks
             # This will reclaim finished threads promptly
             with suppress(Exception):
-                thread.join(timeout=CLEANUP_THREAD_TIMEOUT)  # Non-blocking join for cleanup
+                thread.join(
+                    timeout=0.0 if completed.is_set() else CLEANUP_THREAD_TIMEOUT
+                )  # Non-blocking join for cleanup
 
 
 class FileOperationsMixin:
