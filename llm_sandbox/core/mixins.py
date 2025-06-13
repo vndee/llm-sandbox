@@ -1,6 +1,7 @@
 """Mixins for common functionality."""
 
 import io
+import sys
 import tarfile
 import threading
 from abc import abstractmethod
@@ -84,14 +85,14 @@ class TimeoutMixin:
             return func(*args, **kwargs)
 
         result: list[Any] = [None]
-        exception: list[BaseException | None] = [None]
+        exception_info: list[tuple[type[BaseException], BaseException, Any] | None] = [None]
         completed = threading.Event()
 
         def target() -> None:
             try:
                 result[0] = func(*args, **kwargs)
             except BaseException as e:  # noqa: BLE001 # NOSONAR
-                exception[0] = e
+                exception_info[0] = (type(e), e, sys.exc_info()[2])
             finally:
                 completed.set()
 
@@ -113,8 +114,9 @@ class TimeoutMixin:
 
                 raise SandboxTimeoutError(msg, timeout_duration=timeout)
 
-            if exception[0]:
-                raise exception[0]
+            if exception_info[0]:
+                _, exc_value, exc_traceback = exception_info[0]
+                raise exc_value.with_traceback(exc_traceback)
 
             return result[0]
         finally:
