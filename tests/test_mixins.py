@@ -72,6 +72,90 @@ class TestTimeoutMixin:
         with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
             mixin._execute_with_timeout(slow_func, timeout=0.1)
 
+    def test_execute_with_timeout_with_handler_success(self) -> None:
+        """Test timeout with force_kill_on_timeout=True and successful handler call."""
+
+        class TimeoutMixinWithHandler(TimeoutMixin):
+            def __init__(self) -> None:
+                self.logger = Mock()
+                self.handler_called = False
+
+            def _handle_timeout(self) -> None:
+                self.handler_called = True
+
+        mixin = TimeoutMixinWithHandler()
+
+        def slow_func() -> str:
+            time.sleep(0.5)  # Simulated sleep
+            return "should not complete"
+
+        with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
+            mixin._execute_with_timeout(slow_func, timeout=0.1, force_kill_on_timeout=True)
+
+        # Verify the handler was called
+        assert mixin.handler_called
+
+    def test_execute_with_timeout_with_handler_exception(self) -> None:
+        """Test timeout with force_kill_on_timeout=True when handler raises exception."""
+
+        class TimeoutMixinWithFailingHandler(TimeoutMixin):
+            def __init__(self) -> None:
+                self.logger = Mock()
+
+            def _handle_timeout(self) -> None:
+                msg = "Handler failed"
+                raise RuntimeError(msg)
+
+        mixin = TimeoutMixinWithFailingHandler()
+
+        def slow_func() -> str:
+            time.sleep(0.5)  # Simulated sleep
+            return "should not complete"
+
+        with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
+            mixin._execute_with_timeout(slow_func, timeout=0.1, force_kill_on_timeout=True)
+
+        # Verify the warning was logged when handler failed
+        mixin.logger.warning.assert_called_once_with("Failed to cleanup container after timeout")
+
+    def test_execute_with_timeout_no_handler(self) -> None:
+        """Test timeout with force_kill_on_timeout=True but no _handle_timeout method."""
+        mixin = TimeoutMixin()
+        mixin.logger = Mock()
+
+        def slow_func() -> str:
+            time.sleep(0.5)  # Simulated sleep
+            return "should not complete"
+
+        with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
+            mixin._execute_with_timeout(slow_func, timeout=0.1, force_kill_on_timeout=True)
+
+        # Handler should not be called since it doesn't exist
+        mixin.logger.warning.assert_not_called()
+
+    def test_execute_with_timeout_force_kill_disabled(self) -> None:
+        """Test timeout with force_kill_on_timeout=False."""
+
+        class TimeoutMixinWithHandler(TimeoutMixin):
+            def __init__(self) -> None:
+                self.logger = Mock()
+                self.handler_called = False
+
+            def _handle_timeout(self) -> None:
+                self.handler_called = True
+
+        mixin = TimeoutMixinWithHandler()
+
+        def slow_func() -> str:
+            time.sleep(0.5)  # Simulated sleep
+            return "should not complete"
+
+        with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
+            mixin._execute_with_timeout(slow_func, timeout=0.1, force_kill_on_timeout=False)
+
+        # Handler should not be called when force_kill_on_timeout=False
+        assert not mixin.handler_called
+
 
 class TestFileOperationsMixin:
     """Test cases for FileOperationsMixin."""
