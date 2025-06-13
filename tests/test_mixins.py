@@ -4,6 +4,7 @@
 
 import io
 import tarfile
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -11,7 +12,7 @@ import pytest
 
 from llm_sandbox.core.mixins import CommandExecutionMixin, FileOperationsMixin, TimeoutMixin
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError
+from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
 
 
 class MockContainerAPI:
@@ -59,6 +60,17 @@ class TestTimeoutMixin:
 
         with pytest.raises(ValueError):
             mixin._execute_with_timeout(error_func, 2.0)
+
+    def test_execute_with_timeout_actual_timeout(self) -> None:
+        """Test actual timeout scenario with SandboxTimeoutError."""
+        mixin = TimeoutMixin()
+
+        def slow_func() -> str:
+            time.sleep(0.5)  # Sleep longer than timeout
+            return "should not complete"
+
+        with pytest.raises(SandboxTimeoutError, match="Operation timed out after 0.1 seconds"):
+            mixin._execute_with_timeout(slow_func, 0.1)
 
 
 class TestFileOperationsMixin:
