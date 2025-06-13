@@ -46,7 +46,7 @@ class TimeoutMixin:
     logger: Any
 
     def _execute_with_timeout(
-        self, func: Any, timeout: float | None = None, force_kill_on_timeout: bool = False, *args: Any, **kwargs: Any
+        self, func: Any, timeout: float | None = None, force_kill_on_timeout: bool = True, *args: Any, **kwargs: Any
     ) -> Any:
         """Execute a function with timeout monitoring.
 
