@@ -3,16 +3,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import docker
-from docker.errors import ImageNotFound
+from docker.errors import ImageNotFound, NotFound
 
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
-from llm_sandbox.exceptions import ImagePullError, NotOpenSessionError
+from llm_sandbox.exceptions import ContainerError, ImagePullError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
 if TYPE_CHECKING:
     from docker.models.images import Image
+
+DOCKER_CONFLICT_ERROR_CODES = {404, 409}
 
 
 class DockerContainerAPI:
@@ -95,6 +97,7 @@ class SandboxDockerSession(BaseSession):
         default_timeout: float | None = None,
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
+        container_id: str | None = None,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Docker session.
@@ -114,6 +117,7 @@ class SandboxDockerSession(BaseSession):
             default_timeout (float | None): The default timeout to use.
             execution_timeout (float | None): The execution timeout to use.
             session_timeout (float | None): The session timeout to use.
+            container_id (str | None): ID of existing container to connect to.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -131,6 +135,7 @@ class SandboxDockerSession(BaseSession):
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
+            container_id=container_id,
         )
 
         super().__init__(config=config, **kwargs)
@@ -230,21 +235,40 @@ class SandboxDockerSession(BaseSession):
 
     def _handle_timeout(self) -> None:
         """Handle Docker timeout cleanup."""
-        if self.container:
-            container_id = self.container.short_id
+        if self.using_existing_container:
             try:
-                self.container.kill()
-                self.logger.warning("Killed container %s due to timeout", container_id)
-            except Exception:
-                self.logger.exception("Failed to kill container")
+                self.close()
+            except Exception as e:  # noqa: BLE001
+                self._log(f"Error during timeout cleanup: {e}", "error")
 
-            try:
-                self.container.remove(force=True)
-                self.logger.warning("Removed container %s", container_id)
-            except Exception:
-                self.logger.exception("Failed to remove container")
+    def _connect_to_existing_container(self, container_id: str) -> None:
+        """Connect to an existing Docker container.
 
-            self.container = None
+        Args:
+            container_id (str): The ID of the existing container to connect to.
+
+        Raises:
+            ContainerError: If the container cannot be found or accessed.
+
+        """
+        try:
+            self.container = self.client.containers.get(container_id)
+            self._log(f"Connected to existing container {container_id}")
+
+            # Verify container is running
+            if self.container.status != "running":
+                self._log(f"Container {container_id} is not running, attempting to start...")
+                self.container.start()
+                self._log(f"Started container {container_id}")
+
+        except NotFound as e:
+            msg = f"Container {container_id} not found"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
+        except Exception as e:
+            msg = f"Failed to connect to container {container_id}: {e}"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
 
     def _prepare_image(self) -> None:
         """Prepare Docker image."""
@@ -288,26 +312,32 @@ class SandboxDockerSession(BaseSession):
         r"""Open Docker session.
 
         This method prepares the Docker environment for code execution by:
-        - Building or pulling the Docker image
-        - Creating a container
-        - Setting up the environment
-        - Running the code
+        - Building or pulling the Docker image (if not using existing container)
+        - Creating a container or connecting to existing one
+        - Setting up the environment (if not using existing container)
 
         Raises:
             ImagePullError: If the image cannot be pulled.
             ImageNotFoundError: If the image cannot be found.
+            ContainerError: If existing container cannot be found or accessed.
 
         """
         super().open()
 
-        self._prepare_image()
+        if self.using_existing_container and self.config.container_id:
+            # Connect to existing container
+            self._connect_to_existing_container(self.config.container_id)
+        else:
+            # Create new container
+            self._prepare_image()
 
-        container_config = {"image": self.docker_image, "detach": True, "tty": True, "user": "root"}
+            container_config = {"image": self.docker_image, "detach": True, "tty": True, "user": "root"}
+            container_config.update(self.config.runtime_configs)
 
-        container_config.update(self.config.runtime_configs)
+            self.container = self.container_api.create_container(container_config)
+            self.container_api.start_container(self.container)
 
-        self.container = self.container_api.create_container(container_config)
-        self.container_api.start_container(self.container)
+        # Setup environment (skipped for existing containers)
         self.environment_setup()
 
     def close(self) -> None:
@@ -315,10 +345,12 @@ class SandboxDockerSession(BaseSession):
 
         This method cleans up Docker resources by:
         1. Committing the container to a new image if `commit_container` is True.
-        2. Stopping and removing the running Docker container.
+        2. Stopping and removing the running Docker container (only if we created it).
         3. Removing the Docker image if `is_create_template` is True (image was built or pulled
             during this session), `keep_template` is False, and the image is not in use by
             other containers.
+
+        Note: When using existing containers, we only disconnect but don't stop/remove the container.
 
         Raises:
             ImageNotFoundError: If the image to be removed is not found (should not typically occur).
@@ -330,14 +362,19 @@ class SandboxDockerSession(BaseSession):
             if self.keep_template and self.docker_image:
                 self._commit_container()
 
-            try:
-                self.container.stop()
-                self.container.wait()
-                self.container.remove(force=True)
-            except Exception:  # noqa: BLE001
-                self._log("Error cleaning up container")
-            finally:
-                self.container = None
+            # Only stop/remove container if we created it (not existing container)
+            if not self.using_existing_container:
+                try:
+                    self.container.stop()
+                    self.container.wait()
+                    self.container.remove(force=True)
+                    self._log("Stopped and removed container")
+                except Exception:  # noqa: BLE001
+                    self._log("Error cleaning up container")
+            else:
+                self._log("Disconnected from existing container")
+
+            self.container = None
 
         if self.is_create_template and not self.keep_template and self.docker_image:
             self._cleanup_image()

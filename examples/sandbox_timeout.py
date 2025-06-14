@@ -20,7 +20,7 @@ def create_test_session(backend_enum: SandboxBackend, client: Any = None) -> Bas
         execution_timeout=10.0,  # Default execution timeout
         session_timeout=120.0,  # Session timeout
         verbose=True,
-        keep_template=True,
+        keep_template=False,
         client=client,
     )
 
@@ -322,6 +322,10 @@ def example_timeout_error_handling() -> None:
     logger.info("Timeout Error Handling Example")
     logger.info("%s", "=" * 60)
 
+    import docker
+
+    client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+
     # This code has variable execution time
     variable_code = """
 import time
@@ -338,7 +342,7 @@ print("Done sleeping.")
         logger.info("Attempt %s/%s", attempt + 1, max_retries)
         try:
             # Create a new session for each attempt
-            with SandboxSession(lang="python", execution_timeout=2.0, verbose=True) as session:
+            with SandboxSession(lang="python", execution_timeout=2.0, verbose=True, client=client) as session:
                 result = session.run(variable_code)
                 logger.info("✅ Attempt %s succeeded.", attempt + 1)
                 logger.info("Output: %s", result.stdout)

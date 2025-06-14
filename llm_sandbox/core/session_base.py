@@ -56,6 +56,7 @@ class BaseSession(
         # Container state
         self.container: Any = None
         self.is_open = False
+        self.using_existing_container = config.is_using_existing_container()
 
         self.container_api: ContainerAPI
 
@@ -300,10 +301,17 @@ class BaseSession(
         For Go, it initializes a Go module.
         We will support other languages in the future.
 
+        Note: This method is skipped when using an existing container (container_id is provided).
+
         Raises:
             CommandFailedError: If any setup command fails.
 
         """
+        # Skip environment setup when using existing container
+        if self.using_existing_container:
+            self._log("Skipping environment setup for existing container", "info")
+            return
+
         self.execute_commands([
             (f"mkdir -p {self.config.workdir}", None),
         ])
@@ -393,6 +401,18 @@ class BaseSession(
         r"""Handle timeout cleanup - backend specific.
 
         Must be implemented by subclasses.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def _connect_to_existing_container(self, container_id: str) -> None:
+        r"""Connect to an existing container - backend specific.
+
+        Must be implemented by subclasses.
+
+        Args:
+            container_id (str): The ID of the existing container to connect to.
+
         """
         raise NotImplementedError
 

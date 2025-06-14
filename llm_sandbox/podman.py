@@ -66,6 +66,7 @@ class SandboxPodmanSession(SandboxDockerSession):
         default_timeout: float | None = None,
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
+        container_id: str | None = None,
         **kwargs: dict[str, Any],
     ) -> None:
         r"""Initialize Podman session.
@@ -86,6 +87,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             default_timeout (float | None): The default timeout to use.
             execution_timeout (float | None): The execution timeout to use.
             session_timeout (float | None): The session timeout to use.
+            container_id (str | None): ID of existing container to connect to.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -103,6 +105,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
+            container_id=container_id,
         )
 
         # Initialize BaseSession (skip Docker's __init__)

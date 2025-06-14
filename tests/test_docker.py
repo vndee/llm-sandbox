@@ -9,12 +9,13 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from docker.errors import ImageNotFound, NotFound
 from pydantic_core import ValidationError
 
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
-from llm_sandbox.exceptions import CommandEmptyError, ImagePullError, NotOpenSessionError
+from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ImagePullError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -150,8 +151,6 @@ class TestSandboxDockerSessionOpen:
         mock_docker_from_env.return_value = mock_client
 
         # Image not found locally, but pull succeeds
-        from docker.errors import ImageNotFound
-
         mock_client.images.get.side_effect = ImageNotFound("Image not found")
 
         mock_image = MagicMock()
@@ -177,8 +176,6 @@ class TestSandboxDockerSessionOpen:
         mock_create_handler.return_value = mock_handler
         mock_client = MagicMock()
         mock_docker_from_env.return_value = mock_client
-
-        from docker.errors import ImageNotFound
 
         mock_client.images.get.side_effect = ImageNotFound("Image not found")
         mock_client.images.pull.side_effect = Exception("Pull failed")
@@ -1010,74 +1007,52 @@ class TestSandboxDockerSessionEdgeCases:
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
         session.container = mock_container
+        session.using_existing_container = True  # Set to use existing container
 
-        with patch.object(session, "logger") as mock_logger:
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-        mock_container.kill.assert_called_once()
-        mock_container.remove.assert_called_once_with(force=True)
-        assert session.container is None
-        mock_logger.warning.assert_any_call("Killed container %s due to timeout", "abc123")
-        mock_logger.warning.assert_any_call("Removed container %s", "abc123")
+        mock_close.assert_called_once()
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_handle_timeout_kill_failure(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test _handle_timeout with kill failure."""
+        """Test _handle_timeout with using_existing_container=False (should do nothing)."""
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
         session = SandboxDockerSession()
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
-        mock_container.kill.side_effect = Exception("Kill failed")
         session.container = mock_container
+        session.using_existing_container = False  # Not using existing container
 
-        with patch.object(session, "logger") as mock_logger:
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-        mock_container.kill.assert_called_once()
-        mock_container.remove.assert_called_once_with(force=True)
-        assert session.container is None
-        mock_logger.exception.assert_called_with("Failed to kill container")
+        # Should not call close() when not using existing container
+        mock_close.assert_not_called()
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_handle_timeout_remove_failure(
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
-        """Test _handle_timeout with remove failure."""
+        """Test _handle_timeout with close() raising exception."""
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
         session = SandboxDockerSession()
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
-        mock_container.remove.side_effect = Exception("Remove failed")
         session.container = mock_container
+        session.using_existing_container = True  # Set to use existing container
 
-        with patch.object(session, "logger") as mock_logger:
+        with patch.object(session, "close", side_effect=Exception("Close failed")) as mock_close:
+            # Should not raise exception, just call close
             session._handle_timeout()
 
-        mock_container.kill.assert_called_once()
-        mock_container.remove.assert_called_once_with(force=True)
-        assert session.container is None
-        mock_logger.exception.assert_called_with("Failed to remove container")
-
-    @patch("llm_sandbox.docker.docker.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_handle_timeout_no_container(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test _handle_timeout with no container."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = SandboxDockerSession()
-        session.container = None
-
-        with patch.object(session, "logger") as mock_logger:
-            session._handle_timeout()
-
-        mock_logger.warning.assert_not_called()
+        mock_close.assert_called_once()
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -1317,3 +1292,181 @@ class TestSandboxDockerSessionTimeoutEdgeCases:
 
         assert stdout == "stdout string"
         assert stderr == "stderr string"
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_handle_timeout_no_container(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
+        """Test _handle_timeout with no existing container usage."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession()
+        session.container = None
+        session.using_existing_container = False  # Not using existing container
+
+        with patch.object(session, "close") as mock_close:
+            session._handle_timeout()
+
+        # Should not call close() when not using existing container
+        mock_close.assert_not_called()
+
+
+class TestSandboxDockerSessionExistingContainer:
+    """Test cases for existing container functionality."""
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_connect_to_existing_container_not_found(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test connecting to non-existent container."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+        mock_client.containers.get.side_effect = NotFound("Container not found")
+
+        session = SandboxDockerSession(container_id="non-existent")
+
+        with pytest.raises(ContainerError, match="Container non-existent not found"):
+            session.open()
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_connect_to_existing_container_other_error(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test connecting to existing container with other errors."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+        mock_client.containers.get.side_effect = Exception("Connection failed")
+
+        session = SandboxDockerSession(container_id="test-container")
+
+        with pytest.raises(ContainerError, match="Failed to connect to container test-container"):
+            session.open()
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_connect_to_stopped_container(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test connecting to stopped container and starting it."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+
+        mock_container = MagicMock()
+        mock_container.status = "stopped"
+        mock_container.short_id = "abc123"
+        mock_client.containers.get.return_value = mock_container
+
+        session = SandboxDockerSession(container_id="test-container")
+
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        mock_container.start.assert_called_once()
+        assert session.container == mock_container
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_image_pull_error(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
+        """Test image pull failure."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+        mock_client.images.get.side_effect = ImageNotFound("Image not found")
+        mock_client.images.pull.side_effect = Exception("Pull failed")
+
+        session = SandboxDockerSession(image="non-existent-image")
+
+        with pytest.raises(ImagePullError):
+            session.open()
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_commit_container_failure(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
+        """Test container commit failure."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+
+        mock_image = MagicMock()
+        mock_image.tags = ["test-image:latest"]
+        mock_client.images.get.return_value = mock_image
+
+        mock_container = MagicMock()
+        mock_container.commit.side_effect = Exception("Commit failed")
+
+        session = SandboxDockerSession(keep_template=True)
+        session.docker_image = mock_image
+        session.container = mock_container
+
+        with pytest.raises(Exception, match="Commit failed"):
+            session._commit_container()
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_cleanup_image_with_containers(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test image cleanup when other containers are using it."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+
+        mock_image = MagicMock()
+        mock_image.id = "image-id"
+
+        # Mock containers using the image
+        mock_client.containers.list.return_value = [MagicMock()]
+
+        session = SandboxDockerSession()
+        session.client = mock_client
+        session.docker_image = mock_image
+
+        session._cleanup_image()
+
+        # Should not remove image when containers are using it
+        mock_image.remove.assert_not_called()
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_cleanup_image_removal_failure(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test image cleanup when removal fails."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+
+        mock_image = MagicMock()
+        mock_image.id = "image-id"
+        mock_image.remove.side_effect = Exception("Remove failed")
+
+        # No containers using the image
+        mock_client.containers.list.return_value = []
+
+        session = SandboxDockerSession()
+        session.client = mock_client
+        session.docker_image = mock_image
+
+        # Should not raise exception, just log error
+        session._cleanup_image()
+
+        mock_image.remove.assert_called_once()

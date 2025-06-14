@@ -51,6 +51,7 @@ class MicromambaSession(SandboxDockerSession):
         default_timeout: float | None = None,
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
+        container_id: str | None = None,
         **kwargs: Any,
     ) -> None:
         r"""Initialize a new Micromamba-enabled sandbox session.
@@ -87,6 +88,8 @@ class MicromambaSession(SandboxDockerSession):
                 Defaults to None.
             session_timeout (float | None, optional): The session timeout for the session.
                 Defaults to None.
+            container_id (str | None, optional): ID of existing container to connect to.
+                Defaults to None.
             **kwargs: Additional keyword arguments.
 
         """
@@ -106,6 +109,7 @@ class MicromambaSession(SandboxDockerSession):
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
+            container_id=container_id,
             **kwargs,
         )
 
