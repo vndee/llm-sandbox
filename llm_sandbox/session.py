@@ -49,6 +49,7 @@ def create_session(
                     - verbose (bool): Enable verbose logging
                     - keep_template (bool): Keep the container template
                     - image (str): Custom container image to use
+                    - container_id (str): ID of existing container/pod to connect to
 
     Returns:
         Session: A sandbox session instance for the specified backend
@@ -58,6 +59,49 @@ def create_session(
         UnsupportedBackendError: If the chosen backend is not supported
 
     Examples:
+        Connect to existing Docker container:
+        ```python
+        # Assumes you have a running container with ID 'abc123...'
+        with SandboxSession(container_id='abc123def456', lang="python") as session:
+            result = session.run("print('Hello from existing container!')")
+            print(result.stdout)
+            
+            # Install libraries in existing container
+            session.install(["numpy"])
+            result = session.run("import numpy as np; print(np.random.rand())")
+            
+            # Execute commands
+            result = session.execute_command("ls -la")
+            
+            # Copy files
+            session.copy_to_runtime("local_file.py", "/container/path/file.py")
+        ```
+
+        Connect to existing Kubernetes pod:
+        ```python
+        # Assumes you have a running pod with name 'my-pod-abc123'
+        with SandboxSession(
+            backend=SandboxBackend.KUBERNETES,
+            container_id='my-pod-abc123',  # pod name
+            lang="python"
+        ) as session:
+            result = session.run("print('Hello from existing pod!')")
+        ```
+
+        Connect to existing Podman container:
+        ```python
+        from podman import PodmanClient
+        
+        client = PodmanClient()  
+        with SandboxSession(
+            backend=SandboxBackend.PODMAN,
+            client=client,
+            container_id='podman-container-id',
+            lang="python"
+        ) as session:
+            result = session.run("print('Hello from existing Podman container!')")
+        ```
+
         Python session with package installation:
         ```python
         with SandboxSession(lang="python", keep_template=True, verbose=True) as session:
@@ -189,6 +233,7 @@ class ArtifactSandboxSession:
         workdir: str | None = "/sandbox",
         enable_plotting: bool = True,
         security_policy: SecurityPolicy | None = None,
+        container_id: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Create a new artifact sandbox session.
@@ -209,6 +254,7 @@ class ArtifactSandboxSession:
             workdir (str, optional): Working directory inside the container
             enable_plotting (bool, optional): Whether to enable plot extraction
             security_policy (SecurityPolicy, optional): Security policy to enforce
+            container_id (str, optional): ID of existing container/pod to connect to
             **kwargs: Additional keyword arguments for specific backends (e.g., client for Podman)
 
         Raises:
@@ -216,6 +262,44 @@ class ArtifactSandboxSession:
             UnsupportedBackendError: If the chosen backend is not supported
 
         Examples:
+            Connect to existing container for artifact generation:
+            ```python
+            from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+            from pathlib import Path
+            import base64
+
+            # Connect to existing container
+            with ArtifactSandboxSession(
+                container_id='existing-container-id',
+                lang="python",
+                verbose=True,
+                backend=SandboxBackend.DOCKER
+            ) as session:
+                # Code that generates plots in existing environment
+                code = '''
+                import matplotlib.pyplot as plt
+                import numpy as np
+
+                # Generate and plot data
+                x = np.linspace(0, 10, 100)
+                y = np.sin(x)
+
+                plt.figure()
+                plt.plot(x, y)
+                plt.title('Plot from Existing Container')
+                plt.show()
+                '''
+
+                result = session.run(code)
+                print(f"Captured {len(result.plots)} plots")
+
+                # Save captured plots
+                for i, plot in enumerate(result.plots):
+                    plot_path = Path("plots") / f"existing_{i + 1:06d}.{plot.format.value}"
+                    with plot_path.open("wb") as f:
+                        f.write(base64.b64decode(plot.content_base64))
+            ```
+
             Basic usage with Docker backend:
             ```python
             from llm_sandbox import ArtifactSandboxSession, SandboxBackend
@@ -297,6 +381,7 @@ class ArtifactSandboxSession:
             runtime_configs=runtime_configs,
             workdir=workdir,
             security_policy=security_policy,
+            container_id=container_id,
             **kwargs,
         )
 
