@@ -37,13 +37,13 @@ with SandboxSession(
 ) as session:
     # Run code in existing container
     result = session.run("import sys; print(sys.version)")
-    
+
     # Install additional libraries
     session.install(["numpy"])
-    
+
     # Execute commands
     result = session.execute_command("ls -la")
-    
+
     # Copy files
     session.copy_to_runtime("local_file.py", "/container/path/file.py")
 ```
@@ -101,7 +101,7 @@ with SandboxSession(
 When using `container_id`, the sandbox **skips environment setup**. This means:
 
 - No virtual environment creation (for Python)
-- No package manager initialization  
+- No package manager initialization
 - No working directory setup
 - **You must ensure the container has the proper environment and tools for your language**
 
@@ -184,14 +184,14 @@ finally:
 - Supports both running and stopped containers (will start if stopped)
 - Full Docker API compatibility
 
-### Kubernetes  
+### Kubernetes
 - Uses pod name as `container_id`
 - Must specify correct namespace via `kube_namespace` parameter
 - Pod must be in "Running" state
 - Will wait briefly for "Pending" pods to start
 
 ### Podman
-- Uses container ID or name  
+- Uses container ID or name
 - Compatible with Docker API
 - Supports both running and stopped containers
 

@@ -412,6 +412,7 @@ class BaseSession(
 
         Args:
             container_id (str): The ID of the existing container to connect to.
+
         """
         raise NotImplementedError
 

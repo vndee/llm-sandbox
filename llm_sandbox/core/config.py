@@ -23,10 +23,10 @@ class SessionConfig(BaseModel):
         description="The path to a Dockerfile to build an image from. Cannot be used if `image` is also provided.",
     )
 
-    # Existing container settings
     container_id: str | None = Field(
         default=None,
-        description="ID of an existing container/pod to connect to. When provided, skips container creation and environment setup. "
+        description="ID of an existing container/pod to connect to. When provided, "
+        "skips container creation and environment setup. "
         "User must ensure the container has proper environment and tools for the specified language.",
     )
 
@@ -41,10 +41,9 @@ class SessionConfig(BaseModel):
     @model_validator(mode="after")
     def validate_container_id_constraints(self) -> "SessionConfig":
         """Validate constraints when using existing container."""
-        if self.container_id is not None:
-            if self.dockerfile is not None:
-                msg = "Cannot use 'dockerfile' with existing 'container_id'"
-                raise ValueError(msg)
+        if self.container_id is not None and self.dockerfile is not None:
+            msg = "Cannot use 'dockerfile' with existing 'container_id'"
+            raise ValueError(msg)
         return self
 
     # Behaviour settings

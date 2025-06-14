@@ -65,14 +65,14 @@ def create_session(
         with SandboxSession(container_id='abc123def456', lang="python") as session:
             result = session.run("print('Hello from existing container!')")
             print(result.stdout)
-            
+
             # Install libraries in existing container
             session.install(["numpy"])
             result = session.run("import numpy as np; print(np.random.rand())")
-            
+
             # Execute commands
             result = session.execute_command("ls -la")
-            
+
             # Copy files
             session.copy_to_runtime("local_file.py", "/container/path/file.py")
         ```
@@ -91,8 +91,8 @@ def create_session(
         Connect to existing Podman container:
         ```python
         from podman import PodmanClient
-        
-        client = PodmanClient()  
+
+        client = PodmanClient()
         with SandboxSession(
             backend=SandboxBackend.PODMAN,
             client=client,

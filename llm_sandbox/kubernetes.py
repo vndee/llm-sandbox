@@ -18,6 +18,7 @@ from llm_sandbox.security import SecurityPolicy
 
 SH_SHELL = "/bin/sh"
 POD_STARTUP_TIMEOUT = 300  # 5 minutes
+KUBERNETES_POD_NOT_FOUND_ERROR_CODE = 404
 
 
 class KubernetesContainerAPI:
@@ -328,12 +329,12 @@ class SandboxKubernetesSession(BaseSession):
         if not self.using_existing_container:
             short_uuid = uuid.uuid4().hex[:8]
             self.pod_name = f"sandbox-{lang.lower()}-{short_uuid}"
-        else:
+        elif container_id:
             self.pod_name = container_id  # Use provided pod ID
 
         self.env_vars = env_vars
         self.pod_manifest = pod_manifest or self._default_pod_manifest()
-        
+
         # Only reconfigure if not using existing pod
         if not self.using_existing_container:
             self._reconfigure_with_pod_manifest()
@@ -386,6 +387,51 @@ class SandboxKubernetesSession(BaseSession):
         self.pod_manifest["metadata"]["name"] = unique_pod_name
         self.kube_namespace = self.pod_manifest.get("metadata", {}).get("namespace", self.kube_namespace)
 
+    def _wait_for_pod_to_start(self, pod_id: str, timeout: int = 60) -> None:
+        """Wait for a pending pod to start running.
+
+        Args:
+            pod_id (str): The name of the pod to wait for.
+            timeout (int): Maximum time to wait in seconds.
+
+        Raises:
+            ContainerError: If pod doesn't start within timeout.
+
+        """
+        self._log(f"Pod {pod_id} is pending, waiting for it to start...")
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
+            if pod.status.phase == "Running":
+                return
+            time.sleep(2)
+
+        # If we get here, pod didn't start in time
+        pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
+        msg = f"Pod {pod_id} is not running (status: {pod.status.phase})"
+        raise ContainerError(msg)
+
+    def _validate_pod_status(self, pod_id: str, pod: Any) -> None:
+        """Validate that a pod is in running state.
+
+        Args:
+            pod_id (str): The name of the pod.
+            pod: The pod object from Kubernetes API.
+
+        Raises:
+            ContainerError: If pod is not running.
+
+        """
+        if pod.status.phase == "Running":
+            return
+
+        if pod.status.phase == "Pending":
+            self._wait_for_pod_to_start(pod_id)
+        else:
+            msg = f"Pod {pod_id} is not running (status: {pod.status.phase})"
+            raise ContainerError(msg)
+
     def _connect_to_existing_container(self, pod_id: str) -> None:
         """Connect to an existing Kubernetes pod.
 
@@ -394,39 +440,31 @@ class SandboxKubernetesSession(BaseSession):
 
         Raises:
             ContainerError: If the pod cannot be found or accessed.
+
         """
         try:
             # Verify pod exists and get its status
             pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
             self._log(f"Connected to existing pod {pod_id}")
-            
-            # Check if pod is running
-            if pod.status.phase != "Running":
-                if pod.status.phase == "Pending":
-                    self._log(f"Pod {pod_id} is pending, waiting for it to start...")
-                    # Wait a bit for pod to start
-                    start_time = time.time()
-                    while time.time() - start_time < 60:  # Wait up to 1 minute
-                        pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
-                        if pod.status.phase == "Running":
-                            break
-                        time.sleep(2)
-                    
-                    if pod.status.phase != "Running":
-                        raise ContainerError(f"Pod {pod_id} is not running (status: {pod.status.phase})")
-                else:
-                    raise ContainerError(f"Pod {pod_id} is not running (status: {pod.status.phase})")
-            
+
+            # Validate pod is running or can be made running
+            self._validate_pod_status(pod_id, pod)
+
             # Store pod name for operations
             self.container = pod_id
-            
+
         except ApiException as e:
-            if e.status == 404:
-                raise ContainerError(f"Pod {pod_id} not found in namespace {self.kube_namespace}") from e
-            else:
-                raise ContainerError(f"Failed to access pod {pod_id}: {e}") from e
+            if e.status == KUBERNETES_POD_NOT_FOUND_ERROR_CODE:
+                msg = f"Pod {pod_id} not found in namespace {self.kube_namespace}"
+                self._log(msg, "error")
+                raise ContainerError(msg) from e
+            msg = f"Failed to access pod {pod_id}: {e}"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
         except Exception as e:
-            raise ContainerError(f"Failed to connect to pod {pod_id}: {e}") from e
+            msg = f"Failed to connect to pod {pod_id}: {e}"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
 
     def _ensure_directory_exists(self, path: str) -> None:
         """Ensure directory exists in Kubernetes pod."""
@@ -460,23 +498,13 @@ class SandboxKubernetesSession(BaseSession):
     def _handle_timeout(self) -> None:
         """Handle Kubernetes timeout cleanup."""
         if self.container:
-            # Don't delete existing pods that we didn't create
-            if not self.using_existing_container:
-                try:
-                    self.container_api.stop_container(self.container)
-                    self.logger.warning("Deleted pod %s due to timeout", self.container)
-                except Exception:
-                    self.logger.exception("Failed to delete Kubernetes Pod")
-            else:
-                self.logger.warning("Disconnected from existing pod %s due to timeout", self.container)
-            
-            self.container = None
+            self.close()
 
     def open(self) -> None:
         """Open Kubernetes session."""
         super().open()
 
-        if self.using_existing_container:
+        if self.using_existing_container and self.config.container_id:
             # Connect to existing pod
             self._connect_to_existing_container(self.config.container_id)
         else:

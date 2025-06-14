@@ -14,6 +14,8 @@ from llm_sandbox.security import SecurityPolicy
 if TYPE_CHECKING:
     from docker.models.images import Image
 
+DOCKER_CONFLICT_ERROR_CODES = {404, 409}
+
 
 class DockerContainerAPI:
     """Docker implementation of the ContainerAPI protocol."""
@@ -233,23 +235,8 @@ class SandboxDockerSession(BaseSession):
 
     def _handle_timeout(self) -> None:
         """Handle Docker timeout cleanup."""
-        if self.container:
-            container_id = self.container.short_id
-            try:
-                self.container.kill()
-                self.logger.warning("Killed container %s due to timeout", container_id)
-            except Exception:
-                self.logger.exception("Failed to kill container")
-
-            # Don't remove existing containers that we didn't create
-            if not self.using_existing_container:
-                try:
-                    self.container.remove(force=True)
-                    self.logger.warning("Removed container %s", container_id)
-                except Exception:
-                    self.logger.exception("Failed to remove container")
-
-            self.container = None
+        if self.using_existing_container:
+            self.close()
 
     def _connect_to_existing_container(self, container_id: str) -> None:
         """Connect to an existing Docker container.
@@ -259,21 +246,26 @@ class SandboxDockerSession(BaseSession):
 
         Raises:
             ContainerError: If the container cannot be found or accessed.
+
         """
         try:
             self.container = self.client.containers.get(container_id)
             self._log(f"Connected to existing container {container_id}")
-            
+
             # Verify container is running
             if self.container.status != "running":
                 self._log(f"Container {container_id} is not running, attempting to start...")
                 self.container.start()
                 self._log(f"Started container {container_id}")
-            
+
         except NotFound as e:
-            raise ContainerError(f"Container {container_id} not found") from e
+            msg = f"Container {container_id} not found"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
         except Exception as e:
-            raise ContainerError(f"Failed to connect to container {container_id}: {e}") from e
+            msg = f"Failed to connect to container {container_id}: {e}"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
 
     def _prepare_image(self) -> None:
         """Prepare Docker image."""
@@ -329,7 +321,7 @@ class SandboxDockerSession(BaseSession):
         """
         super().open()
 
-        if self.using_existing_container:
+        if self.using_existing_container and self.config.container_id:
             # Connect to existing container
             self._connect_to_existing_container(self.config.container_id)
         else:
