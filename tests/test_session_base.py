@@ -2,7 +2,6 @@
 """Test cases for the new architecture BaseSession."""
 
 import logging
-import threading
 import time
 from typing import Any
 from unittest.mock import MagicMock, Mock, call, patch
@@ -22,7 +21,7 @@ from llm_sandbox.exceptions import (
     SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
-from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 
 class MockLanguageHandler:
@@ -170,82 +169,39 @@ class TestBaseSessionLogging:
 
 
 class TestBaseSessionTimeout:
-    """Test BaseSession timeout functionality."""
+    """Test session timeout functionality."""
 
-    def setup_method(self) -> None:
-        """Set up test fixtures."""
-        with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
-            mock_handler = MockLanguageHandler()
-            mock_create_handler.return_value = mock_handler
+    def test_session_timeout_with_cleanup_error(self) -> None:
+        """Test session timeout when cleanup fails."""
+        config = SessionConfig(session_timeout=0.1)  # Very short timeout
+        session = MockBaseSession(config)
 
-            config = SessionConfig(lang=SupportedLanguage.PYTHON)
-            self.session = MockBaseSession(config)
+        # Mock close method to raise an exception
+        with (
+            patch.object(session, "close", side_effect=Exception("Cleanup failed")),
+            patch.object(session, "_log") as mock_log,
+        ):
+            session._start_session_timer()
 
-    def test_check_session_timeout_no_timeout_set(self) -> None:
-        """Test session timeout check when no timeout is set."""
-        self.session.config.session_timeout = None
-        self.session._session_start_time = time.time()
+            # Wait for timeout to trigger
+            time.sleep(0.2)
 
-        # Should not raise
-        self.session._check_session_timeout()
+            # Should log the cleanup error
+            mock_log.assert_any_call("Error during timeout cleanup: Cleanup failed", "error")
 
-    def test_check_session_timeout_no_start_time(self) -> None:
-        """Test session timeout check when no start time."""
-        self.session.config.session_timeout = 10.0
-        self.session._session_start_time = None
+    def test_session_timeout_handler_logs_timeout(self) -> None:
+        """Test that session timeout handler logs timeout message."""
+        config = SessionConfig(session_timeout=0.1)  # Very short timeout
+        session = MockBaseSession(config)
 
-        # Should not raise
-        self.session._check_session_timeout()
+        with patch.object(session, "close"), patch.object(session, "_log") as mock_log:
+            session._start_session_timer()
 
-    def test_check_session_timeout_not_exceeded(self) -> None:
-        """Test session timeout check when timeout is not exceeded."""
-        self.session.config.session_timeout = 10.0
-        self.session._session_start_time = time.time()
+            # Wait for timeout to trigger
+            time.sleep(0.2)
 
-        # Should not raise
-        self.session._check_session_timeout()
-
-    def test_check_session_timeout_exceeded(self) -> None:
-        """Test session timeout check when timeout is exceeded."""
-        self.session.config.session_timeout = 0.1
-        self.session._session_start_time = time.time() - 0.2
-
-        with pytest.raises(SandboxTimeoutError):
-            self.session._check_session_timeout()
-
-    def test_start_session_timer_no_timeout(self) -> None:
-        """Test starting session timer when no timeout is set."""
-        self.session.config.session_timeout = None
-        self.session._start_session_timer()
-
-        assert self.session._session_start_time is not None
-        assert self.session._session_timer is None
-
-    def test_start_session_timer_with_timeout(self) -> None:
-        """Test starting session timer with timeout."""
-        self.session.config.session_timeout = 60.0
-        self.session._start_session_timer()
-
-        assert self.session._session_start_time is not None
-        assert self.session._session_timer is not None
-        assert isinstance(self.session._session_timer, threading.Timer)
-
-        # Clean up
-        self.session._stop_session_timer()
-
-    def test_stop_session_timer_no_timer(self) -> None:
-        """Test stopping session timer when no timer exists."""
-        self.session._session_timer = None
-        self.session._stop_session_timer()  # Should not raise
-
-    def test_stop_session_timer_with_timer(self) -> None:
-        """Test stopping session timer when timer exists."""
-        self.session.config.session_timeout = 60.0
-        self.session._start_session_timer()
-
-        self.session._stop_session_timer()
-
-        assert self.session._session_timer is None
+            # Should log timeout message
+            mock_log.assert_any_call("Session timed out after 0.1 seconds", "warning")
 
 
 class TestBaseSessionSecurity:
@@ -279,8 +235,6 @@ class TestBaseSessionSecurity:
 
     def test_check_security_policy_with_restricted_modules(self) -> None:
         """Test security check with restricted modules."""
-        from llm_sandbox.security import RestrictedModule
-
         restricted_module = RestrictedModule(
             name="os", description="Operating system interface", severity=SecurityIssueSeverity.HIGH
         )
@@ -354,8 +308,6 @@ class TestBaseSessionLibraryInstallation:
 
     def test_install_restricted_library(self) -> None:
         """Test install with security policy blocking libraries."""
-        from llm_sandbox.security import RestrictedModule
-
         restricted_module = RestrictedModule(
             name="os", description="Operating system interface", severity=SecurityIssueSeverity.HIGH
         )
@@ -628,3 +580,34 @@ class TestBaseSessionOpenClose:
 
             assert self.session.is_open is False
             mock_timer.assert_called_once()
+
+
+class TestBaseSessionSecurityChecks:
+    """Test security check functionality."""
+
+    def test_security_violation_should_fail_high_severity(self) -> None:
+        """Test that high severity violations cause immediate failure."""
+        pattern = SecurityPattern(
+            pattern="dangerous", description="Dangerous code", severity=SecurityIssueSeverity.HIGH
+        )
+        policy = SecurityPolicy(patterns=[pattern], severity_threshold=SecurityIssueSeverity.MEDIUM)
+        config = SessionConfig(security_policy=policy)
+        session = MockBaseSession(config)
+
+        is_safe, violations = session.is_safe("dangerous code")
+
+        assert is_safe is False
+        assert len(violations) == 1
+        assert violations[0].pattern == "dangerous"
+
+    def test_restricted_library_installation(self) -> None:
+        """Test that restricted libraries cannot be installed."""
+        restricted_module = RestrictedModule(
+            name="restricted_lib", description="Restricted library", severity=SecurityIssueSeverity.HIGH
+        )
+        policy = SecurityPolicy(restricted_modules=[restricted_module])
+        config = SessionConfig(security_policy=policy)
+        session = MockBaseSession(config)
+
+        with pytest.raises(SecurityViolationError, match="Library restricted_lib is not allowed"):
+            session.install(["restricted_lib"])

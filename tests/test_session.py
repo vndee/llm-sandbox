@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
+from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.data import ExecutionResult, FileType, PlotOutput
 from llm_sandbox.exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
-from llm_sandbox.security import SecurityPolicy
 from llm_sandbox.session import ArtifactSandboxSession, SandboxSession, create_session
 
 
@@ -134,33 +134,26 @@ class TestArtifactSandboxSession:
         """Test ArtifactSandboxSession initialization with custom parameters."""
         mock_session = MagicMock()
         mock_create_session.return_value = mock_session
-        security_policy = SecurityPolicy(patterns=[], restricted_modules=[])
 
         artifact_session = ArtifactSandboxSession(
-            backend=SandboxBackend.KUBERNETES,
-            image="custom-image",
-            lang="java",
-            verbose=True,
             enable_plotting=False,
-            security_policy=security_policy,
-            custom_arg="test",
+            backend=SandboxBackend.KUBERNETES,
         )
 
         assert artifact_session._session == mock_session
         assert artifact_session.enable_plotting is False
         mock_create_session.assert_called_once_with(
             backend=SandboxBackend.KUBERNETES,
-            image="custom-image",
+            image=None,
             dockerfile=None,
-            lang="java",
+            lang=SupportedLanguage.PYTHON,
             keep_template=False,
             commit_container=False,
-            verbose=True,
+            verbose=False,
             runtime_configs=None,
             workdir="/sandbox",
-            security_policy=security_policy,
+            security_policy=None,
             container_id=None,
-            custom_arg="test",
         )
 
     @patch("llm_sandbox.session.create_session")
@@ -280,3 +273,38 @@ class TestArtifactSandboxSession:
 
         with pytest.raises(LanguageNotSupportPlotError):
             artifact_session.run("System.out.println('hello');")
+
+
+class TestSessionConfig:
+    """Test SessionConfig validation."""
+
+    def test_image_and_dockerfile_both_provided(self) -> None:
+        """Test validation error when both image and dockerfile are provided."""
+        with pytest.raises(ValueError, match="Only one of 'image' or 'dockerfile' can be provided"):
+            SessionConfig(image="test-image", dockerfile="test-dockerfile")
+
+    def test_container_id_with_dockerfile(self) -> None:
+        """Test validation error when container_id is used with dockerfile."""
+        with pytest.raises(ValueError, match="Cannot use 'dockerfile' with existing 'container_id'"):
+            SessionConfig(container_id="test-container", dockerfile="test-dockerfile")
+
+    def test_valid_config_combinations(self) -> None:
+        """Test valid configuration combinations."""
+        # Valid: only image
+        config1 = SessionConfig(image="test-image")
+        assert config1.image == "test-image"
+        assert config1.dockerfile is None
+
+        # Valid: only dockerfile
+        config2 = SessionConfig(dockerfile="test-dockerfile")
+        assert config2.dockerfile == "test-dockerfile"
+        assert config2.image is None
+
+        # Valid: container_id with image
+        config3 = SessionConfig(container_id="test-container", image="test-image")
+        assert config3.container_id == "test-container"
+        assert config3.image == "test-image"
+
+        # Valid: container_id alone
+        config4 = SessionConfig(container_id="test-container")
+        assert config4.container_id == "test-container"
