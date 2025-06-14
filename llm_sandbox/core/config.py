@@ -23,12 +23,28 @@ class SessionConfig(BaseModel):
         description="The path to a Dockerfile to build an image from. Cannot be used if `image` is also provided.",
     )
 
+    # Existing container settings
+    container_id: str | None = Field(
+        default=None,
+        description="ID of an existing container/pod to connect to. When provided, skips container creation and environment setup. "
+        "User must ensure the container has proper environment and tools for the specified language.",
+    )
+
     @model_validator(mode="after")
     def validate_image_and_dockerfile(self) -> "SessionConfig":
         """Validate that image and dockerfile are not both provided."""
         if self.image is not None and self.dockerfile is not None:
             msg = "Only one of 'image' or 'dockerfile' can be provided, not both"
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def validate_container_id_constraints(self) -> "SessionConfig":
+        """Validate constraints when using existing container."""
+        if self.container_id is not None:
+            if self.dockerfile is not None:
+                msg = "Cannot use 'dockerfile' with existing 'container_id'"
+                raise ValueError(msg)
         return self
 
     # Behaviour settings
@@ -64,3 +80,7 @@ class SessionConfig(BaseModel):
     def get_execution_timeout(self) -> float | None:
         """Get the execution timeout."""
         return self.execution_timeout or self.default_timeout
+
+    def is_using_existing_container(self) -> bool:
+        """Check if using an existing container."""
+        return self.container_id is not None
