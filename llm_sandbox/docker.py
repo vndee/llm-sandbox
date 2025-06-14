@@ -236,7 +236,10 @@ class SandboxDockerSession(BaseSession):
     def _handle_timeout(self) -> None:
         """Handle Docker timeout cleanup."""
         if self.using_existing_container:
-            self.close()
+            try:
+                self.close()
+            except Exception as e:  # noqa: BLE001
+                self._log(f"Error during timeout cleanup: {e}", "error")
 
     def _connect_to_existing_container(self, container_id: str) -> None:
         """Connect to an existing Docker container.

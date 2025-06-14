@@ -126,6 +126,7 @@ class TestArtifactSandboxSession:
             runtime_configs=None,
             workdir="/sandbox",
             security_policy=None,
+            container_id=None,
         )
 
     @patch("llm_sandbox.session.create_session")
@@ -158,6 +159,7 @@ class TestArtifactSandboxSession:
             runtime_configs=None,
             workdir="/sandbox",
             security_policy=security_policy,
+            container_id=None,
             custom_arg="test",
         )
 

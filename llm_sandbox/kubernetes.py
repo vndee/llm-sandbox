@@ -387,7 +387,7 @@ class SandboxKubernetesSession(BaseSession):
         self.pod_manifest["metadata"]["name"] = unique_pod_name
         self.kube_namespace = self.pod_manifest.get("metadata", {}).get("namespace", self.kube_namespace)
 
-    def _wait_for_pod_to_start(self, pod_id: str, timeout: int = 60) -> None:
+    def _wait_for_pod_to_start(self, pod_id: str, timeout: int = POD_STARTUP_TIMEOUT) -> None:
         """Wait for a pending pod to start running.
 
         Args:
@@ -498,7 +498,10 @@ class SandboxKubernetesSession(BaseSession):
     def _handle_timeout(self) -> None:
         """Handle Kubernetes timeout cleanup."""
         if self.container:
-            self.close()
+            try:
+                self.close()
+            except Exception as e:  # noqa: BLE001
+                self._log(f"Error during timeout cleanup: {e}", "error")
 
     def open(self) -> None:
         """Open Kubernetes session."""

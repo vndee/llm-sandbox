@@ -1010,74 +1010,52 @@ class TestSandboxDockerSessionEdgeCases:
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
         session.container = mock_container
+        session.using_existing_container = True  # Set to use existing container
 
-        with patch.object(session, "logger") as mock_logger:
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-        mock_container.kill.assert_called_once()
-        mock_container.remove.assert_called_once_with(force=True)
-        assert session.container is None
-        mock_logger.warning.assert_any_call("Killed container %s due to timeout", "abc123")
-        mock_logger.warning.assert_any_call("Removed container %s", "abc123")
+        mock_close.assert_called_once()
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_handle_timeout_kill_failure(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test _handle_timeout with kill failure."""
+        """Test _handle_timeout with using_existing_container=False (should do nothing)."""
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
         session = SandboxDockerSession()
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
-        mock_container.kill.side_effect = Exception("Kill failed")
         session.container = mock_container
+        session.using_existing_container = False  # Not using existing container
 
-        with patch.object(session, "logger") as mock_logger:
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-        mock_container.kill.assert_called_once()
-        mock_container.remove.assert_called_once_with(force=True)
-        assert session.container is None
-        mock_logger.exception.assert_called_with("Failed to kill container")
+        # Should not call close() when not using existing container
+        mock_close.assert_not_called()
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_handle_timeout_remove_failure(
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
-        """Test _handle_timeout with remove failure."""
+        """Test _handle_timeout with close() raising exception."""
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
         session = SandboxDockerSession()
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
-        mock_container.remove.side_effect = Exception("Remove failed")
         session.container = mock_container
+        session.using_existing_container = True  # Set to use existing container
 
-        with patch.object(session, "logger") as mock_logger:
+        with patch.object(session, "close", side_effect=Exception("Close failed")) as mock_close:
+            # Should not raise exception, just call close
             session._handle_timeout()
 
-        mock_container.kill.assert_called_once()
-        mock_container.remove.assert_called_once_with(force=True)
-        assert session.container is None
-        mock_logger.exception.assert_called_with("Failed to remove container")
-
-    @patch("llm_sandbox.docker.docker.from_env")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_handle_timeout_no_container(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
-        """Test _handle_timeout with no container."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = SandboxDockerSession()
-        session.container = None
-
-        with patch.object(session, "logger") as mock_logger:
-            session._handle_timeout()
-
-        mock_logger.warning.assert_not_called()
+        mock_close.assert_called_once()
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -1317,3 +1295,20 @@ class TestSandboxDockerSessionTimeoutEdgeCases:
 
         assert stdout == "stdout string"
         assert stderr == "stderr string"
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_handle_timeout_no_container(self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock) -> None:
+        """Test _handle_timeout with no existing container usage."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession()
+        session.container = None
+        session.using_existing_container = False  # Not using existing container
+
+        with patch.object(session, "close") as mock_close:
+            session._handle_timeout()
+
+        # Should not call close() when not using existing container
+        mock_close.assert_not_called()

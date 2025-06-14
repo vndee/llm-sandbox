@@ -89,6 +89,9 @@ class MockBaseSession(BaseSession):
         """Mock implementation."""
         return "stream_stdout", "stream_stderr"
 
+    def _connect_to_existing_container(self, pod_id: str) -> None:
+        """Mock implementation."""
+
 
 class TestBaseSessionInit:
     """Test BaseSession initialization."""

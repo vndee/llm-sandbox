@@ -1233,15 +1233,10 @@ class TestSandboxKubernetesSessionEdgeCases:
         session = SandboxKubernetesSession()
         session.container = "test-pod"
 
-        with (
-            patch.object(session.container_api, "stop_container") as mock_stop,
-            patch.object(session, "logger") as mock_logger,
-        ):
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-            mock_stop.assert_called_once_with("test-pod")
-            mock_logger.warning.assert_called_once()
-            assert session.container is None
+            mock_close.assert_called_once()
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1249,23 +1244,18 @@ class TestSandboxKubernetesSessionEdgeCases:
     def test_handle_timeout_with_stop_exception(
         self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
     ) -> None:
-        """Test timeout handling when stop_container raises exception."""
+        """Test timeout handling when close raises exception."""
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
         session.container = "test-pod"
 
-        with (
-            patch.object(session.container_api, "stop_container", side_effect=Exception("Stop failed")) as mock_stop,
-            patch.object(session, "logger") as mock_logger,
-        ):
+        with patch.object(session, "close", side_effect=Exception("Close failed")) as mock_close:
+            # Should not raise exception, just call close
             session._handle_timeout()
 
-            mock_stop.assert_called_once_with("test-pod")
-            mock_logger.exception.assert_called_once()
-            # Container should still be set to None even if stop fails
-            assert session.container is None
+            mock_close.assert_called_once()
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1280,11 +1270,11 @@ class TestSandboxKubernetesSessionEdgeCases:
         session = SandboxKubernetesSession()
         session.container = None
 
-        with patch.object(session.container_api, "stop_container") as mock_stop:
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-            # Should not attempt to stop container when none exists
-            mock_stop.assert_not_called()
+            # Should not call close() when no container exists
+            mock_close.assert_not_called()
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
