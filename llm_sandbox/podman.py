@@ -3,10 +3,12 @@
 from typing import TYPE_CHECKING, Any
 
 from podman import PodmanClient
+from podman.errors import NotFound
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
+from llm_sandbox.exceptions import ContainerError
 from llm_sandbox.security import SecurityPolicy
 
 if TYPE_CHECKING:
@@ -66,6 +68,7 @@ class SandboxPodmanSession(SandboxDockerSession):
         default_timeout: float | None = None,
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
+        container_id: str | None = None,
         **kwargs: dict[str, Any],
     ) -> None:
         r"""Initialize Podman session.
@@ -86,6 +89,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             default_timeout (float | None): The default timeout to use.
             execution_timeout (float | None): The execution timeout to use.
             session_timeout (float | None): The session timeout to use.
+            container_id (str | None): ID of existing container to connect to.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -103,6 +107,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
+            container_id=container_id,
         )
 
         # Initialize BaseSession (skip Docker's __init__)
@@ -135,3 +140,47 @@ class SandboxPodmanSession(SandboxDockerSession):
                 stacklevel=2,
             )
             self.config.runtime_configs.setdefault("mounts", []).append(mounts)
+
+    def _connect_to_existing_container(self, container_id: str) -> None:
+        """Connect to an existing Podman container.
+
+        Args:
+            container_id (str): The ID of the existing container to connect to.
+
+        Raises:
+            ContainerError: If the container cannot be found or accessed.
+        """
+        try:
+            self.container = self.client.containers.get(container_id)
+            self._log(f"Connected to existing container {container_id}")
+            
+            # Verify container is running
+            if self.container.status != "running":
+                self._log(f"Container {container_id} is not running, attempting to start...")
+                self.container.start()
+                self._log(f"Started container {container_id}")
+            
+        except NotFound as e:
+            raise ContainerError(f"Container {container_id} not found") from e
+        except Exception as e:
+            raise ContainerError(f"Failed to connect to container {container_id}: {e}") from e
+
+    def _handle_timeout(self) -> None:
+        """Handle Podman timeout cleanup."""
+        if self.container:
+            container_id = self.container.short_id
+            try:
+                self.container.kill()
+                self.logger.warning("Killed container %s due to timeout", container_id)
+            except Exception:
+                self.logger.exception("Failed to kill container")
+
+            # Don't remove existing containers that we didn't create
+            if not self.using_existing_container:
+                try:
+                    self.container.remove(force=True)
+                    self.logger.warning("Removed container %s", container_id)
+                except Exception:
+                    self.logger.exception("Failed to remove container")
+
+            self.container = None
