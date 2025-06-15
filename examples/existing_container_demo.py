@@ -89,12 +89,11 @@ def demo_connect_to_existing_docker_container() -> None:
     try:
         client = DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
         # Connect to existing container - no environment setup needed
-        sandbox = SandboxSession(client=client, container_id=container_id, lang="python", verbose=True)
-        sandbox.open()
-        logger.info("✅ Connected to existing container successfully!")
+        with SandboxSession(client=client, container_id=container_id, lang="python", verbose=True) as sandbox:
+            logger.info("✅ Connected to existing container successfully!")
 
-        # Run code that uses pre-installed packages
-        result = sandbox.run("""
+            # Run code that uses pre-installed packages
+            result = sandbox.run("""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -122,18 +121,18 @@ plt.savefig('/sandbox/plot.png')
 print("Plot saved as /sandbox/plot.png")
 """)
 
-        logger.info("📊 Code execution output:")
-        logger.info(result.stdout)
+            logger.info("📊 Code execution output:")
+            logger.info(result.stdout)
 
-        # Execute the pre-existing script
-        result = sandbox.execute_command("python /sandbox/hello.py")
-        logger.info("📝 Pre-existing script output:")
-        logger.info(result.stdout)
+            # Execute the pre-existing script
+            result = sandbox.execute_command("python /sandbox/hello.py")
+            logger.info("📝 Pre-existing script output:")
+            logger.info(result.stdout)
 
-        # List files to show existing content
-        result = sandbox.execute_command("ls -la /sandbox/")
-        logger.info("📁 Container contents:")
-        logger.info(result.stdout)
+            # List files to show existing content
+            result = sandbox.execute_command("ls -la /sandbox/")
+            logger.info("📁 Container contents:")
+            logger.info(result.stdout)
 
     except ContainerError:
         logger.exception("❌ Failed to connect to container")
@@ -164,17 +163,16 @@ def demo_connect_to_existing_kubernetes_pod() -> None:
         logger.info("🔗 Connecting to existing pod: %s", pod_id)
 
         # Connect to the existing pod
-        sandbox = SandboxSession(
+        with SandboxSession(
             backend=SandboxBackend.KUBERNETES,
             container_id=pod_id,  # Connect to existing pod
             lang="python",
             verbose=True,
-        )
-        sandbox.open()
-        logger.info("✅ Connected to existing pod successfully!")
+        ) as sandbox:
+            logger.info("✅ Connected to existing pod successfully!")
 
-        # Run code in the existing pod
-        result = sandbox.run("""
+            # Run code in the existing pod
+            result = sandbox.run("""
 import sys
 print(f"Python version: {sys.version}")
 print("Running in existing Kubernetes pod!")
@@ -193,8 +191,8 @@ print(f"Current directory: {os.getcwd()}")
 print(f"Directory contents: {os.listdir('/sandbox')}")
 """)
 
-        logger.info("📊 Pod execution output:")
-        logger.info(result.stdout)
+            logger.info("📊 Pod execution output:")
+            logger.info(result.stdout)
 
     except ContainerError:
         logger.exception("❌ Failed to connect to pod")
@@ -232,14 +230,13 @@ with open('/sandbox/podman_info.txt', 'w') as f:
 
         # Connect to the existing container
         logger.info("🔗 Connecting to existing Podman container...")
-        sandbox = SandboxSession(
+        with SandboxSession(
             backend=SandboxBackend.PODMAN, client=client, container_id=container_id, lang="python", verbose=True
-        )
-        sandbox.open()
-        logger.info("✅ Connected to existing Podman container successfully!")
+        ) as sandbox:
+            logger.info("✅ Connected to existing Podman container successfully!")
 
-        # Run code in the existing container
-        result = sandbox.run("""
+            # Run code in the existing container
+            result = sandbox.run("""
 import platform
 print(f"Platform: {platform.platform()}")
 print("Running in existing Podman container!")
@@ -253,8 +250,8 @@ except FileNotFoundError:
     print("Container info file not found")
 """)
 
-        logger.info("📊 Podman execution output:")
-        logger.info(result.stdout)
+            logger.info("📊 Podman execution output:")
+            logger.info(result.stdout)
 
     except ImportError:
         logger.warning("⚠️  Podman not available, skipping Podman demo")
@@ -273,8 +270,8 @@ def demo_error_handling() -> None:
     # Try connecting to non-existent container
     logger.info("🧪 Testing connection to non-existent container...")
     try:
-        sandbox = SandboxSession(container_id="non-existent-container-id", lang="python", verbose=True)
-        sandbox.run("print('This should not work')")
+        with SandboxSession(container_id="non-existent-container-id", lang="python", verbose=True) as sandbox:
+            sandbox.run("print('This should not work')")
 
     except ContainerError:
         logger.info("✅ Correctly caught ContainerError")
@@ -284,10 +281,10 @@ def demo_error_handling() -> None:
     # Try with invalid pod name
     logger.info("🧪 Testing connection to non-existent pod...")
     try:
-        sandbox = SandboxSession(
+        with SandboxSession(
             backend=SandboxBackend.KUBERNETES, container_id="non-existent-pod", lang="python", verbose=True
-        )
-        sandbox.run("print('This should not work')")
+        ) as sandbox:
+            sandbox.run("print('This should not work')")
 
     except ContainerError:
         logger.info("✅ Correctly caught ContainerError for K8s")

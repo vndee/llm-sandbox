@@ -79,21 +79,6 @@ with SandboxSession(
     result = session.run("print('Hello from existing Podman container!')")
 ```
 
-### Micromamba Backend
-
-```python
-from llm_sandbox import SandboxSession, SandboxBackend
-
-# Connect to existing Micromamba container
-with SandboxSession(
-    backend=SandboxBackend.MICROMAMBA,
-    container_id='micromamba-container-id',
-    environment="myenv",  # Specify environment
-    lang="python"
-) as session:
-    result = session.run("print('Hello from existing Micromamba container!')")
-```
-
 ## Important Notes
 
 ### Environment Setup Skipped
@@ -136,45 +121,7 @@ When using `container_id`:
 ## Complete Example
 
 ```python
-import docker
-from llm_sandbox import SandboxSession
-
-# Create a container with custom setup (one-time)
-client = docker.from_env()
-container = client.containers.run(
-    "ghcr.io/vndee/sandbox-python-311-bullseye",
-    detach=True,
-    tty=True,
-    command="tail -f /dev/null"  # Keep running
-)
-
-# Install packages and setup environment
-container.exec_run("pip install numpy pandas matplotlib")
-container.exec_run("mkdir -p /my-workspace")
-
-try:
-    # Now use the existing container multiple times
-    for i in range(3):
-        with SandboxSession(
-            container_id=container.id,
-            lang="python",
-            verbose=True
-        ) as session:
-            result = session.run(f"""
-import numpy as np
-print(f"Iteration {i+1}")
-print(f"NumPy version: {np.__version__}")
-data = np.random.rand(5)
-print(f"Random data: {data}")
-""")
-            print(f"Run {i+1} output:")
-            print(result.stdout)
-            print("-" * 40)
-
-finally:
-    # Clean up
-    container.stop()
-    container.remove()
+--8<-- "examples/existing_container_demo.py"
 ```
 
 ## Backend-Specific Notes
@@ -195,11 +142,6 @@ finally:
 - Compatible with Docker API
 - Supports both running and stopped containers
 
-### Micromamba
-- Inherits Docker behavior
-- Commands are wrapped with `micromamba run -n <environment>`
-- Specify environment via `environment` parameter
-
 ## Best Practices
 
 1. **Ensure Environment Readiness**: Make sure containers have required interpreters/compilers
@@ -207,19 +149,3 @@ finally:
 3. **Document Dependencies**: Clearly document what your existing containers need
 4. **Test Connectivity**: Verify container is accessible before production use
 5. **Monitor Resources**: Existing containers may have different resource constraints
-
-## Migration from Creating New Containers
-
-**Before (creating new):**
-```python
-with SandboxSession(lang="python", image="my-image") as session:
-    session.install(["numpy"])  # Environment setup
-    result = session.run("import numpy; print('ready')")
-```
-
-**After (using existing):**
-```python
-# Container must already have numpy installed
-with SandboxSession(container_id="my-container", lang="python") as session:
-    result = session.run("import numpy; print('ready')")  # Direct usage
-```
