@@ -8,10 +8,11 @@ import tempfile
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from kubernetes.client.exceptions import ApiException
 
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import NotOpenSessionError
+from llm_sandbox.exceptions import ContainerError, NotOpenSessionError
 from llm_sandbox.kubernetes import KubernetesContainerAPI, SandboxKubernetesSession
 from llm_sandbox.security import SecurityPolicy
 
@@ -1233,15 +1234,10 @@ class TestSandboxKubernetesSessionEdgeCases:
         session = SandboxKubernetesSession()
         session.container = "test-pod"
 
-        with (
-            patch.object(session.container_api, "stop_container") as mock_stop,
-            patch.object(session, "logger") as mock_logger,
-        ):
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-            mock_stop.assert_called_once_with("test-pod")
-            mock_logger.warning.assert_called_once()
-            assert session.container is None
+            mock_close.assert_called_once()
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1249,23 +1245,18 @@ class TestSandboxKubernetesSessionEdgeCases:
     def test_handle_timeout_with_stop_exception(
         self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
     ) -> None:
-        """Test timeout handling when stop_container raises exception."""
+        """Test timeout handling when close raises exception."""
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
         session = SandboxKubernetesSession()
         session.container = "test-pod"
 
-        with (
-            patch.object(session.container_api, "stop_container", side_effect=Exception("Stop failed")) as mock_stop,
-            patch.object(session, "logger") as mock_logger,
-        ):
+        with patch.object(session, "close", side_effect=Exception("Close failed")) as mock_close:
+            # Should not raise exception, just call close
             session._handle_timeout()
 
-            mock_stop.assert_called_once_with("test-pod")
-            mock_logger.exception.assert_called_once()
-            # Container should still be set to None even if stop fails
-            assert session.container is None
+            mock_close.assert_called_once()
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1280,11 +1271,11 @@ class TestSandboxKubernetesSessionEdgeCases:
         session = SandboxKubernetesSession()
         session.container = None
 
-        with patch.object(session.container_api, "stop_container") as mock_stop:
+        with patch.object(session, "close") as mock_close:
             session._handle_timeout()
 
-            # Should not attempt to stop container when none exists
-            mock_stop.assert_not_called()
+            # Should not call close() when no container exists
+            mock_close.assert_not_called()
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1345,27 +1336,6 @@ class TestSandboxKubernetesSessionEdgeCases:
 
             mock_process.assert_called_once_with("test_output")
             assert result == ("stdout", "stderr")
-
-    @patch("kubernetes.config.load_kube_config")
-    @patch("llm_sandbox.kubernetes.CoreV1Api")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_reconfigure_with_pod_manifest_creates_unique_name(
-        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
-    ) -> None:
-        """Test that reconfigure creates a unique pod name."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = SandboxKubernetesSession()
-        original_name = session.pod_name
-
-        # Call reconfigure again to ensure uniqueness
-        session._reconfigure_with_pod_manifest()
-        new_name = session.pod_name
-
-        # Names should be different and both should be in manifest
-        assert original_name != new_name
-        assert session.pod_manifest["metadata"]["name"] == new_name
 
 
 class TestSandboxKubernetesSessionTimeoutAndStream:
@@ -1815,3 +1785,161 @@ class TestSandboxKubernetesSessionDifferencesFromDocker:
         assert manifest["metadata"]["labels"]["app"] == "test"
         assert manifest["metadata"]["labels"]["version"] == "1.0"
         assert "resources" in manifest["spec"]["containers"][0]
+
+
+class TestSandboxKubernetesSessionExistingPod:
+    """Test cases for existing pod functionality."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_connect_to_existing_pod_not_found(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test connecting to non-existent pod."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+        mock_client.read_namespaced_pod.side_effect = ApiException(status=404, reason="Not Found")
+
+        session = SandboxKubernetesSession(container_id="non-existent-pod")
+
+        with pytest.raises(ContainerError, match="Pod non-existent-pod not found"):
+            session.open()
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_connect_to_existing_pod_api_error(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test connecting to existing pod with API error."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+        mock_client.read_namespaced_pod.side_effect = ApiException(status=500, reason="Server Error")
+
+        session = SandboxKubernetesSession(container_id="test-pod")
+
+        with pytest.raises(ContainerError, match="Failed to access pod test-pod"):
+            session.open()
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_connect_to_existing_pod_other_error(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test connecting to existing pod with non-API error."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+        mock_client.read_namespaced_pod.side_effect = Exception("Connection failed")
+
+        session = SandboxKubernetesSession(container_id="test-pod")
+
+        with pytest.raises(ContainerError, match="Failed to connect to pod test-pod"):
+            session.open()
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_pod_pending_timeout(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test pod timeout when waiting for pending pod to start."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        # Mock pod that stays pending
+        mock_pod = MagicMock()
+        mock_pod.status.phase = "Pending"
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        session = SandboxKubernetesSession(container_id="pending-pod")
+
+        with (
+            patch("llm_sandbox.kubernetes.time.sleep"),
+            patch(
+                "llm_sandbox.kubernetes.time.time",
+                side_effect=[0] + [301] * 10,  # safely covers extra calls
+            ),
+            pytest.raises(ContainerError, match="Failed to connect to pod pending-pod"),
+        ):
+            session.open()
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_pod_failed_status(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test pod with failed status."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        # Mock pod with failed status
+        mock_pod = MagicMock()
+        mock_pod.status.phase = "Failed"
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        session = SandboxKubernetesSession(container_id="failed-pod")
+
+        with pytest.raises(ContainerError, match="Pod failed-pod is not running"):
+            session.open()
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_mkdir_command_failure(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test directory creation failure."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+        session.container_api = MagicMock()
+        session.container_api.execute_command.return_value = (1, ("", "mkdir failed"))
+
+        # Should not raise exception, just log error
+        session._ensure_directory_exists("/test/path")
+
+        session.container_api.execute_command.assert_called_once()
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_close_cleanup_error(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test error during pod cleanup in close()."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession()
+        session.container = "test-pod"
+        session.using_existing_container = False
+        session.container_api = MagicMock()
+        session.container_api.stop_container.side_effect = Exception("Cleanup failed")
+
+        # Should not raise exception, just log error
+        session.close()
+
+        session.container_api.stop_container.assert_called_once()

@@ -143,6 +143,7 @@ Ready to start using LLM Sandbox? Check out our [Getting Started Guide](getting-
 - **[Backends](backends.md)** - Container backend details
 - **[Languages](languages.md)** - Supported programming languages
 - **[Integrations](integrations.md)** - LLM framework integrations
+- **[Existing Container Support](existing-container-support.md)** - Connecting to existing containers/pods
 - **[API Reference](api-reference.md)** - Complete API documentation
 - **[Examples](examples.md)** - Real-world usage examples
 
