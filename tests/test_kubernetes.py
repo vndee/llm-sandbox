@@ -1337,27 +1337,6 @@ class TestSandboxKubernetesSessionEdgeCases:
             mock_process.assert_called_once_with("test_output")
             assert result == ("stdout", "stderr")
 
-    @patch("kubernetes.config.load_kube_config")
-    @patch("llm_sandbox.kubernetes.CoreV1Api")
-    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_reconfigure_with_pod_manifest_creates_unique_name(
-        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
-    ) -> None:
-        """Test that reconfigure creates a unique pod name."""
-        mock_handler = MagicMock()
-        mock_create_handler.return_value = mock_handler
-
-        session = SandboxKubernetesSession()
-        original_name = session.pod_name
-
-        # Call reconfigure again to ensure uniqueness
-        session._reconfigure_with_pod_manifest()
-        new_name = session.pod_name
-
-        # Names should be different and both should be in manifest
-        assert original_name != new_name
-        assert session.pod_manifest["metadata"]["name"] == new_name
-
 
 class TestSandboxKubernetesSessionTimeoutAndStream:
     """Test timeout and streaming functionality."""
@@ -1892,11 +1871,12 @@ class TestSandboxKubernetesSessionExistingPod:
             patch("llm_sandbox.kubernetes.time.sleep"),
             patch(
                 "llm_sandbox.kubernetes.time.time",
-                side_effect=[0] + [301] * 10,   # safely covers extra calls
+                side_effect=[0] + [301] * 10,  # safely covers extra calls
             ),
             pytest.raises(ContainerError, match="Failed to connect to pod pending-pod"),
         ):
             session.open()
+
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")

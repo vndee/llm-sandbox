@@ -2,7 +2,6 @@
 """Test cases for the new architecture BaseSession."""
 
 import logging
-import time
 from typing import Any
 from unittest.mock import MagicMock, Mock, call, patch
 
@@ -180,11 +179,19 @@ class TestBaseSessionTimeout:
         with (
             patch.object(session, "close", side_effect=Exception("Cleanup failed")),
             patch.object(session, "_log") as mock_log,
+            patch("threading.Timer") as mock_timer,
         ):
+            # Create a mock timer instance that will call the timeout handler immediately
+            mock_timer_instance = Mock()
+            mock_timer.return_value = mock_timer_instance
+
             session._start_session_timer()
 
-            # Wait for timeout to trigger
-            time.sleep(0.2)
+            # Get the timeout handler that was passed to Timer
+            timeout_handler = mock_timer.call_args[0][1]
+
+            # Call the timeout handler directly to simulate timeout
+            timeout_handler()
 
             # Should log the cleanup error
             mock_log.assert_any_call("Error during timeout cleanup: Cleanup failed", "error")
@@ -194,11 +201,22 @@ class TestBaseSessionTimeout:
         config = SessionConfig(session_timeout=0.1)  # Very short timeout
         session = MockBaseSession(config)
 
-        with patch.object(session, "close"), patch.object(session, "_log") as mock_log:
+        with (
+            patch.object(session, "close"),
+            patch.object(session, "_log") as mock_log,
+            patch("threading.Timer") as mock_timer,
+        ):
+            # Create a mock timer instance that will call the timeout handler immediately
+            mock_timer_instance = Mock()
+            mock_timer.return_value = mock_timer_instance
+
             session._start_session_timer()
 
-            # Wait for timeout to trigger
-            time.sleep(0.2)
+            # Get the timeout handler that was passed to Timer
+            timeout_handler = mock_timer.call_args[0][1]
+
+            # Call the timeout handler directly to simulate timeout
+            timeout_handler()
 
             # Should log timeout message
             mock_log.assert_any_call("Session timed out after 0.1 seconds", "warning")

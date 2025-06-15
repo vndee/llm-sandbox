@@ -19,6 +19,7 @@ from llm_sandbox.security import SecurityPolicy
 SH_SHELL = "/bin/sh"
 POD_STARTUP_TIMEOUT = 300  # 5 minutes
 KUBERNETES_POD_NOT_FOUND_ERROR_CODE = 404
+KUBERNETES_POD_STATUS_POLL_INTERVAL = 2
 
 
 class KubernetesContainerAPI:
@@ -261,7 +262,7 @@ class SandboxKubernetesSession(BaseSession):
     """
 
     def __init__(
-        self,
+        self,  # NOSONAR (too many arguments)
         client: CoreV1Api | None = None,
         image: str | None = None,
         lang: str = SupportedLanguage.PYTHON,
@@ -329,15 +330,11 @@ class SandboxKubernetesSession(BaseSession):
         if not self.using_existing_container:
             short_uuid = uuid.uuid4().hex[:8]
             self.pod_name = f"sandbox-{lang.lower()}-{short_uuid}"
-        elif container_id:
-            self.pod_name = container_id  # Use provided pod ID
-
-        self.env_vars = env_vars
-        self.pod_manifest = pod_manifest or self._default_pod_manifest()
-
-        # Only reconfigure if not using existing pod
-        if not self.using_existing_container:
+            self.env_vars = env_vars
+            self.pod_manifest = pod_manifest or self._default_pod_manifest()
             self._reconfigure_with_pod_manifest()
+        elif container_id:
+            self.pod_name = container_id
 
         # For compatibility with base class
         self.stream = False
@@ -380,11 +377,7 @@ class SandboxKubernetesSession(BaseSession):
 
     def _reconfigure_with_pod_manifest(self) -> None:
         """Reconfigure session attributes based on the pod manifest."""
-        # Ensure unique pod name
-        additional_uuid = uuid.uuid4().hex[:8]
-        unique_pod_name = f"{self.pod_name}-{additional_uuid}"
-        self.pod_name = unique_pod_name
-        self.pod_manifest["metadata"]["name"] = unique_pod_name
+        self.pod_manifest["metadata"]["name"] = self.pod_name
         self.kube_namespace = self.pod_manifest.get("metadata", {}).get("namespace", self.kube_namespace)
 
     def _wait_for_pod_to_start(self, pod_id: str, timeout: int = POD_STARTUP_TIMEOUT) -> None:
@@ -405,7 +398,7 @@ class SandboxKubernetesSession(BaseSession):
             pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
             if pod.status.phase == "Running":
                 return
-            time.sleep(2)
+            time.sleep(KUBERNETES_POD_STATUS_POLL_INTERVAL)
 
         # If we get here, pod didn't start in time
         pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
@@ -518,6 +511,7 @@ class SandboxKubernetesSession(BaseSession):
         # Setup environment only for newly-created pods
         if not self.using_existing_container:
             self.environment_setup()
+
     def close(self) -> None:
         """Close Kubernetes session."""
         super().close()
