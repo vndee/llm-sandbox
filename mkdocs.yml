@@ -69,6 +69,7 @@ nav:
       - Container Backends: backends.md
       - Supported Languages: languages.md
       - LLM Integrations: integrations.md
+      - Existing Container Support: existing-container-support.md
   - Examples: examples.md
   - API Reference: api-reference.md
   - Contributing: contributing.md
