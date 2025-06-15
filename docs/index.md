@@ -7,7 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/vndee/llm-sandbox)](https://img.shields.io/github/v/release/vndee/llm-sandbox)
 [![Build status](https://img.shields.io/github/actions/workflow/status/vndee/llm-sandbox/main.yml?branch=main)](https://github.com/vndee/llm-sandbox/actions/workflows/main.yml?query=branch%3Amain)
 [![CodeFactor](https://www.codefactor.io/repository/github/vndee/llm-sandbox/badge)](https://www.codefactor.io/repository/github/vndee/llm-sandbox)
-[![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg)](https://codecov.io/gh/vndee/llm-sandbox)
+[![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg?token=EULWCESZAY)](https://codecov.io/gh/vndee/llm-sandbox)
 
 ## Welcome to LLM Sandbox
 
