@@ -1890,11 +1890,13 @@ class TestSandboxKubernetesSessionExistingPod:
 
         with (
             patch("llm_sandbox.kubernetes.time.sleep"),
-            patch("llm_sandbox.kubernetes.time.time", side_effect=[0, 301]),
+            patch(
+                "llm_sandbox.kubernetes.time.time",
+                side_effect=[0] + [301] * 10,   # safely covers extra calls
+            ),
             pytest.raises(ContainerError, match="Failed to connect to pod pending-pod"),
         ):
             session.open()
-
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
