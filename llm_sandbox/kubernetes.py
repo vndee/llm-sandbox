@@ -515,9 +515,9 @@ class SandboxKubernetesSession(BaseSession):
             container_config = {"pod_manifest": self.pod_manifest}
             self.container = self.container_api.create_container(container_config)
 
-        # Setup environment (skipped for existing pods)
-        self.environment_setup()
-
+        # Setup environment only for newly-created pods
+        if not self.using_existing_container:
+            self.environment_setup()
     def close(self) -> None:
         """Close Kubernetes session."""
         super().close()
