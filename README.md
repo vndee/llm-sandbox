@@ -196,6 +196,7 @@ plot(data$x, data$y, main="Sample Data", xlab="X", ylab="Y")
 
 ### Capturing Plots and Visualizations
 
+#### Python Plots
 ```python
 with SandboxSession(lang="python") as session:
     result = session.run("""
@@ -218,6 +219,38 @@ plt.show()
     # Extract the generated plot
     artifacts = session.get_artifacts()
     print(f"Generated {len(artifacts)} artifacts")
+```
+
+#### R Plots
+```python
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+library(ggplot2)
+
+# Create sample data
+data <- data.frame(
+    x = rnorm(100),
+    y = rnorm(100)
+)
+
+# Create ggplot2 visualization
+p <- ggplot(data, aes(x = x, y = y)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(title = "Scatter Plot with Trend Line",
+         x = "X values", y = "Y values") +
+    theme_minimal()
+
+print(p)
+
+# Base R plot
+hist(data$x, main = "Distribution of X", 
+     xlab = "X values", col = "lightblue", breaks = 20)
+    """, libraries=["ggplot2"])
+
+    # Extract the generated plots
+    artifacts = session.get_artifacts()
+    print(f"Generated {len(artifacts)} R plots")
 ```
 
 ## 🔧 Configuration
