@@ -38,6 +38,7 @@ Execute code in multiple programming languages with automatic dependency managem
 - **Java** - Maven and Gradle dependency management
 - **C++** - Compilation and execution
 - **Go** - Module support and compilation
+- **R** - Statistical computing and data analysis with CRAN packages
 
 ### 🔌 LLM Framework Integration
 Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, LlamaIndex, OpenAI, and more.
@@ -161,6 +162,36 @@ func main() {
     fmt.Println("Hello from Go!")
 }
     """)
+```
+
+#### R
+```python
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+
+# Create sample data
+data <- data.frame(
+    x = 1:10,
+    y = rnorm(10)
+)
+
+# Perform data analysis
+summary_stats <- data %>%
+    summarise(
+        mean_x = mean(x),
+        mean_y = mean(y),
+        sd_y = sd(y)
+    )
+
+print("Summary Statistics:")
+print(summary_stats)
+
+# Create a simple plot
+plot(data$x, data$y, main="Sample Data", xlab="X", ylab="Y")
+    """, libraries=["ggplot2", "dplyr"])
 ```
 
 ### Capturing Plots and Visualizations
@@ -368,7 +399,7 @@ functions = [
             "type": "object",
             "properties": {
                 "code": {"type": "string", "description": "Code to execute"},
-                "language": {"type": "string", "enum": ["python", "javascript", "java", "cpp", "go"]}
+                "language": {"type": "string", "enum": ["python", "javascript", "java", "cpp", "go", "r"]}
             },
             "required": ["code"]
         }
