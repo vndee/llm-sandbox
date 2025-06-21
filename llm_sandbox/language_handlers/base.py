@@ -168,38 +168,49 @@ class AbstractLanguageHandler(ABC):
                 if not members:
                     return None
 
-                target_filename = Path(file_path).name
-                target_member = None
-
-                for member in members:
-                    if member.isfile() and Path(member.name).name == target_filename:
-                        target_member = member
-                        break
-
+                target_member = self._find_target_member(members, file_path)
                 if not target_member:
-                    for member in members:
-                        if member.isfile():
-                            target_member = member
-                            break
+                    return None
 
-                if target_member:
-                    file_obj = tar.extractfile(target_member)
-                    if file_obj:
-                        content = file_obj.read()
-
-                        # Get file info
-                        filename = Path(file_path).name
-                        file_ext = Path(filename).suffix.lower().lstrip(".")
-
-                        return PlotOutput(
-                            format=FileType(file_ext) if file_ext in ["png", "svg", "pdf", "html"] else FileType.PNG,
-                            content_base64=base64.b64encode(content).decode("utf-8"),
-                        )
+                return self._extract_plot_content(tar, target_member, file_path)
 
         except (OSError, tarfile.TarError, ValueError):
             self.logger.exception("Error extracting single plot")
 
         return None
+
+    def _find_target_member(self, members: list[tarfile.TarInfo], file_path: str) -> tarfile.TarInfo | None:
+        """Find the target member in tar file members."""
+        target_filename = Path(file_path).name
+
+        # First try to find exact filename match
+        for member in members:
+            if member.isfile() and Path(member.name).name == target_filename:
+                return member
+
+        # Fallback to any file
+        for member in members:
+            if member.isfile():
+                return member
+
+        return None
+
+    def _extract_plot_content(
+        self, tar: tarfile.TarFile, target_member: tarfile.TarInfo, file_path: str
+    ) -> PlotOutput | None:
+        """Extract content from target member."""
+        file_obj = tar.extractfile(target_member)
+        if not file_obj:
+            return None
+
+        content = file_obj.read()
+        filename = Path(file_path).name
+        file_ext = Path(filename).suffix.lower().lstrip(".")
+
+        return PlotOutput(
+            format=FileType(file_ext) if file_ext in ["png", "svg", "pdf", "html"] else FileType.PNG,
+            content_base64=base64.b64encode(content).decode("utf-8"),
+        )
 
     def run_with_artifacts(
         self,

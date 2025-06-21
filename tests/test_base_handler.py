@@ -284,3 +284,41 @@ class TestMissingCoverage:
         with patch("tarfile.TarFile.extractfile", return_value=None):
             result = handler._extract_single_plot(container, "/tmp/plots/test.png")
             assert result is None
+
+    def test_extract_single_plot_tarfile_processing_error(self) -> None:
+        """Test _extract_single_plot exception handling during file processing (lines 182-183)."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+            plot_detection=PlotDetectionConfig(
+                libraries=[PlotLibrary.MATPLOTLIB],
+                setup_code="setup",
+                cleanup_code="cleanup",
+            ),
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        container = Mock()
+
+        # Create valid tar content
+        tar_content = io.BytesIO()
+        with tarfile.open(fileobj=tar_content, mode="w") as tar:
+            # Add a file with content
+            file_content = b"fake image content"
+            tarinfo = tarfile.TarInfo(name="test.png")
+            tarinfo.size = len(file_content)
+            tar.addfile(tarinfo, io.BytesIO(file_content))
+
+        container.get_archive.return_value = (tar_content.getvalue(), True)
+
+        # Mock the file reading to raise an exception during processing
+        with patch("tarfile.TarFile.extractfile") as mock_extractfile:
+            mock_file_obj = Mock()
+            mock_file_obj.read.side_effect = OSError("Error reading file content")
+            mock_extractfile.return_value = mock_file_obj
+
+            # This should trigger the exception handling at lines 182-183
+            result = handler._extract_single_plot(container, "/tmp/plots/test.png")
+            assert result is None
