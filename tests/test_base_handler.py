@@ -1,7 +1,11 @@
+# ruff: noqa: SLF001, PLR2004
+
 """Tests for llm_sandbox.language_handlers.base module - missing coverage."""
 
+import io
 import logging
-from unittest.mock import Mock
+import tarfile
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -120,3 +124,163 @@ class TestMissingCoverage:
         assert len(config.libraries) == 1
         assert config.setup_code == "setup"
         assert config.cleanup_code == "cleanup"
+
+    def test_extract_plots_exception_handling(self) -> None:
+        """Test extract_plots exception handling for lines 140-141."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+            plot_detection=PlotDetectionConfig(
+                libraries=[PlotLibrary.MATPLOTLIB],
+                setup_code="setup",
+                cleanup_code="cleanup",
+            ),
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        container = Mock()
+        # Mock directory exists
+        mock_dir_result = Mock()
+        mock_dir_result.exit_code = 0
+
+        # Mock files found
+        mock_find_result = Mock()
+        mock_find_result.exit_code = 0
+        mock_find_result.stdout = "/tmp/plots/test.png"
+
+        container.execute_command.side_effect = [mock_dir_result, mock_find_result]
+
+        # Mock _extract_single_plot to raise an exception to trigger lines 140-141
+        with patch.object(handler, "_extract_single_plot", side_effect=OSError("Test error")):
+            # This should not raise an exception but log it and continue
+            plots = handler.extract_plots(container, "/tmp/plots")
+            assert plots == []
+
+    def test_extract_plots_runtime_error_handling(self) -> None:
+        """Test extract_plots RuntimeError exception handling for lines 140-141."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+            plot_detection=PlotDetectionConfig(
+                libraries=[PlotLibrary.MATPLOTLIB],
+                setup_code="setup",
+                cleanup_code="cleanup",
+            ),
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        container = Mock()
+        # Make execute_command raise RuntimeError to trigger lines 140-141
+        container.execute_command.side_effect = RuntimeError("Container error")
+
+        # This should not raise an exception but log it and return empty list
+        plots = handler.extract_plots(container, "/tmp/plots")
+        assert plots == []
+
+    def test_extract_single_plot_exception_handling(self) -> None:
+        """Test _extract_single_plot exception handling for lines 182-183."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+            plot_detection=PlotDetectionConfig(
+                libraries=[PlotLibrary.MATPLOTLIB],
+                setup_code="setup",
+                cleanup_code="cleanup",
+            ),
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        container = Mock()
+        # Mock get_archive to raise exception to trigger lines 182-183
+        container.get_archive.side_effect = OSError("Archive error")
+
+        # This should not raise an exception but log it and return None
+        result = handler._extract_single_plot(container, "/tmp/plots/test.png")
+        assert result is None
+
+    def test_extract_single_plot_tar_error_handling(self) -> None:
+        """Test _extract_single_plot TarError exception handling for lines 182-183."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+            plot_detection=PlotDetectionConfig(
+                libraries=[PlotLibrary.MATPLOTLIB],
+                setup_code="setup",
+                cleanup_code="cleanup",
+            ),
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        container = Mock()
+
+        # Create valid tar data but mock tarfile.open to raise TarError
+        valid_tar_data = io.BytesIO()
+        container.get_archive.return_value = (valid_tar_data.getvalue(), True)
+
+        with patch("tarfile.open", side_effect=tarfile.TarError("Tar error")):
+            # This should not raise an exception but log it and return None
+            result = handler._extract_single_plot(container, "/tmp/plots/test.png")
+            assert result is None
+
+    def test_extract_single_plot_value_error_handling(self) -> None:
+        """Test _extract_single_plot ValueError exception handling for lines 182-183."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+            plot_detection=PlotDetectionConfig(
+                libraries=[PlotLibrary.MATPLOTLIB],
+                setup_code="setup",
+                cleanup_code="cleanup",
+            ),
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        container = Mock()
+        # Mock get_archive to raise ValueError to trigger lines 182-183
+        container.get_archive.side_effect = ValueError("Value error")
+
+        # This should not raise an exception but log it and return None
+        result = handler._extract_single_plot(container, "/tmp/plots/test.png")
+        assert result is None
+
+    def test_extract_single_plot_file_obj_none(self) -> None:
+        """Test _extract_single_plot when file_obj is None (lines 180-183)."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+            plot_detection=PlotDetectionConfig(
+                libraries=[PlotLibrary.MATPLOTLIB],
+                setup_code="setup",
+                cleanup_code="cleanup",
+            ),
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        container = Mock()
+
+        # Create a valid tar with a member that extractfile returns None for
+        tar_content = io.BytesIO()
+        with tarfile.open(fileobj=tar_content, mode="w") as tar:
+            # Add an empty file
+            tarinfo = tarfile.TarInfo(name="test.png")
+            tarinfo.size = 0
+            tar.addfile(tarinfo, io.BytesIO())
+
+        container.get_archive.return_value = (tar_content.getvalue(), True)
+
+        # Mock tar.extractfile to return None
+        with patch("tarfile.TarFile.extractfile", return_value=None):
+            result = handler._extract_single_plot(container, "/tmp/plots/test.png")
+            assert result is None

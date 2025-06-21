@@ -2,9 +2,12 @@
 
 import logging
 import re
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.exceptions import LanguageNotSupportPlotError, PackageManagerError
 from llm_sandbox.language_handlers.base import PlotLibrary
 from llm_sandbox.language_handlers.r_handler import RHandler
 
@@ -50,6 +53,18 @@ class TestRHandler:
         assert "plot detection setup" in injected_code
         assert ".plot_counter" in injected_code
 
+    def test_inject_plot_detection_code_no_plot_support(self) -> None:
+        """Test inject_plot_detection_code when plot detection is not supported (line 35)."""
+        handler = RHandler()
+        # Remove plot detection support to trigger exception
+        handler.config.plot_detection = None
+
+        code = 'print("Hello R")'
+
+        # This should raise LanguageNotSupportPlotError
+        with pytest.raises(LanguageNotSupportPlotError):
+            handler.inject_plot_detection_code(code)
+
     def test_run_with_artifacts_with_plotting(self) -> None:
         """Test run_with_artifacts with plot detection enabled."""
         handler = RHandler()
@@ -57,19 +72,18 @@ class TestRHandler:
         mock_result = MagicMock()
         mock_container.run.return_value = mock_result
 
-        # Mock the extract_plots method
-        handler.extract_plots = MagicMock(return_value=[])
+        # Mock the extract_plots method using patch
+        with patch.object(handler, "extract_plots", return_value=[]) as mock_extract:
+            result, _ = handler.run_with_artifacts(
+                container=mock_container, code="plot(1:10)", libraries=["ggplot2"], enable_plotting=True
+            )
 
-        result, _ = handler.run_with_artifacts(
-            container=mock_container, code="plot(1:10)", libraries=["ggplot2"], enable_plotting=True
-        )
-
-        assert result == mock_result
-        # The injected code should contain plot detection
-        injected_code = mock_container.run.call_args[0][0]
-        assert "plot detection setup" in injected_code
-        assert "plot(1:10)" in injected_code
-        handler.extract_plots.assert_called_once()
+            assert result == mock_result
+            # The injected code should contain plot detection
+            injected_code = mock_container.run.call_args[0][0]
+            assert "plot detection setup" in injected_code
+            assert "plot(1:10)" in injected_code
+            mock_extract.assert_called_once()
 
     def test_run_with_artifacts_without_plotting(self) -> None:
         """Test run_with_artifacts with plot detection disabled."""
@@ -135,13 +149,11 @@ class TestRHandler:
 
         mock_container.execute_command.side_effect = [mock_dir_result, mock_find_result]
 
-        # Mock the _extract_single_plot method
-        handler._extract_single_plot = MagicMock(return_value=None)
-
-        _ = handler.extract_plots(mock_container, "/tmp/sandbox_plots")
-
-        # Should attempt to extract both files
-        assert handler._extract_single_plot.call_count == 2
+        # Mock the _extract_single_plot method using patch
+        with patch.object(handler, "_extract_single_plot", return_value=None) as mock_extract_single:
+            _ = handler.extract_plots(mock_container, "/tmp/sandbox_plots")
+            # Should attempt to extract both files
+            assert mock_extract_single.call_count == 2
 
     def test_get_import_patterns_library(self) -> None:
         """Test get_import_patterns method for library() statements."""
@@ -269,6 +281,16 @@ class TestRHandler:
         command = handler.get_library_installation_command("ggplot2")
 
         assert command == "R -e \"install.packages('ggplot2', repos='https://cran.rstudio.com/')\""
+
+    def test_get_library_installation_command_no_package_manager(self) -> None:
+        """Test get_library_installation_command when package manager is None (line 88)."""
+        handler = RHandler()
+        # Remove package manager to trigger exception
+        handler.config.package_manager = None
+
+        # This should raise PackageManagerError
+        with pytest.raises(PackageManagerError):
+            handler.get_library_installation_command("ggplot2")
 
     def test_base_r_packages(self) -> None:
         """Test base R package loading statements."""
@@ -407,6 +429,8 @@ class TestRHandler:
         """Test that plot detection setup code contains expected components."""
         handler = RHandler()
 
+        # Ensure plot detection is available before accessing setup_code
+        assert handler.config.plot_detection is not None
         setup_code = handler.config.plot_detection.setup_code
 
         # Should contain directory setup
