@@ -94,4 +94,4 @@ class DefaultImage:
     CPP = "ghcr.io/vndee/sandbox-cpp-11-bullseye"
     GO = "ghcr.io/vndee/sandbox-go-123-bullseye"
     RUBY = "ghcr.io/vndee/sandbox-ruby-302-bullseye"
-    R = "ghcr.io/vndee/sandbox-r-434-bullseye"
+    R = "ghcr.io/vndee/sandbox-r-451-bullseye"

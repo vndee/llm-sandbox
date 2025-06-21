@@ -244,7 +244,7 @@ p <- ggplot(data, aes(x = x, y = y)) +
 print(p)
 
 # Base R plot
-hist(data$x, main = "Distribution of X", 
+hist(data$x, main = "Distribution of X",
      xlab = "X values", col = "lightblue", breaks = 20)
     """, libraries=["ggplot2"])
 
