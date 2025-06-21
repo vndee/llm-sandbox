@@ -60,7 +60,7 @@ class TestRHandler:
         # Mock the extract_plots method
         handler.extract_plots = MagicMock(return_value=[])
 
-        result, plots = handler.run_with_artifacts(
+        result, _ = handler.run_with_artifacts(
             container=mock_container, code="plot(1:10)", libraries=["ggplot2"], enable_plotting=True
         )
 

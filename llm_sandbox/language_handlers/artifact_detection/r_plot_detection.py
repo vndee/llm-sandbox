@@ -194,7 +194,7 @@ if (requireNamespace("lattice", quietly = TRUE)) {
         .plot_counter <<- .plot_counter + 1
         png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
         png(png_file, width = 800, height = 600, res = 100)
-        .original_print_trellis(x)
+        .original_print_trellis(x, ...)
         dev.off()
       }, error = function(e) {
         cat("lattice capture error:", e$message, "\n")
