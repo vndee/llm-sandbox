@@ -35,7 +35,7 @@ plot.new <- function(...) {
 dev.off <- function(...) {
   # Close any open devices
   while(dev.cur() > 1) {
-    .original_dev_off(...)
+    .original_dev_off()
   }
 
   return(invisible())
