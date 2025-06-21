@@ -7,6 +7,7 @@ LLM Sandbox supports multiple programming languages, each with specific features
 | Language | Version | Package Manager | Plot Support | Default Image |
 |----------|---------|----------------|--------------|---------------|
 | **Python** | 3.11 | pip | ✅ Full | `ghcr.io/vndee/sandbox-python-311-bullseye` |
+| **R** | 4.5.1 | CRAN | ✅ Full | `ghcr.io/vndee/sandbox-r-451-bullseye` |
 | **JavaScript** | Node 22 | npm | ❌ | `ghcr.io/vndee/sandbox-node-22-bullseye` |
 | **Java** | 11 | Maven | ❌ | `ghcr.io/vndee/sandbox-java-11-bullseye` |
 | **C++** | GCC 11.2 | apt | ❌ | `ghcr.io/vndee/sandbox-cpp-11-bullseye` |
@@ -188,29 +189,296 @@ with SandboxSession(
     pass
 ```
 
-### Python Best Practices
+## R
 
-1. **Use virtual environments**
-   ```python
-   # Automatically handled by LLM Sandbox
-   # Packages installed in /tmp/venv
-   ```
+### Overview
 
-2. **Pin package versions**
-   ```python
-   libraries=["numpy==1.24.3", "pandas>=2.0.0,<2.1.0"]
-   ```
+R support includes CRAN package management and plot extraction. Comprehensive documentation is available [here](https://cran.r-project.org/).
 
-3. **Handle imports gracefully**
-   ```python
-   result = session.run("""
-try:
-    import specialized_package
-except ImportError:
-    print("Package not available, using fallback")
-    # Fallback code
-   """)
-   ```
+### Basic Usage
+
+```python
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+print("Hello from R!")
+    """)
+    print(result.stdout)
+```
+
+### Package Management
+
+```python
+# Install CRAN packages
+with SandboxSession(lang="r") as session:
+    session.install(["dplyr", "ggplot2"])
+    result = session.run("""
+library(dplyr)
+library(ggplot2)
+    """)
+```
+
+### Plot Extraction
+
+R supports automatic extraction of plots from ggplot2:
+
+```python
+from llm_sandbox import ArtifactSandboxSession
+import base64
+
+with ArtifactSandboxSession(lang="r") as session:
+    result = session.run("""
+library(ggplot2)
+
+# Create a plot
+p <- ggplot(mtcars, aes(x = hp, y = mpg)) +
+    geom_point() +
+    labs(title = "Miles per Gallon vs Horsepower", x = "Horsepower", y = "Miles per Gallon")
+
+# Save the plot as a PNG
+png(file = "plot.png")
+print(p)
+dev.off()
+    """)
+
+    # Save extracted plots
+    for i, plot in enumerate(result.plots):
+        with open(f"plot_{i}.png", "wb") as f:
+            f.write(base64.b64decode(plot.content_base64))
+```
+
+### Data Science Workflows
+
+#### Data Manipulation with Tidyverse
+
+```python
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+library(tidyverse)
+library(data.table)
+
+# Generate comprehensive dataset
+set.seed(42)
+n <- 1000
+
+data <- tibble(
+    id = 1:n,
+    age = rnorm(n, mean = 35, sd = 10),
+    income = exp(rnorm(n, mean = 10.5, sd = 0.5)),
+    education = sample(c("High School", "Bachelor", "Master", "PhD"), n, replace = TRUE),
+    performance_score = 70 + 0.3 * rnorm(n, mean = 5, sd = 2) + rnorm(n, mean = 0, sd = 5)
+)
+
+print("Data Summary:")
+print(glimpse(data))
+
+# Advanced data manipulation
+summary_stats <- data %>%
+    group_by(education) %>%
+    summarise(
+        count = n(),
+        avg_age = mean(age, na.rm = TRUE),
+        avg_income = mean(income, na.rm = TRUE),
+        avg_performance = mean(performance_score, na.rm = TRUE),
+        .groups = 'drop'
+    ) %>%
+    arrange(desc(avg_performance))
+
+print("Performance Analysis:")
+print(summary_stats)
+    """, libraries=["tidyverse", "data.table"])
+```
+
+#### Machine Learning
+
+```python
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+library(caret)
+library(randomForest)
+library(broom)
+
+# Create dataset for modeling
+set.seed(123)
+n <- 500
+data <- data.frame(
+    x1 = rnorm(n),
+    x2 = rnorm(n),
+    x3 = rnorm(n),
+    x4 = runif(n, -2, 2)
+)
+data$y <- 2 * data$x1 - 1.5 * data$x2 + 0.5 * data$x3 + rnorm(n, 0, 0.5)
+
+# Split data
+train_index <- createDataPartition(data$y, p = 0.8, list = FALSE)
+train_data <- data[train_index, ]
+test_data <- data[-train_index, ]
+
+# Linear Regression
+lm_model <- lm(y ~ ., data = train_data)
+print("Linear Regression Coefficients:")
+print(tidy(lm_model))
+
+# Random Forest
+rf_model <- randomForest(y ~ ., data = train_data, ntree = 100)
+print("Random Forest Variable Importance:")
+print(importance(rf_model))
+
+# Model evaluation
+lm_pred <- predict(lm_model, test_data)
+rf_pred <- predict(rf_model, test_data)
+
+lm_rmse <- sqrt(mean((test_data$y - lm_pred)^2))
+rf_rmse <- sqrt(mean((test_data$y - rf_pred)^2))
+
+print(paste("Linear Regression RMSE:", round(lm_rmse, 4)))
+print(paste("Random Forest RMSE:", round(rf_rmse, 4)))
+    """, libraries=["caret", "randomForest", "broom"])
+```
+
+#### Time Series Analysis
+
+```python
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+library(forecast)
+library(zoo)
+
+# Create synthetic time series
+set.seed(42)
+n <- 200
+trend <- seq(100, 150, length.out = n)
+seasonal <- 10 * sin(2 * pi * (1:n) / 12)
+noise <- rnorm(n, 0, 3)
+values <- trend + seasonal + noise
+
+# Convert to time series object
+ts_data <- ts(values, frequency = 12, start = c(2020, 1))
+
+print("Time Series Summary:")
+print(summary(ts_data))
+
+# Fit ARIMA model
+arima_model <- auto.arima(ts_data)
+print("ARIMA Model:")
+print(arima_model)
+
+# Generate forecasts
+forecast_result <- forecast(arima_model, h = 12)
+print("12-Period Forecast:")
+print(as.data.frame(forecast_result))
+    """, libraries=["forecast", "zoo"])
+```
+
+### Advanced Plotting
+
+#### ggplot2 Visualizations
+
+```python
+with ArtifactSandboxSession(lang="r") as session:
+    result = session.run("""
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+# Generate sample data
+set.seed(42)
+data <- data.frame(
+    x = rnorm(1000, 50, 15),
+    y = rnorm(1000, 30, 10),
+    category = sample(c("A", "B", "C", "D"), 1000, replace = TRUE),
+    size_var = runif(1000, 1, 5)
+)
+
+# Advanced scatter plot
+p1 <- ggplot(data, aes(x = x, y = y, color = category, size = size_var)) +
+    geom_point(alpha = 0.7) +
+    geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") +
+    scale_color_brewer(type = "qual", palette = "Set2") +
+    scale_size_continuous(range = c(1, 4)) +
+    labs(title = "Advanced Scatter Plot with Multiple Aesthetics",
+         subtitle = "Color by category, size by continuous variable") +
+    theme_minimal()
+
+print(p1)
+
+# Violin plot with statistics
+p2 <- data %>%
+    ggplot(aes(x = category, y = x)) +
+    geom_violin(aes(fill = category), alpha = 0.7) +
+    geom_boxplot(width = 0.2, fill = "white", outlier.shape = NA) +
+    geom_jitter(width = 0.1, alpha = 0.3, size = 0.8) +
+    stat_summary(fun = mean, geom = "point", shape = 23,
+                 size = 3, fill = "red", color = "darkred") +
+    labs(title = "Distribution Analysis: Violin + Box + Jitter") +
+    theme_minimal()
+
+print(p2)
+
+# Base R plots for comparison
+plot(data$x, data$y,
+     col = rainbow(4)[as.factor(data$category)],
+     pch = 19, cex = 0.8,
+     main = "Base R: Scatter Plot with Colors",
+     xlab = "X Variable", ylab = "Y Variable")
+legend("topright", legend = levels(as.factor(data$category)),
+       col = rainbow(4), pch = 19, title = "Category")
+    """, libraries=["ggplot2", "dplyr", "gridExtra"])
+```
+
+### Statistical Analysis
+
+```python
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+# Generate sample data
+set.seed(42)
+group1 <- rnorm(50, mean = 100, sd = 15)
+group2 <- rnorm(50, mean = 110, sd = 12)
+
+# Descriptive statistics
+print("Group 1 Statistics:")
+print(summary(group1))
+print("Group 2 Statistics:")
+print(summary(group2))
+
+# Statistical tests
+t_test_result <- t.test(group1, group2)
+print("T-test Results:")
+print(t_test_result)
+
+# Correlation analysis
+data <- data.frame(x = group1, y = group1 + rnorm(50, 0, 5))
+correlation <- cor.test(data$x, data$y)
+print("Correlation Test:")
+print(correlation)
+
+# ANOVA
+data$group <- rep(c("A", "B"), each = 25)
+anova_result <- aov(x ~ group, data = data)
+print("ANOVA Results:")
+print(summary(anova_result))
+    """)
+```
+
+### R-Specific Features
+
+#### CRAN Package Management
+
+```python
+# Install from specific CRAN mirror
+with SandboxSession(lang="r") as session:
+    result = session.run("""
+# Install from CRAN
+install.packages("lubridate", repos = "https://cran.rstudio.com/")
+library(lubridate)
+
+# Work with dates
+today_date <- today()
+print(paste("Today is:", today_date))
+print(paste("Year:", year(today_date)))
+print(paste("Month:", month(today_date, label = TRUE)))
+    """)
+```
 
 ## JavaScript (Node.js)
 

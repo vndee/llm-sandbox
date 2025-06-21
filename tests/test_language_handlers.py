@@ -39,8 +39,13 @@ class TestLanguageHandlerFactory:
 
     def test_create_ruby_handler(self) -> None:
         """Test creating a Ruby handler."""
-        with pytest.raises(LanguageNotSupportedError, match="Language ruby is not supported"):
-            LanguageHandlerFactory.create_handler("ruby")
+        handler = LanguageHandlerFactory.create_handler("ruby")
+        assert handler.__class__.__name__ == "RubyHandler"
+
+    def test_create_r_handler(self) -> None:
+        """Test creating a R handler."""
+        handler = LanguageHandlerFactory.create_handler("r")
+        assert handler.__class__.__name__ == "RHandler"
 
     def test_create_handler_with_logger(self) -> None:
         """Test creating a handler with custom logger."""

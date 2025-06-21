@@ -38,6 +38,7 @@ Execute code in multiple programming languages with automatic dependency managem
 - **Java** - Maven and Gradle dependency management
 - **C++** - Compilation and execution
 - **Go** - Module support and compilation
+- **R** - Statistical computing and data analysis with CRAN packages
 
 ### 🔌 LLM Framework Integration
 Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, LlamaIndex, OpenAI, and more.
@@ -163,10 +164,53 @@ func main() {
     """)
 ```
 
+#### R
+```python
+with SandboxSession(
+    lang="r",
+    image="ghcr.io/vndee/sandbox-r-451-bullseye",
+    verbose=True,
+) as session:
+    result = session.run(
+        """
+# Basic R operations
+print("=== Basic R Demo ===")
+
+# Create some data
+numbers <- c(1, 2, 3, 4, 5, 10, 15, 20)
+print(paste("Numbers:", paste(numbers, collapse=", ")))
+
+# Basic statistics
+print(paste("Mean:", mean(numbers)))
+print(paste("Median:", median(numbers)))
+print(paste("Standard Deviation:", sd(numbers)))
+
+# Work with data frames
+df <- data.frame(
+    name = c("Alice", "Bob", "Charlie", "Diana"),
+    age = c(25, 30, 35, 28),
+    score = c(85, 92, 78, 96)
+)
+
+print("=== Data Frame ===")
+print(df)
+
+# Calculate average score
+avg_score <- mean(df$score)
+print(paste("Average Score:", avg_score))
+        """
+    )
+```
+
 ### Capturing Plots and Visualizations
 
+#### Python Plots
 ```python
-with SandboxSession(lang="python") as session:
+from llm_sandbox import ArtifactSandboxSession
+import base64
+from pathlib import Path
+
+with ArtifactSandboxSession(lang="python") as session:
     result = session.run("""
 import matplotlib.pyplot as plt
 import numpy as np
@@ -184,9 +228,55 @@ plt.savefig("sine_wave.png", dpi=150, bbox_inches="tight")
 plt.show()
     """, libraries=["matplotlib", "numpy"])
 
-    # Extract the generated plot
-    artifacts = session.get_artifacts()
-    print(f"Generated {len(artifacts)} artifacts")
+    # Extract the generated plots
+    print(f"Generated {len(result.plots)} plots")
+
+    # Save plots to files
+    for i, plot in enumerate(result.plots):
+        plot_path = Path(f"plot_{i + 1}.{plot.format.value}")
+        with plot_path.open("wb") as f:
+            f.write(base64.b64decode(plot.content_base64))
+```
+
+#### R Plots
+```python
+from llm_sandbox import ArtifactSandboxSession
+import base64
+from pathlib import Path
+
+with ArtifactSandboxSession(lang="r") as session:
+    result = session.run("""
+library(ggplot2)
+
+# Create sample data
+data <- data.frame(
+    x = rnorm(100),
+    y = rnorm(100)
+)
+
+# Create ggplot2 visualization
+p <- ggplot(data, aes(x = x, y = y)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(title = "Scatter Plot with Trend Line",
+         x = "X values", y = "Y values") +
+    theme_minimal()
+
+print(p)
+
+# Base R plot
+hist(data$x, main = "Distribution of X",
+     xlab = "X values", col = "lightblue", breaks = 20)
+    """, libraries=["ggplot2"])
+
+    # Extract the generated plots
+    print(f"Generated {len(result.plots)} R plots")
+
+    # Save plots to files
+    for i, plot in enumerate(result.plots):
+        plot_path = Path(f"r_plot_{i + 1}.{plot.format.value}")
+        with plot_path.open("wb") as f:
+            f.write(base64.b64decode(plot.content_base64))
 ```
 
 ## 🔧 Configuration
@@ -368,7 +458,7 @@ functions = [
             "type": "object",
             "properties": {
                 "code": {"type": "string", "description": "Code to execute"},
-                "language": {"type": "string", "enum": ["python", "javascript", "java", "cpp", "go"]}
+                "language": {"type": "string", "enum": ["python", "javascript", "java", "cpp", "go", "r"]}
             },
             "required": ["code"]
         }

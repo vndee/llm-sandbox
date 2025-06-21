@@ -10,6 +10,8 @@ from .go_handler import GoHandler
 from .java_handler import JavaHandler
 from .javascript_handler import JavaScriptHandler
 from .python_handler import PythonHandler
+from .r_handler import RHandler
+from .ruby_handler import RubyHandler
 
 
 class LanguageHandlerFactory:
@@ -21,6 +23,8 @@ class LanguageHandlerFactory:
         str(SupportedLanguage.JAVA): JavaHandler,
         str(SupportedLanguage.CPP): CppHandler,
         str(SupportedLanguage.GO): GoHandler,
+        str(SupportedLanguage.RUBY): RubyHandler,
+        str(SupportedLanguage.R): RHandler,
     }
 
     @classmethod
