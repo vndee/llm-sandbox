@@ -32,7 +32,7 @@ class TestRHandler:
     def test_plot_detection_config(self) -> None:
         """Test plot detection configuration."""
         handler = RHandler()
-        
+
         assert handler.config.plot_detection is not None
         assert PlotLibrary.ROOT in handler.config.plot_detection.libraries
         assert PlotLibrary.PLOTLY in handler.config.plot_detection.libraries
@@ -56,15 +56,12 @@ class TestRHandler:
         mock_container = MagicMock()
         mock_result = MagicMock()
         mock_container.run.return_value = mock_result
-        
+
         # Mock the extract_plots method
         handler.extract_plots = MagicMock(return_value=[])
 
         result, plots = handler.run_with_artifacts(
-            container=mock_container, 
-            code='plot(1:10)', 
-            libraries=["ggplot2"], 
-            enable_plotting=True
+            container=mock_container, code="plot(1:10)", libraries=["ggplot2"], enable_plotting=True
         )
 
         assert result == mock_result
@@ -82,10 +79,7 @@ class TestRHandler:
         mock_container.run.return_value = mock_result
 
         result, plots = handler.run_with_artifacts(
-            container=mock_container, 
-            code='print("Hello R")', 
-            libraries=["ggplot2"], 
-            enable_plotting=False
+            container=mock_container, code='print("Hello R")', libraries=["ggplot2"], enable_plotting=False
         )
 
         assert result == mock_result
@@ -110,15 +104,15 @@ class TestRHandler:
         """Test extract_plots when no plot files exist."""
         handler = RHandler()
         mock_container = MagicMock()
-        
+
         # Mock directory exists
         mock_dir_result = MagicMock()
         mock_dir_result.exit_code = 0
-        
+
         # Mock no files found
         mock_find_result = MagicMock()
         mock_find_result.exit_code = 1
-        
+
         mock_container.execute_command.side_effect = [mock_dir_result, mock_find_result]
 
         plots = handler.extract_plots(mock_container, "/tmp/sandbox_plots")
@@ -129,22 +123,22 @@ class TestRHandler:
         """Test extract_plots with plot files present."""
         handler = RHandler()
         mock_container = MagicMock()
-        
+
         # Mock directory exists
         mock_dir_result = MagicMock()
         mock_dir_result.exit_code = 0
-        
+
         # Mock files found
         mock_find_result = MagicMock()
         mock_find_result.exit_code = 0
         mock_find_result.stdout = "/tmp/sandbox_plots/000001.png\n/tmp/sandbox_plots/000002.svg"
-        
+
         mock_container.execute_command.side_effect = [mock_dir_result, mock_find_result]
-        
+
         # Mock the _extract_single_plot method
         handler._extract_single_plot = MagicMock(return_value=None)
 
-        plots = handler.extract_plots(mock_container, "/tmp/sandbox_plots")
+        _ = handler.extract_plots(mock_container, "/tmp/sandbox_plots")
 
         # Should attempt to extract both files
         assert handler._extract_single_plot.call_count == 2
@@ -274,7 +268,7 @@ class TestRHandler:
 
         command = handler.get_library_installation_command("ggplot2")
 
-        assert command == "install.packages ggplot2"
+        assert command == "R -e \"install.packages('ggplot2', repos='https://cran.rstudio.com/')\""
 
     def test_base_r_packages(self) -> None:
         """Test base R package loading statements."""
@@ -412,21 +406,21 @@ class TestRHandler:
     def test_plot_detection_setup_content(self) -> None:
         """Test that plot detection setup code contains expected components."""
         handler = RHandler()
-        
+
         setup_code = handler.config.plot_detection.setup_code
-        
+
         # Should contain directory setup
         assert "dir.create" in setup_code
         assert "/tmp/sandbox_plots" in setup_code
-        
+
         # Should contain plot counter
         assert ".plot_counter" in setup_code
-        
+
         # Should contain support for different plotting libraries
         assert "ggplot2" in setup_code
         assert "plotly" in setup_code
         assert "lattice" in setup_code
-        
+
         # Should contain enhanced plotting functions
         assert ".enhanced_plot" in setup_code
         assert ".enhanced_hist" in setup_code
@@ -436,10 +430,10 @@ class TestRHandler:
         """Test _extract_single_plot error handling."""
         handler = RHandler()
         mock_container = MagicMock()
-        
+
         # Mock get_archive to raise an exception
         mock_container.get_archive.side_effect = OSError("Test error")
-        
+
         result = handler._extract_single_plot(mock_container, "/test/path.png")
-        
+
         assert result is None

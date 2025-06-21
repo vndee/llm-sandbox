@@ -20,14 +20,14 @@ dir.create('/tmp/sandbox_output', recursive = TRUE, showWarnings = FALSE)
 # Enhanced plot.new to start capturing
 plot.new <- function(...) {
   result <- .original_plot_new(...)
-  
+
   # Start a PNG device in the background to capture the plot
   .plot_counter <<- .plot_counter + 1
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
-  
+
   # Open PNG device
   png(png_file, width = 800, height = 600, res = 100)
-  
+
   return(result)
 }
 
@@ -35,9 +35,9 @@ plot.new <- function(...) {
 dev.off <- function(...) {
   # Close any open devices
   while(dev.cur() > 1) {
-    .original_dev_off()
+    .original_dev_off(...)
   }
-  
+
   return(invisible())
 }
 
@@ -45,13 +45,17 @@ dev.off <- function(...) {
 .enhanced_plot <- function(...) {
   .plot_counter <<- .plot_counter + 1
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
-  
+
   # Save to file
   png(png_file, width = 800, height = 600, res = 100)
   on.exit(dev.off())
-  
-  # Call original plot
-  graphics::plot(...)
+
+  # Call original plot (use stored original if available, otherwise graphics::plot)
+  if (exists(".original_plot") && is.function(.original_plot)) {
+    .original_plot(...)
+  } else {
+    graphics::plot(...)
+  }
 }
 
 # Patch common plotting functions
@@ -64,10 +68,10 @@ plot <- .enhanced_plot
 .enhanced_hist <- function(...) {
   .plot_counter <<- .plot_counter + 1
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
-  
+
   png(png_file, width = 800, height = 600, res = 100)
   on.exit(dev.off())
-  
+
   graphics::hist(...)
 }
 
@@ -77,10 +81,10 @@ hist <- .enhanced_hist
 .enhanced_boxplot <- function(...) {
   .plot_counter <<- .plot_counter + 1
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
-  
+
   png(png_file, width = 800, height = 600, res = 100)
   on.exit(dev.off())
-  
+
   graphics::boxplot(...)
 }
 
@@ -90,10 +94,10 @@ boxplot <- .enhanced_boxplot
 .enhanced_barplot <- function(...) {
   .plot_counter <<- .plot_counter + 1
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
-  
+
   png(png_file, width = 800, height = 600, res = 100)
   on.exit(dev.off())
-  
+
   graphics::barplot(...)
 }
 
@@ -101,14 +105,14 @@ barplot <- .enhanced_barplot
 
 # === GGPLOT2 SUPPORT ===
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  
+
   # Enhanced print method for ggplot objects
   .original_print_ggplot <- getS3method("print", "ggplot")
-  
+
   print.ggplot <- function(x, ...) {
     # Call original print method
     result <- .original_print_ggplot(x, ...)
-    
+
     # Save the plot
     tryCatch({
       .plot_counter <<- .plot_counter + 1
@@ -117,18 +121,18 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
     }, error = function(e) {
       cat("ggplot2 capture error:", e$message, "\n")
     })
-    
+
     return(result)
   }
-  
+
   # Enhanced ggsave function
   if (exists("ggsave", envir = asNamespace("ggplot2"))) {
     .original_ggsave <- ggplot2::ggsave
-    
+
     assignInNamespace("ggsave", function(filename, plot = ggplot2::last_plot(), ...) {
       # Call original ggsave
       result <- .original_ggsave(filename, plot, ...)
-      
+
       # Copy to our output directory
       tryCatch({
         .plot_counter <<- .plot_counter + 1
@@ -139,25 +143,25 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
       }, error = function(e) {
         cat("ggplot2 ggsave capture error:", e$message, "\n")
       })
-      
+
       return(result)
     }, ns = "ggplot2")
   }
-  
+
   cat("ggplot2 plotting enabled\n")
 }
 
 # === PLOTLY SUPPORT ===
 if (requireNamespace("plotly", quietly = TRUE)) {
-  
+
   # Enhanced print method for plotly objects
   if (exists("print.plotly", envir = asNamespace("plotly"))) {
     .original_print_plotly <- getS3method("print", "plotly")
-    
+
     print.plotly <- function(x, ...) {
       # Call original print method
       result <- .original_print_plotly(x, ...)
-      
+
       # Save as HTML
       tryCatch({
         .plot_counter <<- .plot_counter + 1
@@ -166,40 +170,40 @@ if (requireNamespace("plotly", quietly = TRUE)) {
       }, error = function(e) {
         cat("plotly capture error:", e$message, "\n")
       })
-      
+
       return(result)
     }
   }
-  
+
   cat("plotly plotting enabled\n")
 }
 
 # === LATTICE SUPPORT ===
 if (requireNamespace("lattice", quietly = TRUE)) {
-  
+
   # Enhanced print method for lattice plots
   if (exists("print.trellis", envir = asNamespace("lattice"))) {
     .original_print_trellis <- getS3method("print", "trellis")
-    
+
     print.trellis <- function(x, ...) {
-      # Call original print method  
+      # Call original print method
       result <- .original_print_trellis(x, ...)
-      
+
       # Save the plot
       tryCatch({
         .plot_counter <<- .plot_counter + 1
         png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
         png(png_file, width = 800, height = 600, res = 100)
-        print(x)
+        .original_print_trellis(x)
         dev.off()
       }, error = function(e) {
         cat("lattice capture error:", e$message, "\n")
       })
-      
+
       return(result)
     }
   }
-  
+
   cat("lattice plotting enabled\n")
 }
 
@@ -208,7 +212,7 @@ if (requireNamespace("lattice", quietly = TRUE)) {
 # Function to manually save current plot
 save_current_plot <- function(format = "png") {
   .plot_counter <<- .plot_counter + 1
-  
+
   if (format == "png") {
     filename <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
     dev.copy(png, filename, width = 800, height = 600, res = 100)
@@ -222,7 +226,7 @@ save_current_plot <- function(format = "png") {
     dev.copy(svg, filename, width = 10, height = 6)
     dev.off()
   }
-  
+
   cat("Plot saved to:", filename, "\n")
   return(filename)
 }

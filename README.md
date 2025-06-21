@@ -166,39 +166,51 @@ func main() {
 
 #### R
 ```python
-with SandboxSession(lang="r") as session:
-    result = session.run("""
-# Load required libraries
-library(ggplot2)
-library(dplyr)
+with SandboxSession(
+    lang="r",
+    image="ghcr.io/vndee/sandbox-r-451-bullseye",
+    verbose=True,
+) as session:
+    result = session.run(
+        """
+# Basic R operations
+print("=== Basic R Demo ===")
 
-# Create sample data
-data <- data.frame(
-    x = 1:10,
-    y = rnorm(10)
+# Create some data
+numbers <- c(1, 2, 3, 4, 5, 10, 15, 20)
+print(paste("Numbers:", paste(numbers, collapse=", ")))
+
+# Basic statistics
+print(paste("Mean:", mean(numbers)))
+print(paste("Median:", median(numbers)))
+print(paste("Standard Deviation:", sd(numbers)))
+
+# Work with data frames
+df <- data.frame(
+    name = c("Alice", "Bob", "Charlie", "Diana"),
+    age = c(25, 30, 35, 28),
+    score = c(85, 92, 78, 96)
 )
 
-# Perform data analysis
-summary_stats <- data %>%
-    summarise(
-        mean_x = mean(x),
-        mean_y = mean(y),
-        sd_y = sd(y)
+print("=== Data Frame ===")
+print(df)
+
+# Calculate average score
+avg_score <- mean(df$score)
+print(paste("Average Score:", avg_score))
+        """
     )
-
-print("Summary Statistics:")
-print(summary_stats)
-
-# Create a simple plot
-plot(data$x, data$y, main="Sample Data", xlab="X", ylab="Y")
-    """, libraries=["ggplot2", "dplyr"])
 ```
 
 ### Capturing Plots and Visualizations
 
 #### Python Plots
 ```python
-with SandboxSession(lang="python") as session:
+from llm_sandbox import ArtifactSandboxSession
+import base64
+from pathlib import Path
+
+with ArtifactSandboxSession(lang="python") as session:
     result = session.run("""
 import matplotlib.pyplot as plt
 import numpy as np
@@ -216,14 +228,23 @@ plt.savefig("sine_wave.png", dpi=150, bbox_inches="tight")
 plt.show()
     """, libraries=["matplotlib", "numpy"])
 
-    # Extract the generated plot
-    artifacts = session.get_artifacts()
-    print(f"Generated {len(artifacts)} artifacts")
+    # Extract the generated plots
+    print(f"Generated {len(result.plots)} plots")
+
+    # Save plots to files
+    for i, plot in enumerate(result.plots):
+        plot_path = Path(f"plot_{i + 1}.{plot.format.value}")
+        with plot_path.open("wb") as f:
+            f.write(base64.b64decode(plot.content_base64))
 ```
 
 #### R Plots
 ```python
-with SandboxSession(lang="r") as session:
+from llm_sandbox import ArtifactSandboxSession
+import base64
+from pathlib import Path
+
+with ArtifactSandboxSession(lang="r") as session:
     result = session.run("""
 library(ggplot2)
 
@@ -249,8 +270,13 @@ hist(data$x, main = "Distribution of X",
     """, libraries=["ggplot2"])
 
     # Extract the generated plots
-    artifacts = session.get_artifacts()
-    print(f"Generated {len(artifacts)} R plots")
+    print(f"Generated {len(result.plots)} R plots")
+
+    # Save plots to files
+    for i, plot in enumerate(result.plots):
+        plot_path = Path(f"r_plot_{i + 1}.{plot.format.value}")
+        with plot_path.open("wb") as f:
+            f.write(base64.b64decode(plot.content_base64))
 ```
 
 ## 🔧 Configuration
