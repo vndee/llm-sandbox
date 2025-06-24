@@ -86,5 +86,5 @@ class RHandler(AbstractLanguageHandler):
         """Get command to install R library."""
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)
-        # Format as proper R command for package installation
+
         return f"R -e \"install.packages('{library}', repos='https://cran.rstudio.com/')\""
