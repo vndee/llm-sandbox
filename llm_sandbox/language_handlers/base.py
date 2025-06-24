@@ -1,11 +1,15 @@
+import base64
+import io
 import logging
 import re
+import tarfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from llm_sandbox.data import PlotOutput
+from llm_sandbox.data import FileType, PlotOutput
 
 if TYPE_CHECKING:
 
@@ -98,10 +102,11 @@ class AbstractLanguageHandler(ABC):
         """
         return code
 
-    def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:  # noqa: ARG002
+    def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:
         """Extract plots from the code.
 
-        Subclasses should override this method to provide custom plot extraction logic.
+        Base implementation that searches for plot files and extracts them.
+        Languages can override this method to provide custom plot extraction logic.
 
         Args:
             container: The container protocol instance to run code in
@@ -111,7 +116,101 @@ class AbstractLanguageHandler(ABC):
             list[PlotOutput]: List of plot outputs
 
         """
-        return []
+        plots: list[PlotOutput] = []
+
+        try:
+            result = container.execute_command(f"test -d {output_dir}")
+            if result.exit_code:
+                return plots
+
+            result = container.execute_command(
+                f"find {output_dir} -name '*.png' -o -name '*.svg' -o -name '*.pdf' -o -name '*.html'"
+            )
+            if result.exit_code:
+                return plots
+
+            file_paths = result.stdout.strip().split("\n")
+            file_paths = [path.strip() for path in file_paths if path.strip()]
+
+            for file_path in sorted(file_paths):
+                try:
+                    plot_output = self._extract_single_plot(container, file_path)
+                    if plot_output:
+                        plots.append(plot_output)
+                except (OSError, tarfile.TarError, ValueError):
+                    self.logger.exception("Error extracting plot %s", file_path)
+
+        except (OSError, RuntimeError):
+            self.logger.exception("Error extracting %s plots", self.config.name)
+
+        return plots
+
+    def _extract_single_plot(self, container: "ContainerProtocol", file_path: str) -> PlotOutput | None:
+        """Extract single plot file from container.
+
+        This is a shared implementation used by multiple language handlers.
+
+        Args:
+            container: The container protocol instance
+            file_path: Path to the plot file in the container
+
+        Returns:
+            PlotOutput or None if extraction fails
+
+        """
+        try:
+            bits, stat = container.get_archive(file_path)
+            if not stat:
+                return None
+
+            with tarfile.open(fileobj=io.BytesIO(bits), mode="r") as tar:
+                members = tar.getmembers()
+                if not members:
+                    return None
+
+                target_member = self._find_target_member(members, file_path)
+                if not target_member:
+                    return None
+
+                return self._extract_plot_content(tar, target_member, file_path)
+
+        except (OSError, tarfile.TarError, ValueError):
+            self.logger.exception("Error extracting single plot")
+
+        return None
+
+    def _find_target_member(self, members: list[tarfile.TarInfo], file_path: str) -> tarfile.TarInfo | None:
+        """Find the target member in tar file members."""
+        target_filename = Path(file_path).name
+
+        # First try to find exact filename match
+        for member in members:
+            if member.isfile() and Path(member.name).name == target_filename:
+                return member
+
+        # Fallback to any file
+        for member in members:
+            if member.isfile():
+                return member
+
+        return None
+
+    def _extract_plot_content(
+        self, tar: tarfile.TarFile, target_member: tarfile.TarInfo, file_path: str
+    ) -> PlotOutput | None:
+        """Extract content from target member."""
+        file_obj = tar.extractfile(target_member)
+        if not file_obj:
+            return None
+
+        content = file_obj.read()
+        filename = Path(file_path).name
+        file_ext = Path(filename).suffix.lower().lstrip(".")
+
+        return PlotOutput(
+            format=FileType(file_ext) if file_ext in ["png", "svg", "pdf", "html"] else FileType.PNG,
+            content_base64=base64.b64encode(content).decode("utf-8"),
+        )
 
     def run_with_artifacts(
         self,
@@ -150,6 +249,7 @@ class AbstractLanguageHandler(ABC):
             plots = self.extract_plots(container, output_dir)
 
             return result, plots
+
         # Run code without plot detection
         result = container.run(code, libraries)
         return result, []

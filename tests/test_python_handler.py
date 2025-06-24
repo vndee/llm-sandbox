@@ -154,7 +154,7 @@ class TestPythonHandler:
             plots = handler.extract_plots(mock_container, "/tmp/sandbox_plots")
 
             assert plots == []
-            mock_log.assert_called_once_with("Error extracting Python plots")
+            mock_log.assert_called_once_with("Error extracting %s plots", handler.config.name)
 
     def test_extract_single_plot_success(self) -> None:
         """Test _extract_single_plot with successful extraction."""
