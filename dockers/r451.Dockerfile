@@ -46,17 +46,16 @@ RUN R -e "install.packages(c('devtools', 'here', 'janitor'), repos='https://cran
 RUN R -e "install.packages('BiocManager', repos='https://cran.rstudio.com/')"
 
 # Install core Bioconductor packages for biological analysis
-RUN R -e "BiocManager::install(c('Biobase', 'BiocGenerics', 'S4Vectors', 'IRanges', 'GenomeInfoDb'))"
+RUN R -e "BiocManager::install(c('Biobase', 'BiocGenerics', 'S4Vectors', 'IRanges', 'GenomeInfoDb'), ask = FALSE, update = FALSE)"
 
 # Install essential genomics and bioinformatics packages
-RUN R -e "BiocManager::install(c('GenomicRanges', 'GenomicFeatures', 'AnnotationDbi', 'org.Hs.eg.db'))"
+RUN R -e "BiocManager::install(c('GenomicRanges', 'GenomicFeatures', 'AnnotationDbi', 'org.Hs.eg.db'), ask = FALSE, update = FALSE)"
 
 # Install popular analysis packages
-RUN R -e "BiocManager::install(c('DESeq2', 'edgeR', 'limma', 'ComplexHeatmap', 'EnhancedVolcano'))"
+RUN R -e "BiocManager::install(c('DESeq2', 'edgeR', 'limma', 'ComplexHeatmap', 'EnhancedVolcano'), ask = FALSE, update = FALSE)"
 
 # Install additional useful Bioconductor packages
-RUN R -e "BiocManager::install(c('biomaRt', 'GO.db', 'KEGGREST', 'clusterProfiler'))"
-
+RUN R -e "BiocManager::install(c('biomaRt', 'GO.db', 'KEGGREST', 'clusterProfiler'), ask = FALSE, update = FALSE)"
 USER sandbox
 
 WORKDIR /sandbox
