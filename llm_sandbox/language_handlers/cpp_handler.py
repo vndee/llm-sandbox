@@ -41,6 +41,7 @@ class CppHandler(AbstractLanguageHandler):
         libraries: list | None = None,
         enable_plotting: bool = True,  # noqa: ARG002
         output_dir: str = "/tmp/sandbox_plots",  # noqa: ARG002
+        timeout: int = 30,
     ) -> tuple[Any, list[PlotOutput]]:
         """Run C++ code without artifact extraction.
 
@@ -58,13 +59,14 @@ class CppHandler(AbstractLanguageHandler):
             libraries: Optional list of libraries to install before running
             enable_plotting: Whether to enable plot detection (ignored for C++)
             output_dir: Directory where plots should be saved (unused)
+            timeout: Timeout for the code execution
 
         Returns:
             tuple: (execution_result, empty_list_of_plots)
 
         """
         self.logger.warning("C++ does not support plot extraction yet")
-        result = container.run(code, libraries)
+        result = container.run(code, libraries, timeout=timeout)
         return result, []
 
     def get_import_patterns(self, module: str) -> str:
