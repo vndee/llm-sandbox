@@ -273,7 +273,7 @@ def create_visualization_with_files(
 
 
 @mcp.resource("sandbox://languages")
-def get_sandbox_execution_language_support() -> str:
+def get_language_details() -> str:
     """Resource containing detailed information about supported languages."""
     return json.dumps(LANGUAGE_RESOURCES, indent=2)
 
