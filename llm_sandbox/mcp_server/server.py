@@ -150,7 +150,7 @@ def execute_code_with_files(
     Args:
         code: The code to execute
         language: Programming language (python, javascript, java, cpp, go, r)
-        files: Dictionary of filename -> content to create in sandbox
+        files: Dictionary of filename -> content to create in sandbox, it will be located in /sandbox/{filename}
         libraries: List of libraries/packages to install
         timeout: Execution timeout in seconds (default: 30)
 
@@ -214,7 +214,7 @@ def create_visualization_with_files(
     Args:
         code: Code that generates plots/visualizations
         language: Programming language (python or r recommended for plots)
-        files: Dictionary of filename -> content to create in sandbox
+        files: Dictionary of filename -> content to create in sandbox, it will be located in /sandbox/{filename}
         libraries: List of visualization libraries to install
         timeout: Execution timeout in seconds (default: 45)
 
