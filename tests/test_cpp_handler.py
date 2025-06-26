@@ -49,11 +49,15 @@ class TestCppHandler:
             code="#include <iostream>\nint main() { return 0; }",
             libraries=["libstdc++"],
             enable_plotting=True,
+            timeout=30,
+            output_dir="/tmp/sandbox_plots",
         )
 
         assert result == mock_result
         assert plots == []
-        mock_container.run.assert_called_once_with("#include <iostream>\nint main() { return 0; }", ["libstdc++"])
+        mock_container.run.assert_called_once_with(
+            "#include <iostream>\nint main() { return 0; }", ["libstdc++"], timeout=30
+        )
 
     def test_extract_plots_returns_empty(self) -> None:
         """Test extract_plots returns empty list."""

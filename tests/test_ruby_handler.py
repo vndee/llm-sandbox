@@ -45,12 +45,17 @@ class TestRubyHandler:
         mock_container.run.return_value = mock_result
 
         result, plots = handler.run_with_artifacts(
-            container=mock_container, code='puts "Hello"', libraries=["json"], enable_plotting=True
+            container=mock_container,
+            code='puts "Hello"',
+            libraries=["json"],
+            enable_plotting=True,
+            output_dir="/tmp/sandbox_plots",
+            timeout=30,
         )
 
         assert result == mock_result
         assert plots == []
-        mock_container.run.assert_called_once_with('puts "Hello"', ["json"])
+        mock_container.run.assert_called_once_with('puts "Hello"', ["json"], timeout=30)
 
     def test_extract_plots_returns_empty(self) -> None:
         """Test extract_plots returns empty list."""
