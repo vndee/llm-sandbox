@@ -124,10 +124,10 @@ def create_visualization(
                     )
                 )
 
-            if hasattr(result, "stdout"):
+            if hasattr(result, "stdout") and result.stdout:
                 results.append(TextContent(text=result.stdout, type="text"))
 
-            if hasattr(result, "stderr"):
+            if hasattr(result, "stderr") and result.stderr:
                 results.append(TextContent(text=result.stderr, type="text"))
 
             return results
@@ -259,10 +259,10 @@ def create_visualization_with_files(
                     )
                 )
 
-            if hasattr(result, "stdout"):
+            if hasattr(result, "stdout") and result.stdout:
                 results.append(TextContent(text=result.stdout, type="text"))
 
-            if hasattr(result, "stderr"):
+            if hasattr(result, "stderr") and result.stderr:
                 results.append(TextContent(text=result.stderr, type="text"))
 
             return results
