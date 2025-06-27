@@ -75,7 +75,12 @@ class TestRHandler:
         # Mock the extract_plots method using patch
         with patch.object(handler, "extract_plots", return_value=[]) as mock_extract:
             result, _ = handler.run_with_artifacts(
-                container=mock_container, code="plot(1:10)", libraries=["ggplot2"], enable_plotting=True
+                container=mock_container,
+                code="plot(1:10)",
+                libraries=["ggplot2"],
+                enable_plotting=True,
+                timeout=30,
+                output_dir="/tmp/sandbox_plots",
             )
 
             assert result == mock_result
@@ -93,13 +98,18 @@ class TestRHandler:
         mock_container.run.return_value = mock_result
 
         result, plots = handler.run_with_artifacts(
-            container=mock_container, code='print("Hello R")', libraries=["ggplot2"], enable_plotting=False
+            container=mock_container,
+            code='print("Hello R")',
+            libraries=["ggplot2"],
+            enable_plotting=False,
+            timeout=30,
+            output_dir="/tmp/sandbox_plots",
         )
 
         assert result == mock_result
         assert plots == []
         # Original code should be used without injection
-        mock_container.run.assert_called_once_with('print("Hello R")', ["ggplot2"])
+        mock_container.run.assert_called_once_with('print("Hello R")', ["ggplot2"], 30)
 
     def test_extract_plots_no_directory(self) -> None:
         """Test extract_plots when output directory doesn't exist."""

@@ -49,11 +49,15 @@ class TestGoHandler:
             code="package main\nfunc main() {}",
             libraries=["github.com/gorilla/mux"],
             enable_plotting=True,
+            timeout=30,
+            output_dir="/tmp/sandbox_plots",
         )
 
         assert result == mock_result
         assert plots == []
-        mock_container.run.assert_called_once_with("package main\nfunc main() {}", ["github.com/gorilla/mux"])
+        mock_container.run.assert_called_once_with(
+            "package main\nfunc main() {}", ["github.com/gorilla/mux"], timeout=30
+        )
 
     def test_extract_plots_returns_empty(self) -> None:
         """Test extract_plots returns empty list."""

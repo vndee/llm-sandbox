@@ -45,12 +45,17 @@ class TestJavaHandler:
         mock_container.run.return_value = mock_result
 
         result, plots = handler.run_with_artifacts(
-            container=mock_container, code='System.out.println("Hello");', libraries=None, enable_plotting=True
+            container=mock_container,
+            code='System.out.println("Hello");',
+            libraries=None,
+            enable_plotting=True,
+            timeout=30,
+            output_dir="/tmp/sandbox_plots",
         )
 
         assert result == mock_result
         assert plots == []
-        mock_container.run.assert_called_once_with('System.out.println("Hello");', None)
+        mock_container.run.assert_called_once_with('System.out.println("Hello");', None, timeout=30)
 
     def test_extract_plots_returns_empty(self) -> None:
         """Test extract_plots returns empty list."""

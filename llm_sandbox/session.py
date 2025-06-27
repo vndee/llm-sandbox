@@ -405,7 +405,12 @@ class ArtifactSandboxSession:
         """Delegate any other attributes/methods to the underlying session."""
         return getattr(self._session, name)
 
-    def run(self, code: str, libraries: list | None = None) -> ExecutionResult:
+    def run(
+        self,
+        code: str,
+        libraries: list | None = None,
+        timeout: int = 30,
+    ) -> ExecutionResult:
         """Run code in the sandbox session and extract any generated artifacts.
 
         This method executes the provided code in an isolated environment and captures any
@@ -418,6 +423,7 @@ class ArtifactSandboxSession:
                         seaborn, plotly, or other visualization libraries.
             libraries (list | None, optional): Additional libraries to install before running
                                                 the code. Defaults to None.
+            timeout (int, optional): Timeout in seconds for the code execution. Defaults to 30.
 
         Returns:
             ExecutionResult: An object containing:
@@ -515,6 +521,7 @@ class ArtifactSandboxSession:
             libraries=libraries,
             enable_plotting=self.enable_plotting,
             output_dir="/tmp/sandbox_plots",
+            timeout=timeout,
         )
 
         return ExecutionResult(

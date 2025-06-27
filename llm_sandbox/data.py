@@ -5,6 +5,7 @@ and results from sandbox sessions, such as console output, execution results,
 and extracted plots or other file artifacts.
 """
 
+import json
 import warnings
 from dataclasses import dataclass, field
 from enum import Enum
@@ -90,6 +91,22 @@ class ConsoleOutput:
 
         """
         return not self.exit_code
+
+    def to_json(self, include_plots: bool = False) -> str:
+        r"""Get the JSON representation of the execution result.
+
+        Args:
+            include_plots (bool): Whether to include the plots in the JSON representation.
+
+        Returns:
+            str: The JSON representation of the execution result.
+
+        """
+        result = self.__dict__.copy()
+        if not include_plots and "plots" in result:
+            result.pop("plots", None)
+
+        return json.dumps(result, indent=2)
 
 
 @dataclass(frozen=True)

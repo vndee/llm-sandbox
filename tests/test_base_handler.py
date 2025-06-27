@@ -95,10 +95,12 @@ class TestMissingCoverage:
         container.run.return_value = "result"
 
         code = "print('hello')"
-        result, plots = handler.run_with_artifacts(container, code, libraries=["numpy"], enable_plotting=True)
+        result, plots = handler.run_with_artifacts(
+            container, code, libraries=["numpy"], enable_plotting=True, timeout=30, output_dir="/tmp/sandbox_plots"
+        )
 
         # Should call container.run without plot detection
-        container.run.assert_called_once_with(code, ["numpy"])
+        container.run.assert_called_once_with(code, ["numpy"], 30)
         assert result == "result"
         assert plots == []
 

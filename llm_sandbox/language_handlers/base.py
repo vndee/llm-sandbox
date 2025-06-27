@@ -24,7 +24,7 @@ if TYPE_CHECKING:
             """Get archive of files from container."""
             ...
 
-        def run(self, code: str, libraries: list | None = None) -> Any:
+        def run(self, code: str, libraries: list | None = None, timeout: int = 30) -> Any:
             """Run code in the container."""
             ...
 
@@ -219,6 +219,7 @@ class AbstractLanguageHandler(ABC):
         libraries: list | None = None,
         enable_plotting: bool = True,
         output_dir: str = "/tmp/sandbox_plots",
+        timeout: int = 30,
     ) -> tuple[Any, list[PlotOutput]]:
         """Run code and extract artifacts (plots) in a language-specific manner.
 
@@ -232,6 +233,7 @@ class AbstractLanguageHandler(ABC):
             libraries: Optional list of libraries to install before running
             enable_plotting: Whether to enable plot detection and extraction
             output_dir: Directory where plots should be saved
+            timeout: Timeout for the code execution
 
         Returns:
             tuple: (execution_result, list_of_plots)
@@ -243,7 +245,7 @@ class AbstractLanguageHandler(ABC):
             injected_code = self.inject_plot_detection_code(code)
 
             # Run the code with plot detection
-            result = container.run(injected_code, libraries)
+            result = container.run(injected_code, libraries, timeout)
 
             # Extract plots
             plots = self.extract_plots(container, output_dir)
@@ -251,7 +253,7 @@ class AbstractLanguageHandler(ABC):
             return result, plots
 
         # Run code without plot detection
-        result = container.run(code, libraries)
+        result = container.run(code, libraries, timeout)
         return result, []
 
     @abstractmethod

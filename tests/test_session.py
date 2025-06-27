@@ -224,6 +224,7 @@ class TestArtifactSandboxSession:
             libraries=["numpy"],
             enable_plotting=False,
             output_dir="/tmp/sandbox_plots",
+            timeout=30,
         )
 
     @patch("llm_sandbox.session.create_session")
@@ -257,6 +258,7 @@ class TestArtifactSandboxSession:
             libraries=None,
             enable_plotting=True,
             output_dir="/tmp/sandbox_plots",
+            timeout=30,
         )
 
     @patch("llm_sandbox.session.create_session")
