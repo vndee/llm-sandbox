@@ -130,6 +130,7 @@ def get_language_details(language: str) -> TextContent:
             type="text",
         )
 
+
 @mcp.resource("sandbox://languages")
 def language_details() -> str:
     """Resource containing detailed information about supported languages.

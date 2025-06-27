@@ -522,7 +522,7 @@ For the specific backend, you need to set the `BACKEND` environment variable to 
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
         "BACKEND": "docker",
-        "DOCKER_HOST": "unix://docker.sock" // change this to the actual host you are using
+        "DOCKER_HOST": "unix:///var/run/docker.sock" // change this to the actual host you are using
       }
     }
   }
@@ -538,7 +538,7 @@ For the specific backend, you need to set the `BACKEND` environment variable to 
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
         "BACKEND": "podman",
-        "DOCKER_HOST": "unix://podman.sock" // change this to the actual host you are using
+        "DOCKER_HOST": "unix:///var/run/podman/podman.sock" // change this to the actual host you are using
       }
     }
   }
@@ -575,7 +575,7 @@ The MCP server provides the following tools:
 
 Once configured, you can ask your AI assistant to run code, and it will automatically use the LLM Sandbox MCP server:
 
-```
+```text
 "Create a scatter plot showing the relationship between x and y data points using matplotlib"
 ```
 
