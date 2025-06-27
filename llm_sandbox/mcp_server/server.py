@@ -117,14 +117,18 @@ def get_language_details(language: str) -> TextContent:
         TextContent: The details of the language
 
     """
-    lang = SupportedLanguage(language)
-    lang_details = LANGUAGE_RESOURCES.get(lang)
-
-    return TextContent(
-        text=json.dumps(lang_details, indent=2),
-        type="text",
-    )
-
+    try:
+        lang = SupportedLanguage(language)
+        lang_details = LANGUAGE_RESOURCES.get(lang)
+        return TextContent(
+            text=json.dumps(lang_details, indent=2),
+            type="text",
+        )
+    except ValueError:
+        return TextContent(
+            text=json.dumps({"error": f"Unsupported language: {language}"}),
+            type="text",
+        )
 
 @mcp.resource("sandbox://languages")
 def language_details() -> str:
