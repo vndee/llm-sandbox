@@ -504,9 +504,6 @@ Add the following configuration to your MCP client (e.g., `claude_desktop_config
     "llm-sandbox": {
       "command": "python3",
       "args": ["-m", "llm_sandbox.mcp_server.server"],
-      "env": {
-        "BACKEND": "docker"
-      }
     }
   }
 }
@@ -514,7 +511,7 @@ Add the following configuration to your MCP client (e.g., `claude_desktop_config
 
 #### Backend-Specific Configuration
 
-For the specific backend, you need to set the `BACKEND` environment variable to the backend you want to use. You might need to set other environment variables depending on the backend you are using.
+For the specific backend, you need to set the `BACKEND` environment variable to the backend you want to use. You might need to set other environment variables depending on the backend you are using. For example, you might need to set the `DOCKER_HOST` environment variable to the host you want to use if the `DOCKER_HOST` is not automatically in your system.
 
 **Docker (default):**
 ```json
@@ -525,7 +522,7 @@ For the specific backend, you need to set the `BACKEND` environment variable to 
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
         "BACKEND": "docker",
-        "DOCKER_HOST": "unix://docker.sock"
+        "DOCKER_HOST": "unix://docker.sock" # change this to the actual host you are using
       }
     }
   }
@@ -541,12 +538,14 @@ For the specific backend, you need to set the `BACKEND` environment variable to 
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
         "BACKEND": "podman",
-        "DOCKER_HOST": "unix://podman.sock"
+        "DOCKER_HOST": "unix://podman.sock" # change this to the actual host you are using
       }
     }
   }
 }
 ```
+
+For Kubernetes, you might need to set the `KUBECONFIG` environment variable to the path to your kubeconfig file.
 
 **Kubernetes:**
 ```json
@@ -556,7 +555,8 @@ For the specific backend, you need to set the `BACKEND` environment variable to 
       "command": "python3",
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
-        "BACKEND": "kubernetes"
+        "BACKEND": "kubernetes",
+        "KUBECONFIG": "/path/to/kubeconfig" # change this to the actual path to your kubeconfig file
       }
     }
   }
