@@ -103,7 +103,7 @@ class ConsoleOutput:
 
         """
         result = self.__dict__.copy()
-        if not include_plots:
+        if not include_plots and "plots" in result:
             result.pop("plots", None)
 
         return json.dumps(result, indent=2)
