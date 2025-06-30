@@ -18,7 +18,7 @@ LANGUAGE_RESOURCES: dict[str, LanguageDetails] = {
         ],
         "use_cases": [
             "Data science",
-            "Web development",
+            "Web development",  # NOSONAR
             "Automation",
             "Machine learning",
         ],
@@ -378,6 +378,58 @@ p <- ggplot(data, aes(x = x, y = y, color = group)) +
     theme_minimal()
 
 print(p)""",
+            },
+        ],
+    },
+    SupportedLanguage.RUBY.value: {
+        "version": "Ruby 3.0.2",
+        "package_manager": "gem",
+        "preinstalled_libraries": [],
+        "use_cases": ["Web development", "Scripting", "Automation", "APIs"],
+        "visualization_support": False,
+        "examples": [
+            {
+                "title": "Hello World",
+                "description": "Simple Ruby hello world program",
+                "code": """puts "Hello, World!" """,
+            },
+            {
+                "title": "Class and Object",
+                "description": "Object-oriented programming in Ruby",
+                "code": """class Person
+  attr_accessor :name, :age
+
+  def initialize(name, age)
+    @name = name
+    @age = age
+  end
+
+  def introduce
+    puts "Hi, I'm #{@name} and I'm #{@age} years old."
+  end
+end
+
+person = Person.new("Alice", 25)
+person.introduce""",
+            },
+            {
+                "title": "Array Operations",
+                "description": "Working with arrays and blocks",
+                "code": """numbers = [1, 2, 3, 4, 5]
+
+puts "Original array: #{numbers}"
+
+# Double each number
+doubled = numbers.map { |n| n * 2 }
+puts "Doubled: #{doubled}"
+
+# Filter even numbers
+evens = numbers.select { |n| n.even? }
+puts "Even numbers: #{evens}"
+
+# Sum all numbers
+sum = numbers.reduce(0) { |acc, n| acc + n }
+puts "Sum: #{sum}" """,
             },
         ],
     },
