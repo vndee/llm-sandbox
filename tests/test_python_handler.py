@@ -71,13 +71,18 @@ class TestPythonHandler:
             mock_extract.return_value = []
 
             result, plots = handler.run_with_artifacts(
-                container=mock_container, code="print('hello')", libraries=["numpy"], enable_plotting=True
+                container=mock_container,
+                code="print('hello')",
+                libraries=["numpy"],
+                enable_plotting=True,
+                timeout=30,
+                output_dir="/tmp/sandbox_plots",
             )
 
             assert result == mock_result
             assert plots == []
             mock_inject.assert_called_once_with("print('hello')")
-            mock_container.run.assert_called_once_with("injected_code", ["numpy"])
+            mock_container.run.assert_called_once_with("injected_code", ["numpy"], 30)
             mock_extract.assert_called_once_with(mock_container, "/tmp/sandbox_plots")
 
     def test_run_with_artifacts_plotting_disabled(self) -> None:
@@ -88,12 +93,17 @@ class TestPythonHandler:
         mock_container.run.return_value = mock_result
 
         result, plots = handler.run_with_artifacts(
-            container=mock_container, code="print('hello')", libraries=["numpy"], enable_plotting=False
+            container=mock_container,
+            code="print('hello')",
+            libraries=["numpy"],
+            enable_plotting=False,
+            timeout=30,
+            output_dir="/tmp/sandbox_plots",
         )
 
         assert result == mock_result
         assert plots == []
-        mock_container.run.assert_called_once_with("print('hello')", ["numpy"])
+        mock_container.run.assert_called_once_with("print('hello')", ["numpy"], 30)
 
     def test_extract_plots_no_directory(self) -> None:
         """Test extract_plots when output directory doesn't exist."""
