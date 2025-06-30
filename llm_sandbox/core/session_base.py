@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import tempfile
 import threading
@@ -6,11 +7,17 @@ import time
 import types
 import uuid
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, cast
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
-from llm_sandbox.core.mixins import CommandExecutionMixin, ContainerAPI, FileOperationsMixin, TimeoutMixin
+from llm_sandbox.core.mixins import (
+    CommandExecutionMixin,
+    ContainerAPI,
+    FileOperationsMixin,
+    TimeoutMixin,
+)
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import (
     LanguageHandlerNotInitializedError,
@@ -312,32 +319,40 @@ class BaseSession(
             self._log("Skipping environment setup for existing container", "info")
             return
 
-        self.execute_commands([
-            (f"mkdir -p {self.config.workdir}", None),
-        ])
+        self.execute_commands(
+            [
+                (f"mkdir -p {self.config.workdir}", None),
+            ]
+        )
 
         match self.language_handler.name:
             case SupportedLanguage.PYTHON:
                 # Create venv and cache directory first
-                self.execute_commands([
-                    (PYTHON_CREATE_VENV_COMMAND, None),
-                    (PYTHON_CREATE_PIP_CACHE_COMMAND, None),
-                ])
+                self.execute_commands(
+                    [
+                        (PYTHON_CREATE_VENV_COMMAND, None),
+                        (PYTHON_CREATE_PIP_CACHE_COMMAND, None),
+                    ]
+                )
 
                 self._ensure_ownership([PYTHON_VENV_DIR, PYTHON_PIP_CACHE_DIR])
 
                 # Now upgrade pip with proper ownership and cache
-                self.execute_commands([
-                    (
-                        PYTHON_UPGRADE_PIP_COMMAND,
-                        None,
-                    ),
-                ])
+                self.execute_commands(
+                    [
+                        (
+                            PYTHON_UPGRADE_PIP_COMMAND,
+                            None,
+                        ),
+                    ]
+                )
             case SupportedLanguage.GO:
-                self.execute_commands([
-                    (GO_CREATE_MODULE_COMMAND, self.config.workdir),
-                    (GO_TIDY_MODULE_COMMAND, self.config.workdir),
-                ])
+                self.execute_commands(
+                    [
+                        (GO_CREATE_MODULE_COMMAND, self.config.workdir),
+                        (GO_TIDY_MODULE_COMMAND, self.config.workdir),
+                    ]
+                )
 
     def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
         r"""Run the provided code within the Docker sandbox session.
@@ -373,21 +388,31 @@ class BaseSession(
 
         def _run_code() -> ConsoleOutput:
             self.install(libraries)
+            temp_file_path = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    delete=False,  # Set delete=False so we can access it after the 'with' block
+                    suffix=f".{self.language_handler.file_extension}",
+                    mode="w",  # Open in text mode for writing strings directly
+                    encoding="utf-8",
+                ) as code_file:
+                    code_file.write(code)
+                    temp_file_path = code_file.name
 
-            with tempfile.NamedTemporaryFile(
-                delete=True, suffix=f".{self.language_handler.file_extension}"
-            ) as code_file:
-                code_file.write(code.encode("utf-8"))
-                code_file.seek(0)
+                code_dest_file = (
+                    Path(self.config.workdir) / f"{uuid.uuid4().hex}.{self.language_handler.file_extension}"
+                )
+                self.copy_to_runtime(temp_file_path, str(code_dest_file))
 
-                code_dest_file = f"{self.config.workdir}/{uuid.uuid4().hex}.{self.language_handler.file_extension}"
-                self.copy_to_runtime(code_file.name, code_dest_file)
-
-                commands = self.language_handler.get_execution_commands(code_dest_file)
+                commands = self.language_handler.get_execution_commands(str(code_dest_file))
                 return self.execute_commands(
-                    cast("list[str | tuple[str, str | None]]", commands),
+                    commands,
                     workdir=self.config.workdir,
                 )
+            finally:
+                # Clean up the temporary file if it was created
+                if temp_file_path and Path(temp_file_path).exists():
+                    os.remove(temp_file_path)
 
         try:
             result = self._execute_with_timeout(_run_code, timeout=actual_timeout)
