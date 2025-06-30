@@ -8,6 +8,7 @@
 [![Build status](https://img.shields.io/github/actions/workflow/status/vndee/llm-sandbox/main.yml?branch=main)](https://github.com/vndee/llm-sandbox/actions/workflows/main.yml?query=branch%3Amain)
 [![CodeFactor](https://www.codefactor.io/repository/github/vndee/llm-sandbox/badge)](https://www.codefactor.io/repository/github/vndee/llm-sandbox)
 [![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg?token=EULWCESZAY)](https://codecov.io/gh/vndee/llm-sandbox)
+![](https://badge.mcpx.dev?status=on 'MCP Enabled')
 
 ## Welcome to LLM Sandbox
 
