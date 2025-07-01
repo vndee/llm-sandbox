@@ -38,16 +38,32 @@ def mock_docker_backend() -> Generator[dict[str, Any], None, None]:
             )
 
         def filter_comments(code: str) -> str:
-            """Filter out Python comments from code."""
+            """Filter out Python comments from code.
+
+            For security scanning, we want to be conservative and still scan
+            string literals since they could contain malicious code that gets
+            executed via exec() or eval().
+            """
             import re
 
-            # Remove multiline comments (both ''' and """)
-            code = re.sub(r"'''[\s\S]*?'''", "", code)
-            code = re.sub(r'"""[\s\S]*?"""', "", code)
-            # Remove inline comments, but avoid removing # inside string literals
-            # This is a simplified approach - a full solution would need proper parsing
-            code = re.sub(r"(?<!['\"])#.*$", "", code, flags=re.MULTILINE)
-            return code
+            # Only remove actual comment lines (lines starting with #)
+            # Don't remove string literals as they could contain executable code
+            lines = code.split("\n")
+            filtered_lines = []
+
+            for line in lines:
+                # Remove inline comments, but be careful about # inside strings
+                # This is a simplified approach - only remove # that appear to be comments
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    # Skip comment-only lines
+                    continue
+                # For lines with potential inline comments, use a simple regex
+                # that tries to avoid # inside string literals
+                line_no_comment = re.sub(r'\s+#[^"\']*$', "", line)
+                filtered_lines.append(line_no_comment)
+
+            return "\n".join(filtered_lines)
 
         mock_handler.get_import_patterns.side_effect = get_import_patterns
         mock_handler.filter_comments.side_effect = filter_comments
