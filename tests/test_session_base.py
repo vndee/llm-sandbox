@@ -503,7 +503,7 @@ class TestBaseSessionCodeExecution:
 
         # Check that methods were called
         mock_install.assert_called_once_with(["numpy"])
-        mock_file.write.assert_called_once_with(b"print('hello')")
+        mock_file.write.assert_called_once_with("print('hello')")
 
         assert isinstance(result, ConsoleOutput)
         assert result.exit_code == 0

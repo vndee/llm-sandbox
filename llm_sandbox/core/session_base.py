@@ -6,11 +6,17 @@ import time
 import types
 import uuid
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, cast
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
-from llm_sandbox.core.mixins import CommandExecutionMixin, ContainerAPI, FileOperationsMixin, TimeoutMixin
+from llm_sandbox.core.mixins import (
+    CommandExecutionMixin,
+    ContainerAPI,
+    FileOperationsMixin,
+    TimeoutMixin,
+)
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import (
     LanguageHandlerNotInitializedError,
@@ -373,21 +379,31 @@ class BaseSession(
 
         def _run_code() -> ConsoleOutput:
             self.install(libraries)
+            temp_file_path = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    delete=False,  # Set delete=False so we can access it after the 'with' block
+                    suffix=f".{self.language_handler.file_extension}",
+                    mode="w",  # Open in text mode for writing strings directly
+                    encoding="utf-8",
+                ) as code_file:
+                    code_file.write(code)
+                    temp_file_path = code_file.name
 
-            with tempfile.NamedTemporaryFile(
-                delete=True, suffix=f".{self.language_handler.file_extension}"
-            ) as code_file:
-                code_file.write(code.encode("utf-8"))
-                code_file.seek(0)
+                code_dest_file = (
+                    Path(self.config.workdir) / f"{uuid.uuid4().hex}.{self.language_handler.file_extension}"
+                )
+                self.copy_to_runtime(temp_file_path, str(code_dest_file))
 
-                code_dest_file = f"{self.config.workdir}/{uuid.uuid4().hex}.{self.language_handler.file_extension}"
-                self.copy_to_runtime(code_file.name, code_dest_file)
-
-                commands = self.language_handler.get_execution_commands(code_dest_file)
+                commands = self.language_handler.get_execution_commands(str(code_dest_file))
                 return self.execute_commands(
                     cast("list[str | tuple[str, str | None]]", commands),
                     workdir=self.config.workdir,
                 )
+            finally:
+                # Clean up the temporary file if it was created
+                if temp_file_path:
+                    Path(temp_file_path).unlink(missing_ok=True)
 
         try:
             result = self._execute_with_timeout(_run_code, timeout=actual_timeout)
