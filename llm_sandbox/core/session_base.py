@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 import tempfile
 import threading
@@ -319,40 +318,32 @@ class BaseSession(
             self._log("Skipping environment setup for existing container", "info")
             return
 
-        self.execute_commands(
-            [
-                (f"mkdir -p {self.config.workdir}", None),
-            ]
-        )
+        self.execute_commands([
+            (f"mkdir -p {self.config.workdir}", None),
+        ])
 
         match self.language_handler.name:
             case SupportedLanguage.PYTHON:
                 # Create venv and cache directory first
-                self.execute_commands(
-                    [
-                        (PYTHON_CREATE_VENV_COMMAND, None),
-                        (PYTHON_CREATE_PIP_CACHE_COMMAND, None),
-                    ]
-                )
+                self.execute_commands([
+                    (PYTHON_CREATE_VENV_COMMAND, None),
+                    (PYTHON_CREATE_PIP_CACHE_COMMAND, None),
+                ])
 
                 self._ensure_ownership([PYTHON_VENV_DIR, PYTHON_PIP_CACHE_DIR])
 
                 # Now upgrade pip with proper ownership and cache
-                self.execute_commands(
-                    [
-                        (
-                            PYTHON_UPGRADE_PIP_COMMAND,
-                            None,
-                        ),
-                    ]
-                )
+                self.execute_commands([
+                    (
+                        PYTHON_UPGRADE_PIP_COMMAND,
+                        None,
+                    ),
+                ])
             case SupportedLanguage.GO:
-                self.execute_commands(
-                    [
-                        (GO_CREATE_MODULE_COMMAND, self.config.workdir),
-                        (GO_TIDY_MODULE_COMMAND, self.config.workdir),
-                    ]
-                )
+                self.execute_commands([
+                    (GO_CREATE_MODULE_COMMAND, self.config.workdir),
+                    (GO_TIDY_MODULE_COMMAND, self.config.workdir),
+                ])
 
     def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
         r"""Run the provided code within the Docker sandbox session.
@@ -411,8 +402,8 @@ class BaseSession(
                 )
             finally:
                 # Clean up the temporary file if it was created
-                if temp_file_path and Path(temp_file_path).exists():
-                    os.remove(temp_file_path)
+                if temp_file_path:
+                    Path(temp_file_path).unlink(missing_ok=True)
 
         try:
             result = self._execute_with_timeout(_run_code, timeout=actual_timeout)
