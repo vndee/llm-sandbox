@@ -41,10 +41,13 @@ def mock_docker_backend() -> Generator[dict[str, Any], None, None]:
             """Filter out Python comments from code."""
             import re
 
-            # Remove inline comments (#.*)
-            code = re.sub(r"#.*$", "", code, flags=re.MULTILINE)
-            # Remove multiline comments ('''...''')
-            return re.sub(r"'''[\s\S]*?'''", "", code)
+            # Remove multiline comments (both ''' and """)
+            code = re.sub(r"'''[\s\S]*?'''", "", code)
+            code = re.sub(r'"""[\s\S]*?"""', "", code)
+            # Remove inline comments, but avoid removing # inside string literals
+            # This is a simplified approach - a full solution would need proper parsing
+            code = re.sub(r"(?<!['\"])#.*$", "", code, flags=re.MULTILINE)
+            return code
 
         mock_handler.get_import_patterns.side_effect = get_import_patterns
         mock_handler.filter_comments.side_effect = filter_comments
