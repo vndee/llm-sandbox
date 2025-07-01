@@ -75,7 +75,7 @@ print(df.to_json())
 
         # Verify the code executed successfully
         assert result.exit_code == 0
-        assert "pandas" not in str(mock_exec.call_args_list)  # No pandas installation
+        assert not any("pip install pandas" in call[0][0] for call in mock_exec.call_args_list)  # No pandas installation
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
