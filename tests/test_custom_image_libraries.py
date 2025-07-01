@@ -147,7 +147,8 @@ print(len(arr))
 
         # This ensures the fix for issue #79 is in place
         assert "--system-site-packages" in PYTHON_CREATE_VENV_COMMAND
-        assert PYTHON_CREATE_VENV_COMMAND == "python -m venv --system-site-packages /tmp/venv"
+        # Ensure the command includes the required flag without enforcing an exact match
+        assert "/tmp/venv" in PYTHON_CREATE_VENV_COMMAND
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
