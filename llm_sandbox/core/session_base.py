@@ -24,7 +24,7 @@ from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
 
 PYTHON_VENV_DIR = "/tmp/venv"
 PYTHON_PIP_CACHE_DIR = "/tmp/pip_cache"
-PYTHON_CREATE_VENV_COMMAND = "python -m venv /tmp/venv"
+PYTHON_CREATE_VENV_COMMAND = "python -m venv --system-site-packages /tmp/venv"
 PYTHON_CREATE_PIP_CACHE_COMMAND = "mkdir -p /tmp/pip_cache"
 PYTHON_UPGRADE_PIP_COMMAND = "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache"
 
