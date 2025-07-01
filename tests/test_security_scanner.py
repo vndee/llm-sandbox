@@ -10,6 +10,9 @@ import pytest
 from llm_sandbox import SandboxSession
 from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
+# Apply mock_docker_backend fixture to all tests in this module
+pytestmark = pytest.mark.usefixtures("mock_docker_backend")
+
 
 @pytest.fixture
 def comprehensive_security_policy() -> SecurityPolicy:
