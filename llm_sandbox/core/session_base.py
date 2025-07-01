@@ -397,7 +397,7 @@ class BaseSession(
 
                 commands = self.language_handler.get_execution_commands(str(code_dest_file))
                 return self.execute_commands(
-                    commands,
+                    cast("list[str | tuple[str, str | None]]", commands),
                     workdir=self.config.workdir,
                 )
             finally:
