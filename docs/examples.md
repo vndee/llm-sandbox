@@ -308,7 +308,7 @@ class SecureAICodeExecutor:
             with SandboxSession(
                 lang=language,
                 security_policy=self.security_policy,
-                runtime_config={
+                runtime_configs={
                     "timeout": timeout,
                     "mem_limit": "256m",
                     "cpu_count": 1,
@@ -448,7 +448,7 @@ class ParallelAICodeProcessor:
             try:
                 with SandboxSession(
                     lang=language,
-                    runtime_config={"timeout": 30, "mem_limit": "128m"}
+                    runtime_configs={"timeout": 30, "mem_limit": "128m"}
                 ) as session:
                     result = session.run(code)
 

@@ -423,7 +423,7 @@ with SandboxSession(
     # Code analysis layer
     security_policy=custom_policy,
     # Container restriction layer (see Configuration Guide)
-    runtime_config={
+    runtime_configs={
         "mem_limit": "256m",
         "cpu_count": 1,
         "timeout": 30,

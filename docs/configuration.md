@@ -268,7 +268,7 @@ For Docker and Podman backends, runtime configuration options are passed as **ex
 #### Docker Runtime Config
 ```python
 # Docker-specific runtime configuration
-runtime_config = {
+runtime_configs = {
     "privileged": False,
     "memory": "512m",
     "cpu_period": 100000,
@@ -282,7 +282,7 @@ runtime_config = {
 session = SandboxSession(
     image="python:3.9",
     backend="docker",
-    runtime_config=runtime_config
+    runtime_configs=runtime_configs
 )
 ```
 
@@ -304,7 +304,7 @@ runtime_config = {
 session = SandboxSession(
     image="python:3.9",
     backend="podman",
-    runtime_config=runtime_config
+    runtime_configs=runtime_configs
 )
 ```
 
@@ -312,7 +312,7 @@ session = SandboxSession(
 
 ### Kubernetes Backend
 
-For Kubernetes, runtime configurations are **not supported** through the `runtime_config` parameter. Instead, users should define their requirements as **Kubernetes Pod manifests** using the `pod_manifest` parameter.
+For Kubernetes, runtime configurations are **not supported** through the `runtime_configs` parameter. Instead, users should define their requirements as **Kubernetes Pod manifests** using the `pod_manifest` parameter.
 
 ```python
 # Kubernetes configuration using pod_manifest parameter
@@ -382,7 +382,7 @@ To configure resources, security context, volumes, and other Pod-level settings 
 
 ```python
 # Memory and CPU limits
-runtime_config = {
+runtime_configs = {
     "memory": "1g",           # 1GB memory limit
     "cpu_period": 100000,     # CPU period in microseconds
     "cpu_quota": 50000,       # CPU quota (50% of one CPU)
@@ -394,7 +394,7 @@ runtime_config = {
 
 ```python
 # Custom network settings
-runtime_config = {
+runtime_configs = {
     "network_mode": "host",        # Use host networking
     "ports": {"8080/tcp": 8080},   # Port mapping
     "dns": ["8.8.8.8", "8.8.4.4"] # Custom DNS servers
@@ -405,7 +405,7 @@ runtime_config = {
 
 ```python
 # Volume mounting
-runtime_config = {
+runtime_configs = {
     "volumes": {
         "/host/data": {"bind": "/data", "mode": "rw"},
         "/host/config": {"bind": "/config", "mode": "ro"}
@@ -417,7 +417,7 @@ runtime_config = {
 
 ```python
 # Environment configuration
-runtime_config = {
+runtime_configs = {
     "environment": {
         "PYTHONPATH": "/app:/libs",
         "DEBUG": "true",
@@ -430,7 +430,7 @@ runtime_config = {
 
 ```python
 # Security settings
-runtime_config = {
+runtime_configs = {
     "privileged": False,
     "user": "1000:1000",           # Run as specific user/group
     "cap_drop": ["ALL"],           # Drop all capabilities
