@@ -376,8 +376,10 @@ class TestSandboxDockerSessionFileOperations:
             mock_src_path.is_dir.return_value = False
 
             mock_dest_path = MagicMock()
-            # Use a string to avoid Mock serialization issues
-            mock_dest_path.parent = "/container"
+            # Instead of a string, parent is a mock with as_posix()
+            mock_parent = MagicMock()
+            mock_parent.as_posix.return_value = "/container"
+            mock_dest_path.parent = mock_parent
             mock_dest_path.name = "file.txt"
 
             def path_side_effect(arg: str) -> MagicMock:
@@ -829,7 +831,10 @@ class TestDockerContainerAPI:
         # Mock Path behavior
         mock_dest_path = MagicMock()
         mock_dest_path.name = "file.txt"
-        mock_dest_path.parent = "/container/path"
+        # Instead of a string, parent is a mock with as_posix()
+        mock_parent = MagicMock()
+        mock_parent.as_posix.return_value = "/container/path"
+        mock_dest_path.parent = mock_parent
         mock_path.return_value = mock_dest_path
 
         # Mock tarfile
