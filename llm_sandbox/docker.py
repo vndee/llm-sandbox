@@ -64,7 +64,7 @@ class DockerContainerAPI:
             tar.add(src, arcname=Path(dest).name)
 
         tar_stream.seek(0)
-        container.put_archive(str(Path(dest).parent.as_posix()), tar_stream.getvalue())
+        container.put_archive(Path(dest).parent.as_posix(), tar_stream.getvalue())
 
     def copy_from_container(self, container: Any, src: str) -> tuple[bytes, dict]:
         """Copy file from Docker container."""
