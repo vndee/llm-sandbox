@@ -23,6 +23,12 @@ def _check_dependency(backend: SandboxBackend) -> None:
     if backend == SandboxBackend.PODMAN and not find_spec("podman"):
         msg = "Podman backend requires 'podman' package. Install it with: pip install llm-sandbox[podman]"
         raise MissingDependencyError(msg)
+    if backend == SandboxBackend.FIRECRACKER and not find_spec("requests_unixsocket"):
+        msg = (
+            "Firecracker backend requires 'requests-unixsocket' package. "
+            "Install it with: pip install llm-sandbox[firecracker]"
+        )
+        raise MissingDependencyError(msg)
 
 
 def create_session(
@@ -42,6 +48,7 @@ def create_session(
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
+            - SandboxBackend.FIRECRACKER
         *args: Additional positional arguments passed to the session constructor
         **kwargs: Additional keyword arguments passed to the session constructor.
                 Common options include:
@@ -212,6 +219,10 @@ def create_session(
             from .micromamba import MicromambaSession
 
             return MicromambaSession(*args, **kwargs)
+        case SandboxBackend.FIRECRACKER:
+            from .firecracker import SandboxFirecrackerSession
+
+            return SandboxFirecrackerSession(*args, **kwargs)
         case _:
             raise UnsupportedBackendError(backend=backend)
 
