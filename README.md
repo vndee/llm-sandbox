@@ -668,3 +668,7 @@ If you find LLM Sandbox useful, please consider giving it a star on GitHub!
 <a href="https://github.com/vndee/llm-sandbox/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=vndee/llm-sandbox" />
 </a>
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vndee/llm-sandbox&type=Date)](https://www.star-history.com/#vndee/llm-sandbox&Date)
