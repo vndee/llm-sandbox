@@ -7,6 +7,13 @@ from .exceptions import ContainerError, ResourceError, SandboxError, SecurityErr
 from .security import SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 from .session import ArtifactSandboxSession, SandboxSession, create_session
 
+try:
+    from .kubernetes_pool import KubernetesPodPool
+
+    _HAS_KUBERNETES_POOL = True
+except ImportError:
+    _HAS_KUBERNETES_POOL = False
+
 __all__ = [
     "ArtifactSandboxSession",
     "ConsoleOutput",
@@ -28,3 +35,6 @@ __all__ = [
     "ValidationError",
     "create_session",
 ]
+
+if _HAS_KUBERNETES_POOL:
+    __all__ += ["KubernetesPodPool"]
