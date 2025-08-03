@@ -393,9 +393,10 @@ class BaseSession(
                 code_dest_file = (
                     Path(self.config.workdir) / f"{uuid.uuid4().hex}.{self.language_handler.file_extension}"
                 )
-                self.copy_to_runtime(temp_file_path, str(code_dest_file))
+                code_dest_path_posix = code_dest_file.as_posix()
+                self.copy_to_runtime(temp_file_path, code_dest_path_posix)
 
-                commands = self.language_handler.get_execution_commands(str(code_dest_file))
+                commands = self.language_handler.get_execution_commands(code_dest_path_posix)
                 return self.execute_commands(
                     cast("list[str | tuple[str, str | None]]", commands),
                     workdir=self.config.workdir,
