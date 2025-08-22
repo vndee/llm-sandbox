@@ -98,6 +98,7 @@ class SandboxDockerSession(BaseSession):
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
         container_id: str | None = None,
+        skip_environment_setup: bool = False,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Docker session.
@@ -118,6 +119,7 @@ class SandboxDockerSession(BaseSession):
             execution_timeout (float | None): The execution timeout to use.
             session_timeout (float | None): The session timeout to use.
             container_id (str | None): ID of existing container to connect to.
+            skip_environment_setup (bool): Skip language-specific environment setup.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -136,6 +138,7 @@ class SandboxDockerSession(BaseSession):
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
             container_id=container_id,
+            skip_environment_setup=skip_environment_setup,
         )
 
         super().__init__(config=config, **kwargs)

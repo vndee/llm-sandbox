@@ -11,12 +11,7 @@ from typing import Any, cast
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
-from llm_sandbox.core.mixins import (
-    CommandExecutionMixin,
-    ContainerAPI,
-    FileOperationsMixin,
-    TimeoutMixin,
-)
+from llm_sandbox.core.mixins import CommandExecutionMixin, ContainerAPI, FileOperationsMixin, TimeoutMixin
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import (
     LanguageHandlerNotInitializedError,
@@ -240,6 +235,13 @@ class BaseSession(
         if not libraries:
             return
 
+        if self.config.skip_environment_setup:
+            msg = "Library installation is not supported when skip_environment_setup is True.\
+                Consider either using a pre-configured image or installing libraries using `execute_command` method.\
+                To enable library installation, set skip_environment_setup to False."
+
+            raise LibraryInstallationNotSupportedError(msg)
+
         if not self.language_handler.is_support_library_installation:
             raise LibraryInstallationNotSupportedError(self.config.lang)
 
@@ -307,7 +309,8 @@ class BaseSession(
         For Go, it initializes a Go module.
         We will support other languages in the future.
 
-        Note: This method is skipped when using an existing container (container_id is provided).
+        Note: This method is skipped when using an existing container (container_id is provided)
+        or when skip_environment_setup is True.
 
         Raises:
             CommandFailedError: If any setup command fails.
@@ -316,6 +319,11 @@ class BaseSession(
         # Skip environment setup when using existing container
         if self.using_existing_container:
             self._log("Skipping environment setup for existing container", "info")
+            return
+
+        # Skip environment setup if explicitly requested
+        if self.config.skip_environment_setup:
+            self._log("Skipping environment setup (skip_environment_setup=True)", "info")
             return
 
         self.execute_commands([
