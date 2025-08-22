@@ -50,6 +50,7 @@ Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, L
 - **Library Management**: Install dependencies on-the-fly
 - **File Operations**: Copy files to/from sandbox environments
 - **Custom Images**: Use your own container images
+- **Fast Production Mode**: Skip environment setup for faster container startup
 
 ## 📦 Installation
 

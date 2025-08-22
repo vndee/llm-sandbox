@@ -565,6 +565,30 @@ with SandboxSession(
     print(result.stdout)
 ```
 
+### 5. Skip Environment Setup for Production
+
+For production deployments or when using pre-configured images, skip automatic environment setup for faster container startup:
+
+```python
+from llm_sandbox import SandboxSession
+
+# Skip environment setup when using custom images
+with SandboxSession(
+    lang="python",
+    image="my-registry.com/python-ml:latest",  # Pre-configured image
+    skip_environment_setup=True  # Skip pip upgrades and venv creation
+) as session:
+    result = session.run("import numpy; print('Ready!')")
+```
+
+**When to use `skip_environment_setup=True`:**
+- Production deployments where startup time is critical
+- Custom images with pre-installed packages
+- CI/CD pipelines and batch processing
+- Air-gapped environments without external package access
+
+See the [Configuration Guide](configuration.md#environment-setup-control) for detailed information.
+
 ## Troubleshooting
 
 ### Container Runtime Not Found
