@@ -582,6 +582,7 @@ with SandboxSession(
 ```
 
 **When to use `skip_environment_setup=True`:**
+
 - Production deployments where startup time is critical
 - Custom images with pre-installed packages
 - CI/CD pipelines and batch processing

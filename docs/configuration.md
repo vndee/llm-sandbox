@@ -40,6 +40,7 @@ with SandboxSession(
 #### When to Use skip_environment_setup=True
 
 **✅ Recommended for:**
+
 - **Production deployments** where container startup time is critical
 - **Custom images** with pre-installed packages and configured environments
 - **CI/CD pipelines** where environment setup adds unnecessary overhead
@@ -47,6 +48,7 @@ with SandboxSession(
 - **Batch processing** where you want predictable, pre-configured setups
 
 **❌ Not recommended for:**
+
 - Development and testing with dynamic package installation
 - Using base images without pre-configured language environments
 - Scenarios requiring on-the-fly library installation
@@ -91,11 +93,13 @@ with SandboxSession(
 When using `skip_environment_setup=True`, ensure your custom image includes:
 
 **For Python:**
+
 - Python interpreter in expected location (usually `/usr/bin/python` or `/usr/local/bin/python`)
 - Required packages pre-installed (numpy, pandas, etc.)
 - Proper PATH configuration
 
 **For Other Languages:**
+
 - Language runtime properly installed and configured
 - Standard libraries and common packages available
 - Appropriate environment variables set
@@ -103,6 +107,7 @@ When using `skip_environment_setup=True`, ensure your custom image includes:
 #### Library Installation Behavior
 
 When `skip_environment_setup=True`:
+
 - ✅ Code execution works normally
 - ❌ Dynamic library installation is disabled
 - 📦 Libraries must be pre-installed in the container image
