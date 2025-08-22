@@ -454,6 +454,132 @@ class TestBaseSessionEnvironmentSetup:
             assert mock_execute_commands.call_count >= 1
 
 
+class TestBaseSessionSkipEnvironmentSetup:
+    """Test BaseSession skip_environment_setup functionality."""
+
+    def setup_method(self) -> None:
+        """Set up test fixtures."""
+        with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
+            mock_handler = MockLanguageHandler(name=SupportedLanguage.PYTHON)
+            mock_create_handler.return_value = mock_handler
+
+            self.mock_create_handler = mock_create_handler
+
+    @patch.object(MockBaseSession, "execute_commands")
+    @patch.object(MockBaseSession, "_ensure_ownership")
+    def test_skip_environment_setup_true(self, mock_ownership: Mock, mock_execute_commands: Mock) -> None:
+        """Test that environment setup is skipped when skip_environment_setup=True."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox", skip_environment_setup=True)
+        session = MockBaseSession(config)
+
+        session.environment_setup()
+
+        # Should NOT call execute_commands when skipping setup
+        mock_execute_commands.assert_not_called()
+        mock_ownership.assert_not_called()
+
+    @patch.object(MockBaseSession, "execute_commands")
+    @patch.object(MockBaseSession, "_ensure_ownership")
+    def test_skip_environment_setup_false(self, mock_ownership: Mock, mock_execute_commands: Mock) -> None:
+        """Test that environment setup runs normally when skip_environment_setup=False."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox", skip_environment_setup=False)
+        session = MockBaseSession(config)
+
+        session.environment_setup()
+
+        # Should call execute_commands when NOT skipping setup
+        min_expected_calls = 2  # Python requires multiple setup steps
+        assert mock_execute_commands.call_count >= min_expected_calls
+
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_skip_environment_setup_existing_container(self, mock_execute_commands: Mock) -> None:
+        """Test that environment setup is skipped for existing containers regardless of skip flag."""
+        config = SessionConfig(
+            lang=SupportedLanguage.PYTHON,
+            workdir="/sandbox",
+            container_id="existing-container",
+            skip_environment_setup=False,  # Even with False, should skip for existing container
+        )
+        session = MockBaseSession(config)
+
+        session.environment_setup()
+
+        # Should NOT call execute_commands for existing containers
+        mock_execute_commands.assert_not_called()
+
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_skip_environment_setup_different_languages(self, mock_execute_commands: Mock) -> None:
+        """Test skip_environment_setup works for different languages."""
+        for lang in [SupportedLanguage.PYTHON, SupportedLanguage.GO, SupportedLanguage.JAVA]:
+            with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
+                mock_handler = MockLanguageHandler(name=lang)
+                mock_create_handler.return_value = mock_handler
+
+                config = SessionConfig(lang=lang, workdir="/sandbox", skip_environment_setup=True)
+                session = MockBaseSession(config)
+
+                session.environment_setup()
+
+        # Should never call execute_commands when skipping setup
+        mock_execute_commands.assert_not_called()
+
+    def test_library_installation_blocked_when_skip_setup_true(self) -> None:
+        """Test that library installation is blocked when skip_environment_setup=True."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON, skip_environment_setup=True)
+        session = MockBaseSession(config)
+
+        with pytest.raises(LibraryInstallationNotSupportedError) as exc_info:
+            session.install(["numpy", "pandas"])
+
+        # Check error message mentions skip_environment_setup
+        error_msg = str(exc_info.value)
+        assert "skip_environment_setup is True" in error_msg
+        assert "pre-configured image" in error_msg
+        assert "execute_command" in error_msg
+
+    def test_library_installation_works_when_skip_setup_false(self) -> None:
+        """Test that library installation works normally when skip_environment_setup=False."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON, skip_environment_setup=False)
+        session = MockBaseSession(config)
+
+        # Mock execute_commands to simulate successful library installation
+        with patch.object(session, "execute_commands") as mock_execute_commands:
+            mock_execute_commands.return_value = ConsoleOutput(exit_code=0)
+
+            # Should not raise an exception
+            session.install(["numpy"])
+
+            # Should call execute_commands for library installation
+            mock_execute_commands.assert_called()
+
+    def test_empty_library_list_skip_setup_true(self) -> None:
+        """Test that empty library list works fine even with skip_environment_setup=True."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON, skip_environment_setup=True)
+        session = MockBaseSession(config)
+
+        # Should not raise an exception for empty library list
+        session.install([])
+        session.install(None)
+
+    def test_skip_environment_setup_config_default(self) -> None:
+        """Test that skip_environment_setup defaults to False."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON)
+
+        assert config.skip_environment_setup is False
+
+    def test_skip_environment_setup_config_explicit_true(self) -> None:
+        """Test that skip_environment_setup can be set to True."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON, skip_environment_setup=True)
+
+        assert config.skip_environment_setup is True
+
+    def test_skip_environment_setup_config_explicit_false(self) -> None:
+        """Test that skip_environment_setup can be explicitly set to False."""
+        config = SessionConfig(lang=SupportedLanguage.PYTHON, skip_environment_setup=False)
+
+        assert config.skip_environment_setup is False
+
+
 class TestBaseSessionCodeExecution:
     """Test BaseSession code execution functionality."""
 
