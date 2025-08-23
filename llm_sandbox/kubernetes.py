@@ -13,6 +13,7 @@ from kubernetes.stream import stream
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
+from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import ContainerError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
@@ -69,6 +70,7 @@ class KubernetesContainerAPI:
     def execute_command(self, container: Any, command: str, **kwargs: Any) -> tuple[int, Any]:
         """Execute command in Kubernetes pod."""
         workdir = kwargs.get("workdir")
+        container_name = kwargs.get("container_name")  # Get the specific container name
 
         exec_command = [SH_SHELL, "-c", f"cd {workdir} && {command}"] if workdir else [SH_SHELL, "-c", command]
 
@@ -77,6 +79,7 @@ class KubernetesContainerAPI:
             container,
             self.namespace,
             command=exec_command,
+            container=container_name,  # Specify which container to execute in
             stderr=True,
             stdin=False,
             stdout=True,
@@ -98,10 +101,12 @@ class KubernetesContainerAPI:
                 chunk = resp.read_stderr()
                 stderr_output += chunk
 
+        # Ensure we wait for the command to complete properly
+        resp.close()
         exit_code = resp.returncode or 0
         return exit_code, (stdout_output, stderr_output)
 
-    def copy_to_container(self, container: Any, src: str, dest: str) -> None:
+    def copy_to_container(self, container: Any, src: str, dest: str, **kwargs: Any) -> None:
         """Copy file to Kubernetes pod."""
         # Validate source path exists and is accessible
         src_path = Path(src)
@@ -110,6 +115,7 @@ class KubernetesContainerAPI:
             raise FileNotFoundError(msg)
 
         dest_dir = str(Path(dest).parent)
+        container_name = kwargs.get("container_name")  # Get the specific container name
 
         # Create destination directory
         if dest_dir:
@@ -119,6 +125,7 @@ class KubernetesContainerAPI:
                 container,
                 self.namespace,
                 command=exec_command,
+                container=container_name,  # Specify which container to use
                 stderr=True,
                 stdin=False,
                 stdout=True,
@@ -148,6 +155,7 @@ class KubernetesContainerAPI:
             container,
             self.namespace,
             command=exec_command,
+            container=container_name,  # Specify which container to use
             stderr=True,
             stdin=True,
             stdout=True,
@@ -165,10 +173,16 @@ class KubernetesContainerAPI:
             else:
                 break
 
+        # Ensure proper stream closure and wait for completion
+        resp.write_stdin("")  # Signal end of input
         resp.close()
 
-    def copy_from_container(self, container: Any, src: str) -> tuple[bytes, dict]:
+        # Note: We don't check returncode here as it may not be available immediately after stream close
+
+    def copy_from_container(self, container: Any, src: str, **kwargs: Any) -> tuple[bytes, dict]:
         """Copy file from Kubernetes pod."""
+        container_name = kwargs.get("container_name")  # Get the specific container name
+
         # First check if the path exists and get its stats
         stat_command = f"stat -c '%s %Y %n' {src} 2>/dev/null || echo 'NOT_FOUND'"
         exec_command = [SH_SHELL, "-c", stat_command]
@@ -178,6 +192,7 @@ class KubernetesContainerAPI:
             container,
             self.namespace,
             command=exec_command,
+            container=container_name,  # Specify which container to use
             stderr=True,
             stdin=False,
             stdout=True,
@@ -217,6 +232,7 @@ class KubernetesContainerAPI:
             container,
             self.namespace,
             command=exec_command,
+            container=container_name,  # Specify which container to use
             stderr=True,
             stdin=False,
             stdout=True,
@@ -336,8 +352,17 @@ class SandboxKubernetesSession(BaseSession):
             self.env_vars = env_vars
             self.pod_manifest = pod_manifest or self._default_pod_manifest()
             self._reconfigure_with_pod_manifest()
+
+            # Extract container name from pod manifest for command execution
+            containers = self.pod_manifest.get("spec", {}).get("containers", [])
+            if containers:
+                self.container_name = containers[0]["name"]
+            else:
+                self.container_name = "sandbox-container"  # fallback
         elif container_id:
             self.pod_name = container_id
+            # For existing containers, we'll need to query the pod to get container name
+            self.container_name = None  # Will be set when connecting
 
         # For compatibility with base class
         self.stream = False
@@ -449,6 +474,13 @@ class SandboxKubernetesSession(BaseSession):
             # Store pod name for operations
             self.container = pod_id
 
+            # Extract container name from the existing pod
+            containers = pod.spec.containers
+            if containers:
+                self.container_name = containers[0].name
+            else:
+                self.container_name = "sandbox-container"  # fallback
+
         except ApiException as e:
             if e.status == KUBERNETES_POD_NOT_FOUND_ERROR_CODE:
                 msg = f"Pod {pod_id} not found in namespace {self.kube_namespace}"
@@ -464,7 +496,9 @@ class SandboxKubernetesSession(BaseSession):
 
     def _ensure_directory_exists(self, path: str) -> None:
         """Ensure directory exists in Kubernetes pod."""
-        mkdir_result = self.container_api.execute_command(self.container, f"mkdir -p '{path}'")
+        mkdir_result = self.container_api.execute_command(
+            self.container, f"mkdir -p '{path}'", container_name=self.container_name
+        )
         if mkdir_result[0] != 0:
             stdout_output, stderr_output = mkdir_result[1]
             error_msg = stderr_output if stderr_output else stdout_output
@@ -537,4 +571,67 @@ class SandboxKubernetesSession(BaseSession):
         if not self.container:
             raise NotOpenSessionError
 
-        return self.container_api.copy_from_container(self.container, path)
+        return self.container_api.copy_from_container(self.container, path, container_name=self.container_name)
+
+    def execute_command(self, command: str, workdir: str | None = None) -> Any:
+        """Override to pass container name for Kubernetes."""
+        if not command:
+            from llm_sandbox.exceptions import CommandEmptyError
+
+            raise CommandEmptyError
+
+        if not self.container:
+            raise NotOpenSessionError
+
+        if self.verbose:
+            self.logger.info("Executing command: %s", command)
+
+        exit_code, output = self.container_api.execute_command(
+            self.container, command, workdir=workdir, stream=self.stream, container_name=self.container_name
+        )
+
+        stdout, stderr = self._process_output(output)
+
+        if self.verbose:
+            if stdout:
+                self.logger.info("STDOUT: %s", stdout)
+            if stderr:
+                self.logger.error("STDERR: %s", stderr)
+
+        return ConsoleOutput(exit_code=exit_code or 0, stdout=stdout, stderr=stderr)
+
+    def copy_to_runtime(self, src: str, dest: str) -> None:
+        """Override to pass container name for Kubernetes."""
+        if not self.container:
+            raise NotOpenSessionError
+
+        # Validate source path exists and is accessible (same as mixin)
+        src_path = Path(src)
+        if not (src_path.exists() and (src_path.is_file() or src_path.is_dir())):
+            msg = f"Source path {src} does not exist or is not accessible"
+            raise FileNotFoundError(msg)
+
+        if self.verbose:
+            self.logger.info("Copying %s to %s", src, dest)
+
+        dest_dir = str(Path(dest).parent)
+        if dest_dir:
+            self._ensure_directory_exists(dest_dir)
+
+        self.container_api.copy_to_container(self.container, src, dest, container_name=self.container_name)
+        self._ensure_ownership([dest])
+
+    def copy_from_runtime(self, src: str, dest: str) -> None:
+        """Override to pass container name for Kubernetes."""
+        if not self.container:
+            raise NotOpenSessionError
+
+        if self.verbose:
+            self.logger.info("Copying %s to %s", src, dest)
+
+        bits, stat = self.container_api.copy_from_container(self.container, src, container_name=self.container_name)
+        if stat.get("size", 0) == 0:
+            msg = f"File {src} not found in container"
+            raise FileNotFoundError(msg)
+
+        self._extract_archive_safely(bits, dest)

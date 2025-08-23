@@ -54,7 +54,7 @@ class DockerContainerAPI:
         result = container.exec_run(**exec_kwargs)
         return result.exit_code or 0, result.output
 
-    def copy_to_container(self, container: Any, src: str, dest: str) -> None:
+    def copy_to_container(self, container: Any, src: str, dest: str, **_kwargs: Any) -> None:
         """Copy file to Docker container."""
         import io
         import tarfile
@@ -66,7 +66,7 @@ class DockerContainerAPI:
         tar_stream.seek(0)
         container.put_archive(Path(dest).parent.as_posix(), tar_stream.getvalue())
 
-    def copy_from_container(self, container: Any, src: str) -> tuple[bytes, dict]:
+    def copy_from_container(self, container: Any, src: str, **_kwargs: Any) -> tuple[bytes, dict]:
         """Copy file from Docker container."""
         data, stat = container.get_archive(src)
         return b"".join(data), stat

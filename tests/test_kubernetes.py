@@ -347,7 +347,9 @@ class TestSandboxKubernetesSessionFileOperations:
 
             session.copy_to_runtime(temp_file.name, "/pod/file.txt")
 
-            mock_copy_to_container.assert_called_once_with("test-pod", temp_file.name, "/pod/file.txt")
+            mock_copy_to_container.assert_called_once_with(
+                "test-pod", temp_file.name, "/pod/file.txt", container_name="sandbox-container"
+            )
             mock_ownership.assert_called_once_with(["/pod/file.txt"])
 
     @patch("kubernetes.config.load_kube_config")
@@ -386,7 +388,9 @@ class TestSandboxKubernetesSessionFileOperations:
             dest_file = f"{temp_dir}/file.txt"
             session.copy_from_runtime("/pod/file.txt", dest_file)
 
-            mock_copy_from_container.assert_called_once_with("test-pod", "/pod/file.txt")
+            mock_copy_from_container.assert_called_once_with(
+                "test-pod", "/pod/file.txt", container_name="sandbox-container"
+            )
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -569,7 +573,7 @@ class TestSandboxKubernetesSessionArchive:
             assert stat["name"] == "/pod/file.txt"
             assert stat["size"] == 100
             assert stat["mtime"] == 1234567890
-            mock_copy_from.assert_called_once_with("test-pod", "/pod/file.txt")
+            mock_copy_from.assert_called_once_with("test-pod", "/pod/file.txt", container_name="sandbox-container")
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1173,7 +1177,9 @@ class TestSandboxKubernetesSessionEdgeCases:
 
             session._ensure_directory_exists("/test/path")
 
-            mock_execute.assert_called_once_with("test-pod", "mkdir -p '/test/path'")
+            mock_execute.assert_called_once_with(
+                "test-pod", "mkdir -p '/test/path'", container_name="sandbox-container"
+            )
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1476,6 +1482,7 @@ class TestSandboxKubernetesSessionInheritance:
         session.container = "test-pod"
 
         # Test that inherited validation catches non-existent files
+        # The validation should happen before any Kubernetes API calls
         with pytest.raises(FileNotFoundError, match="does not exist"):
             session.copy_to_runtime("/nonexistent/file.txt", "/pod/dest.txt")
 

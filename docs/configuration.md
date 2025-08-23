@@ -475,6 +475,44 @@ session = SandboxSession(
 )
 ```
 
+#### ⚠️ Critical Pod Manifest Requirements
+
+When providing custom pod manifests, these configurations are **mandatory** for proper operation:
+
+**Required Container Configurations:**
+```python
+{
+    "name": "my-container",       # Can be any valid container name
+    "image": "your-image:latest",
+    "tty": True,                  # REQUIRED: Keeps container alive for command execution
+    "securityContext": {          # REQUIRED: For proper file permissions
+        "runAsUser": 0,
+        "runAsGroup": 0,
+    },
+    # Your other settings...
+}
+```
+
+**Required Pod-Level Configuration:**
+```python
+{
+    "spec": {
+        "containers": [...],
+        "securityContext": {      # REQUIRED: Pod-level security context
+            "runAsUser": 0,
+            "runAsGroup": 0,
+        },
+    }
+}
+```
+
+**⚠️ Common Issues:**
+- **Pod exits immediately**: Missing `"tty": True` configuration
+- **Permission denied errors**: Missing or incorrect `securityContext` configurations
+- **Connection timeouts**: Pod may not be fully ready - ensure proper resource limits and image availability
+
+#### Additional Kubernetes Configuration
+
 To configure resources, security context, volumes, and other Pod-level settings in Kubernetes, you should:
 
 1. Create a Pod manifest file or use the Kubernetes Python client directly

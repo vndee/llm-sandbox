@@ -239,6 +239,53 @@ with SandboxSession(
     print(result.stdout)
 ```
 
+**Important: Custom Pod Manifests**
+
+When using custom pod manifests with Kubernetes, ensure your manifest includes these **required** configurations:
+
+```python
+# Required pod manifest structure
+pod_manifest = {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "your-pod-name",  # Will be overridden with unique name
+        "namespace": "default",
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "my-container",  # Can be any valid container name
+                "image": "your-image:latest",
+                "tty": True,  # REQUIRED: Keeps container alive
+                "securityContext": {  # REQUIRED: For proper permissions
+                    "runAsUser": 0,
+                    "runAsGroup": 0,
+                },
+                # Your other container settings...
+            }
+        ],
+        "securityContext": {  # REQUIRED: Pod-level security context
+            "runAsUser": 0,
+            "runAsGroup": 0,
+        },
+    },
+}
+
+with SandboxSession(
+    backend=SandboxBackend.KUBERNETES,
+    lang="python",
+    pod_manifest=pod_manifest
+) as session:
+    result = session.run("print('Custom manifest working!')")
+```
+
+**⚠️ Critical Requirements:**
+- `"tty": True` is essential for keeping the container alive
+- Both pod-level and container-level `securityContext` are required for proper permissions
+- Container name can be any valid name (no longer restricted to "sandbox-container")
+- Missing any of these will cause connection or permission errors
+
 #### Podman Backend
 
 ```python

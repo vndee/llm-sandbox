@@ -408,6 +408,15 @@ with SandboxSession(
     print(result)
 ```
 
+**⚠️ Important for Custom Pod Manifests:**
+
+When using custom pod manifests, ensure your container configuration includes:
+- `"tty": True` (keeps container alive)
+- Proper `securityContext` at both pod and container levels
+- Container name can be any valid name (no restrictions)
+
+See the [Configuration Guide](docs/configuration.md#kubernetes-backend) for complete requirements.
+
 #### Podman Support
 
 ```python
