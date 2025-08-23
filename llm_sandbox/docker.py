@@ -54,7 +54,7 @@ class DockerContainerAPI:
         result = container.exec_run(**exec_kwargs)
         return result.exit_code or 0, result.output
 
-    def copy_to_container(self, container: Any, src: str, dest: str) -> None:
+    def copy_to_container(self, container: Any, src: str, dest: str, **_kwargs: Any) -> None:
         """Copy file to Docker container."""
         import io
         import tarfile
@@ -66,7 +66,7 @@ class DockerContainerAPI:
         tar_stream.seek(0)
         container.put_archive(Path(dest).parent.as_posix(), tar_stream.getvalue())
 
-    def copy_from_container(self, container: Any, src: str) -> tuple[bytes, dict]:
+    def copy_from_container(self, container: Any, src: str, **_kwargs: Any) -> tuple[bytes, dict]:
         """Copy file from Docker container."""
         data, stat = container.get_archive(src)
         return b"".join(data), stat
@@ -98,6 +98,7 @@ class SandboxDockerSession(BaseSession):
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
         container_id: str | None = None,
+        skip_environment_setup: bool = False,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Docker session.
@@ -118,6 +119,7 @@ class SandboxDockerSession(BaseSession):
             execution_timeout (float | None): The execution timeout to use.
             session_timeout (float | None): The session timeout to use.
             container_id (str | None): ID of existing container to connect to.
+            skip_environment_setup (bool): Skip language-specific environment setup.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -136,6 +138,7 @@ class SandboxDockerSession(BaseSession):
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
             container_id=container_id,
+            skip_environment_setup=skip_environment_setup,
         )
 
         super().__init__(config=config, **kwargs)

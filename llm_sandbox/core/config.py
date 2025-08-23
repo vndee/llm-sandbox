@@ -76,6 +76,14 @@ class SessionConfig(BaseModel):
         "By default, containers run as the root user for maximum compatibility.",
     )
 
+    # Environment setup customization
+    skip_environment_setup: bool = Field(
+        default=False,
+        description="Skip language-specific environment setup during container initialization. "
+        "Useful when using custom images with pre-configured environments or when administrators "
+        "want to avoid package installation delays in Kubernetes deployments.",
+    )
+
     def get_execution_timeout(self) -> float | None:
         """Get the execution timeout."""
         return self.execution_timeout or self.default_timeout

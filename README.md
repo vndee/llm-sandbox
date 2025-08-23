@@ -50,6 +50,7 @@ Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, L
 - **Library Management**: Install dependencies on-the-fly
 - **File Operations**: Copy files to/from sandbox environments
 - **Custom Images**: Use your own container images
+- **Fast Production Mode**: Skip environment setup for faster container startup
 
 ## 📦 Installation
 
@@ -406,6 +407,15 @@ with SandboxSession(
     result = session.run("print('Hello from Kubernetes!')")
     print(result)
 ```
+
+**⚠️ Important for Custom Pod Manifests:**
+
+When using custom pod manifests, ensure your container configuration includes:
+- `"tty": True` (keeps container alive)
+- Proper `securityContext` at both pod and container levels
+- Container name can be any valid name (no restrictions)
+
+See the [Configuration Guide](docs/configuration.md#kubernetes-backend) for complete requirements.
 
 #### Podman Support
 

@@ -67,6 +67,7 @@ class SandboxPodmanSession(SandboxDockerSession):
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
         container_id: str | None = None,
+        skip_environment_setup: bool = False,
         **kwargs: dict[str, Any],
     ) -> None:
         r"""Initialize Podman session.
@@ -88,6 +89,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             execution_timeout (float | None): The execution timeout to use.
             session_timeout (float | None): The session timeout to use.
             container_id (str | None): ID of existing container to connect to.
+            skip_environment_setup (bool): Skip language-specific environment setup.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -106,6 +108,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
             container_id=container_id,
+            skip_environment_setup=skip_environment_setup,
         )
 
         # Initialize BaseSession (skip Docker's __init__)

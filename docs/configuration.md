@@ -17,6 +17,113 @@ session = SandboxSession(
 )
 ```
 
+### Environment Setup Control
+
+LLM Sandbox automatically sets up language-specific environments during container initialization (e.g., creating Python virtual environments, upgrading pip, initializing Go modules). For production deployments or when using custom pre-configured images, you can skip this setup for faster startup times.
+
+#### skip_environment_setup Parameter
+
+The `skip_environment_setup` parameter allows you to bypass automatic environment setup:
+
+```python
+from llm_sandbox import SandboxSession, SandboxBackend
+
+# Skip environment setup for faster container startup
+with SandboxSession(
+    lang="python",
+    skip_environment_setup=True,  # Skip pip upgrades and venv creation
+    verbose=True
+) as session:
+    result = session.run("print('Hello from pre-configured environment!')")
+```
+
+#### When to Use skip_environment_setup=True
+
+**✅ Recommended for:**
+
+- **Production deployments** where container startup time is critical
+- **Custom images** with pre-installed packages and configured environments
+- **CI/CD pipelines** where environment setup adds unnecessary overhead
+- **Air-gapped environments** where external package repositories aren't accessible
+- **Batch processing** where you want predictable, pre-configured setups
+
+**❌ Not recommended for:**
+
+- Development and testing with dynamic package installation
+- Using base images without pre-configured language environments
+- Scenarios requiring on-the-fly library installation
+
+#### Production Deployment Examples
+
+**Docker with custom image:**
+```python
+with SandboxSession(
+    lang="python",
+    backend=SandboxBackend.DOCKER,
+    skip_environment_setup=True,
+    image="my-registry.com/python-ml:latest",  # Pre-installed ML packages
+) as session:
+    result = session.run("import numpy as np; print(f'NumPy: {np.__version__}')")
+```
+
+**Kubernetes:**
+```python
+with SandboxSession(
+    lang="python",
+    backend=SandboxBackend.KUBERNETES,
+    skip_environment_setup=True,
+    image="my-registry.com/python-ml:latest",
+) as session:
+    result = session.run("import pandas as pd; print(f'Pandas: {pd.__version__}')")
+```
+
+**Podman for rootless containers:**
+```python
+with SandboxSession(
+    lang="python",
+    backend=SandboxBackend.PODMAN,
+    skip_environment_setup=True,
+    image="my-registry.com/python-secure:latest"
+) as session:
+    result = session.run("print('Secure environment ready!')")
+```
+
+#### Custom Image Requirements
+
+When using `skip_environment_setup=True`, ensure your custom image includes:
+
+**For Python:**
+
+- Python interpreter in expected location (usually `/usr/bin/python` or `/usr/local/bin/python`)
+- Required packages pre-installed (numpy, pandas, etc.)
+- Proper PATH configuration
+
+**For Other Languages:**
+
+- Language runtime properly installed and configured
+- Standard libraries and common packages available
+- Appropriate environment variables set
+
+#### Library Installation Behavior
+
+When `skip_environment_setup=True`:
+
+- ✅ Code execution works normally
+- ❌ Dynamic library installation is disabled
+- 📦 Libraries must be pre-installed in the container image
+
+```python
+# This will fail with skip_environment_setup=True
+result = session.run(
+    "import requests; print('OK')",
+    libraries=["requests"]  # ❌ Will raise LibraryInstallationNotSupportedError
+)
+
+# Instead, use execute_command for manual installation if needed
+session.execute_command("pip install requests")
+result = session.run("import requests; print('OK')")  # ✅ Works
+```
+
 ### Timeout Configuration
 
 LLM Sandbox provides comprehensive timeout controls to prevent runaway code execution and manage resource usage efficiently.
@@ -367,6 +474,44 @@ session = SandboxSession(
     workdir="/tmp/sandbox"  # Use writable directory for non-root
 )
 ```
+
+#### ⚠️ Critical Pod Manifest Requirements
+
+When providing custom pod manifests, these configurations are **mandatory** for proper operation:
+
+**Required Container Configurations:**
+```python
+{
+    "name": "my-container",       # Can be any valid container name
+    "image": "your-image:latest",
+    "tty": True,                  # REQUIRED: Keeps container alive for command execution
+    "securityContext": {          # REQUIRED: For proper file permissions
+        "runAsUser": 0,
+        "runAsGroup": 0,
+    },
+    # Your other settings...
+}
+```
+
+**Required Pod-Level Configuration:**
+```python
+{
+    "spec": {
+        "containers": [...],
+        "securityContext": {      # REQUIRED: Pod-level security context
+            "runAsUser": 0,
+            "runAsGroup": 0,
+        },
+    }
+}
+```
+
+**⚠️ Common Issues:**
+- **Pod exits immediately**: Missing `"tty": True` configuration
+- **Permission denied errors**: Missing or incorrect `securityContext` configurations
+- **Connection timeouts**: Pod may not be fully ready - ensure proper resource limits and image availability
+
+#### Additional Kubernetes Configuration
 
 To configure resources, security context, volumes, and other Pod-level settings in Kubernetes, you should:
 

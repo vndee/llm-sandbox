@@ -239,6 +239,53 @@ with SandboxSession(
     print(result.stdout)
 ```
 
+**Important: Custom Pod Manifests**
+
+When using custom pod manifests with Kubernetes, ensure your manifest includes these **required** configurations:
+
+```python
+# Required pod manifest structure
+pod_manifest = {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "your-pod-name",  # Will be overridden with unique name
+        "namespace": "default",
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "my-container",  # Can be any valid container name
+                "image": "your-image:latest",
+                "tty": True,  # REQUIRED: Keeps container alive
+                "securityContext": {  # REQUIRED: For proper permissions
+                    "runAsUser": 0,
+                    "runAsGroup": 0,
+                },
+                # Your other container settings...
+            }
+        ],
+        "securityContext": {  # REQUIRED: Pod-level security context
+            "runAsUser": 0,
+            "runAsGroup": 0,
+        },
+    },
+}
+
+with SandboxSession(
+    backend=SandboxBackend.KUBERNETES,
+    lang="python",
+    pod_manifest=pod_manifest
+) as session:
+    result = session.run("print('Custom manifest working!')")
+```
+
+**⚠️ Critical Requirements:**
+- `"tty": True` is essential for keeping the container alive
+- Both pod-level and container-level `securityContext` are required for proper permissions
+- Container name can be any valid name (no longer restricted to "sandbox-container")
+- Missing any of these will cause connection or permission errors
+
 #### Podman Backend
 
 ```python
@@ -564,6 +611,31 @@ with SandboxSession(
     result = session.run("print('Hello from my custom image!')")
     print(result.stdout)
 ```
+
+### 5. Skip Environment Setup for Production
+
+For production deployments or when using pre-configured images, skip automatic environment setup for faster container startup:
+
+```python
+from llm_sandbox import SandboxSession
+
+# Skip environment setup when using custom images
+with SandboxSession(
+    lang="python",
+    image="my-registry.com/python-ml:latest",  # Pre-configured image
+    skip_environment_setup=True  # Skip pip upgrades and venv creation
+) as session:
+    result = session.run("import numpy; print('Ready!')")
+```
+
+**When to use `skip_environment_setup=True`:**
+
+- Production deployments where startup time is critical
+- Custom images with pre-installed packages
+- CI/CD pipelines and batch processing
+- Air-gapped environments without external package access
+
+See the [Configuration Guide](configuration.md#environment-setup-control) for detailed information.
 
 ## Troubleshooting
 

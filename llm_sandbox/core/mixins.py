@@ -36,11 +36,11 @@ class ContainerAPI(Protocol):
         """Execute command in container."""
         ...
 
-    def copy_to_container(self, container: Any, src: str, dest: str) -> None:
+    def copy_to_container(self, container: Any, src: str, dest: str, **kwargs: Any) -> None:
         """Copy file to container."""
         ...
 
-    def copy_from_container(self, container: Any, src: str) -> tuple[bytes, dict]:
+    def copy_from_container(self, container: Any, src: str, **kwargs: Any) -> tuple[bytes, dict]:
         """Copy file from container."""
         ...
 
