@@ -507,6 +507,7 @@ When providing custom pod manifests, these configurations are **mandatory** for 
 ```
 
 **⚠️ Common Issues:**
+
 - **Pod exits immediately**: Missing `"tty": True` configuration
 - **Permission denied errors**: Missing or incorrect `securityContext` configurations
 - **Connection timeouts**: Pod may not be fully ready - ensure proper resource limits and image availability
