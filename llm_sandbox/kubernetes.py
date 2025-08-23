@@ -1,4 +1,5 @@
 import io
+import shlex
 import tarfile
 import time
 import uuid
@@ -184,7 +185,7 @@ class KubernetesContainerAPI:
         container_name = kwargs.get("container_name")  # Get the specific container name
 
         # First check if the path exists and get its stats
-        stat_command = f"stat -c '%s %Y %n' {src} 2>/dev/null || echo 'NOT_FOUND'"
+        stat_command = f"stat -c '%s %Y %n' {shlex.quote(str(src))} 2>/dev/null || echo 'NOT_FOUND'"
         exec_command = [SH_SHELL, "-c", stat_command]
 
         resp = stream(
@@ -224,7 +225,7 @@ class KubernetesContainerAPI:
         src_path = Path(src)
         parent_dir = src_path.parent
         target_name = src_path.name
-        base64_command = f"tar -C {parent_dir} -cf - {target_name} | base64 -w 0"
+        base64_command = f"tar -C {shlex.quote(str(parent_dir))} -cf - {shlex.quote(target_name)} | base64 -w 0"
         exec_command = [SH_SHELL, "-c", base64_command]
 
         resp = stream(
