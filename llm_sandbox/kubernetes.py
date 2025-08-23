@@ -14,7 +14,7 @@ from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import ContainerError, NotOpenSessionError
+from llm_sandbox.exceptions import CommandEmptyError, ContainerError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
 SH_SHELL = "/bin/sh"
@@ -573,11 +573,9 @@ class SandboxKubernetesSession(BaseSession):
 
         return self.container_api.copy_from_container(self.container, path, container_name=self.container_name)
 
-    def execute_command(self, command: str, workdir: str | None = None) -> Any:
+    def execute_command(self, command: str, workdir: str | None = None) -> ConsoleOutput:
         """Override to pass container name for Kubernetes."""
         if not command:
-            from llm_sandbox.exceptions import CommandEmptyError
-
             raise CommandEmptyError
 
         if not self.container:
