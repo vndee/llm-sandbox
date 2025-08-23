@@ -236,13 +236,21 @@ class BaseSession(
             return
 
         if self.config.skip_environment_setup:
-            msg = (
-                "Library installation is not supported when skip_environment_setup is True.\n"
-                "Consider either using a pre-configured image or installing libraries using `execute_command` method.\n"
-                "To enable library installation, set skip_environment_setup to False."
+            # Log detailed guidance for users
+            self._log(
+                "Library installation is not supported when skip_environment_setup is True",
+                "error"
+            )
+            self._log(
+                "Consider either using a pre-configured image or installing libraries using `execute_command` method",
+                "info"
+            )
+            self._log(
+                "To enable library installation, set skip_environment_setup to False",
+                "info"
             )
 
-            raise LibraryInstallationNotSupportedError(msg)
+            raise LibraryInstallationNotSupportedError(self.config.lang)
 
         if not self.language_handler.is_support_library_installation:
             raise LibraryInstallationNotSupportedError(self.config.lang)

@@ -528,14 +528,22 @@ class TestBaseSessionSkipEnvironmentSetup:
         config = SessionConfig(lang=SupportedLanguage.PYTHON, skip_environment_setup=True)
         session = MockBaseSession(config)
 
-        with pytest.raises(LibraryInstallationNotSupportedError) as exc_info:
-            session.install(["numpy", "pandas"])
+        # Mock the _log method to capture log messages
+        with patch.object(session, "_log") as mock_log:
+            with pytest.raises(LibraryInstallationNotSupportedError) as exc_info:
+                session.install(["numpy", "pandas"])
 
-        # Check error message mentions skip_environment_setup
-        error_msg = str(exc_info.value)
-        assert "skip_environment_setup is True" in error_msg
-        assert "pre-configured image" in error_msg
-        assert "execute_command" in error_msg
+            # Check that the exception contains the language
+            error_msg = str(exc_info.value)
+            assert "python" in error_msg.lower()
+
+            # Check that detailed guidance was logged
+            log_calls = [call.args for call in mock_log.call_args_list]
+            log_messages = [call[0] for call in log_calls if len(call) > 0]
+
+            assert any("skip_environment_setup is True" in msg for msg in log_messages)
+            assert any("pre-configured image" in msg for msg in log_messages)
+            assert any("execute_command" in msg for msg in log_messages)
 
     def test_library_installation_works_when_skip_setup_false(self) -> None:
         """Test that library installation works normally when skip_environment_setup=False."""
