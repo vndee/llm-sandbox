@@ -1794,6 +1794,373 @@ class TestSandboxKubernetesSessionDifferencesFromDocker:
         assert "resources" in manifest["spec"]["containers"][0]
 
 
+class TestSandboxKubernetesSessionContainerName:
+    """Test cases for dynamic container name functionality."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_container_name_extraction_from_pod_manifest(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that container name is extracted from pod manifest."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default"},
+            "spec": {
+                "containers": [
+                    {
+                        "name": "my-custom-container",  # Custom container name
+                        "image": "python:3.11",
+                        "tty": True,
+                    }
+                ]
+            },
+        }
+
+        session = SandboxKubernetesSession(pod_manifest=custom_manifest)
+
+        # Verify container name is extracted correctly
+        assert session.container_name == "my-custom-container"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_container_name_extraction_multiple_containers(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that first container name is used when multiple containers exist."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default"},
+            "spec": {
+                "containers": [
+                    {"name": "first-container", "image": "python:3.11", "tty": True},
+                    {"name": "second-container", "image": "redis:latest"},
+                ]
+            },
+        }
+
+        session = SandboxKubernetesSession(pod_manifest=custom_manifest)
+
+        # Should use first container
+        assert session.container_name == "first-container"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_container_name_fallback_empty_containers(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test fallback to default container name when no containers in manifest."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default"},
+            "spec": {"containers": []},  # Empty containers array
+        }
+
+        session = SandboxKubernetesSession(pod_manifest=custom_manifest)
+
+        # Should fallback to default
+        assert session.container_name == "sandbox-container"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_container_name_fallback_no_spec(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test fallback to default container name when no spec in manifest."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default"},
+            # Missing spec section
+        }
+
+        session = SandboxKubernetesSession(pod_manifest=custom_manifest)
+
+        # Should fallback to default
+        assert session.container_name == "sandbox-container"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_container_name_with_default_manifest(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test container name with default generated manifest."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        # No custom manifest, should use default
+        session = SandboxKubernetesSession(image="python:3.11")
+
+        # Should use default container name from generated manifest
+        assert session.container_name == "sandbox-container"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_custom_container_name_in_operations(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that custom container name is used in all operations."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default"},
+            "spec": {
+                "containers": [
+                    {
+                        "name": "my-app-container",  # Custom name
+                        "image": "python:3.11",
+                        "tty": True,
+                    }
+                ]
+            },
+        }
+
+        session = SandboxKubernetesSession(pod_manifest=custom_manifest)
+        session.container = "test-pod"  # Simulate opened session
+
+        # Mock the container API methods
+        with (
+            patch.object(session.container_api, "execute_command") as mock_execute,
+            patch.object(session.container_api, "copy_to_container") as mock_copy_to,
+            patch.object(session.container_api, "copy_from_container") as mock_copy_from,
+        ):
+            # Test execute_command passes container name
+            mock_execute.return_value = (0, ("output", ""))
+            session.execute_command("echo test")
+            mock_execute.assert_called_with(
+                "test-pod", "echo test", workdir=None, stream=False, container_name="my-app-container"
+            )
+
+            # Test copy_to_runtime passes container name
+            with tempfile.NamedTemporaryFile() as temp_file:
+                temp_file.write(b"test")
+                temp_file.flush()
+                session.copy_to_runtime(temp_file.name, "/test/dest.txt")
+                mock_copy_to.assert_called_with(
+                    "test-pod", temp_file.name, "/test/dest.txt", container_name="my-app-container"
+                )
+
+            # Test copy_from_runtime passes container name
+            # Create a proper tar archive for the mock
+            import io
+            import tarfile
+
+            tar_data = io.BytesIO()
+            with tarfile.open(fileobj=tar_data, mode="w") as tar:
+                info = tarfile.TarInfo(name="src.txt")
+                info.size = 9
+                tar.addfile(info, io.BytesIO(b"test data"))
+            tar_data.seek(0)
+            mock_copy_from.return_value = (tar_data.getvalue(), {"size": 9})
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                dest_file = f"{temp_dir}/dest.txt"
+                session.copy_from_runtime("/test/src.txt", dest_file)
+                mock_copy_from.assert_called_with("test-pod", "/test/src.txt", container_name="my-app-container")
+
+
+class TestSandboxKubernetesSessionExistingPodContainerName:
+    """Test cases for existing pod functionality with container names."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_existing_pod_container_name_extraction(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test container name extraction from existing pod."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        # Mock existing pod with custom container name
+        mock_pod = MagicMock()
+        mock_container = MagicMock()
+        mock_container.name = "existing-custom-container"
+        mock_pod.spec.containers = [mock_container]
+        mock_pod.status.phase = "Running"  # Set pod as running
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        session = SandboxKubernetesSession(container_id="existing-pod-id")
+
+        # Simulate opening connection to existing pod
+        session._connect_to_existing_container("existing-pod-id")
+
+        # Verify container name was extracted from existing pod
+        assert session.container_name == "existing-custom-container"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_existing_pod_multiple_containers(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that first container name is used from existing pod with multiple containers."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        # Mock existing pod with multiple containers
+        mock_pod = MagicMock()
+        mock_container1 = MagicMock()
+        mock_container1.name = "first-existing-container"
+        mock_container2 = MagicMock()
+        mock_container2.name = "second-existing-container"
+        mock_pod.spec.containers = [mock_container1, mock_container2]
+        mock_pod.status.phase = "Running"  # Set pod as running
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        session = SandboxKubernetesSession(container_id="existing-pod-id")
+        session._connect_to_existing_container("existing-pod-id")
+
+        # Should use first container name
+        assert session.container_name == "first-existing-container"
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_existing_pod_no_containers_fallback(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test fallback to default container name when existing pod has no containers."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_core_v1_api.return_value = mock_client
+
+        # Mock existing pod with no containers
+        mock_pod = MagicMock()
+        mock_pod.spec.containers = []
+        mock_pod.status.phase = "Running"  # Set pod as running
+        mock_client.read_namespaced_pod.return_value = mock_pod
+
+        session = SandboxKubernetesSession(container_id="existing-pod-id")
+        session._connect_to_existing_container("existing-pod-id")
+
+        # Should fallback to default
+        assert session.container_name == "sandbox-container"
+
+
+class TestKubernetesContainerAPIContainerName:
+    """Test cases for KubernetesContainerAPI with container names."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_execute_command_with_custom_container_name(
+        self, mock_stream: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that execute_command passes custom container name to Kubernetes API."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client, "test-namespace")
+
+        mock_resp = MagicMock()
+        # Mock the streaming behavior: first iteration returns data, second iteration closes
+        mock_resp.is_open.side_effect = [True, False]  # Open once, then closed
+        mock_resp.peek_stdout.side_effect = [True, False]  # Has data once, then no data
+        mock_resp.peek_stderr.side_effect = [False, False]  # No stderr data
+        mock_resp.read_stdout.return_value = "test output"
+        mock_resp.read_stderr.return_value = ""
+        mock_resp.update.return_value = None
+        mock_resp.returncode = 0
+        mock_resp.close.return_value = None
+        mock_stream.return_value = mock_resp
+
+        # Execute command with custom container name
+        exit_code, output = api.execute_command("test-pod", "echo hello", container_name="my-custom-container")
+
+        # Verify container name was passed to stream
+        mock_stream.assert_called_once_with(
+            mock_client.connect_get_namespaced_pod_exec,
+            "test-pod",
+            "test-namespace",
+            command=["/bin/sh", "-c", "echo hello"],
+            container="my-custom-container",  # Should use custom container name
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _preload_content=False,
+        )
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.stream")
+    def test_copy_to_container_with_custom_container_name(
+        self, mock_stream: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Test that copy operations use custom container name."""
+        mock_client = MagicMock()
+        api = KubernetesContainerAPI(mock_client, "test-namespace")
+
+        # Mock stream responses for directory creation and file copy
+
+        # For mkdir command
+        mock_mkdir_resp = MagicMock()
+        mock_mkdir_resp.is_open.side_effect = [True, False]
+        mock_mkdir_resp.peek_stdout.side_effect = [False, False]
+        mock_mkdir_resp.peek_stderr.side_effect = [False, False]
+        mock_mkdir_resp.update.return_value = None
+        mock_mkdir_resp.returncode = 0
+        mock_mkdir_resp.close.return_value = None
+
+        # For copy command
+        mock_copy_resp = MagicMock()
+        mock_copy_resp.is_open.side_effect = [True, False]
+        mock_copy_resp.peek_stdout.side_effect = [False, False]
+        mock_copy_resp.peek_stderr.side_effect = [False, False]
+        mock_copy_resp.update.return_value = None
+        mock_copy_resp.write_stdin.return_value = None
+        mock_copy_resp.close.return_value = None
+
+        mock_stream.side_effect = [mock_mkdir_resp, mock_copy_resp]
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            temp_file.write(b"test content")
+            temp_file.flush()
+
+            # Copy file with custom container name
+            api.copy_to_container("test-pod", temp_file.name, "/dest/file.txt", container_name="my-custom-container")
+
+            # Verify both mkdir and copy operations used custom container name
+            calls = mock_stream.call_args_list
+            assert len(calls) >= 2
+
+            # Check mkdir call
+            mkdir_call = calls[0]
+            assert mkdir_call[1]["container"] == "my-custom-container"
+
+            # Check copy call
+            copy_call = calls[1]
+            assert copy_call[1]["container"] == "my-custom-container"
+
+
 class TestSandboxKubernetesSessionExistingPod:
     """Test cases for existing pod functionality."""
 
