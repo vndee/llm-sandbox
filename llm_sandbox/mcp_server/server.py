@@ -43,6 +43,11 @@ def _get_keep_template() -> bool:
     return keep_template_env in ("true", "1", "yes", "on")
 
 
+def _get_kube_namespace() -> str:
+    """Get the Kubernetes namespace from environment variable."""
+    return os.environ.get("NAMESPACE", "default")
+
+
 def _supports_visualization(language: str) -> bool:
     """Check if a language supports visualization capture."""
     lang_details = LANGUAGE_RESOURCES.get(language)
@@ -81,6 +86,7 @@ def execute_code(
             verbose=False,
             backend=_get_backend(),
             session_timeout=timeout,
+            kube_namespace=_get_kube_namespace(),
         ) as session:
             result = session.run(
                 code=code,
