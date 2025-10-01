@@ -1996,7 +1996,7 @@
 </span><span id=__span-0-362><a id=__codelineno-0-362 name=__codelineno-0-362></a>    <span class=nb>super</span><span class=p>()</span><span class=o>.</span><span class=n>close</span><span class=p>()</span>
 </span><span id=__span-0-363><a id=__codelineno-0-363 name=__codelineno-0-363></a>
 </span><span id=__span-0-364><a id=__codelineno-0-364 name=__codelineno-0-364></a>    <span class=k>if</span> <span class=bp>self</span><span class=o>.</span><span class=n>container</span><span class=p>:</span>
-</span><span id=__span-0-365><a id=__codelineno-0-365 name=__codelineno-0-365></a>        <span class=k>if</span> <span class=bp>self</span><span class=o>.</span><span class=n>keep_template</span> <span class=ow>and</span> <span class=bp>self</span><span class=o>.</span><span class=n>docker_image</span><span class=p>:</span>
+</span><span id=__span-0-365><a id=__codelineno-0-365 name=__codelineno-0-365></a>        <span class=k>if</span> <span class=bp>self</span><span class=o>.</span><span class=n>commit_container</span> <span class=ow>and</span> <span class=bp>self</span><span class=o>.</span><span class=n>docker_image</span><span class=p>:</span>
 </span><span id=__span-0-366><a id=__codelineno-0-366 name=__codelineno-0-366></a>            <span class=bp>self</span><span class=o>.</span><span class=n>_commit_container</span><span class=p>()</span>
 </span><span id=__span-0-367><a id=__codelineno-0-367 name=__codelineno-0-367></a>
 </span><span id=__span-0-368><a id=__codelineno-0-368 name=__codelineno-0-368></a>        <span class=c1># Only stop/remove container if we created it (not existing container)</span>
