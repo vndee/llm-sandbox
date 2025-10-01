@@ -16,6 +16,7 @@ from llm_sandbox.mcp_server.server import (
     _get_backend,
     _get_commit_container,
     _get_keep_template,
+    _get_kube_namespace,
     _supports_visualization,
     execute_code,
     get_language_details,
@@ -180,6 +181,34 @@ class TestGetKeepTemplate:
         assert result is True
 
 
+class TestGetKubeNamespace:
+    """Test _get_kube_namespace function."""
+
+    @patch.dict(os.environ, {"NAMESPACE": "custom-namespace"})
+    def test_get_kube_namespace_custom(self) -> None:
+        """Test getting custom namespace from environment variable."""
+        result = _get_kube_namespace()
+        assert result == "custom-namespace"
+
+    @patch.dict(os.environ, {"NAMESPACE": "production"})
+    def test_get_kube_namespace_production(self) -> None:
+        """Test getting production namespace from environment variable."""
+        result = _get_kube_namespace()
+        assert result == "production"
+
+    @patch.dict(os.environ, {"NAMESPACE": "llm-sandbox"})
+    def test_get_kube_namespace_llm_sandbox(self) -> None:
+        """Test getting llm-sandbox namespace from environment variable."""
+        result = _get_kube_namespace()
+        assert result == "llm-sandbox"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_kube_namespace_default(self) -> None:
+        """Test getting default namespace when no environment variable is set."""
+        result = _get_kube_namespace()
+        assert result == "default"
+
+
 class TestSupportsVisualization:
     """Test _supports_visualization function."""
 
@@ -220,10 +249,12 @@ class TestExecuteCode:
     @patch("llm_sandbox.mcp_server.server._get_backend")
     @patch("llm_sandbox.mcp_server.server._get_commit_container")
     @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
     def test_execute_code_basic_success(
         self,
         mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
         mock_get_keep_template: MagicMock,
         mock_get_commit_container: MagicMock,
         mock_get_backend: MagicMock,
@@ -234,6 +265,7 @@ class TestExecuteCode:
         mock_get_backend.return_value = mock_backend
         mock_get_commit_container.return_value = True
         mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -258,16 +290,19 @@ class TestExecuteCode:
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
+            kube_namespace="default",
         )
         mock_session.run.assert_called_once_with(code="print('Hello, World!')", libraries=[], timeout=30)
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
     @patch("llm_sandbox.mcp_server.server._get_commit_container")
     @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
     def test_execute_code_with_visualization(
         self,
         mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
         mock_get_keep_template: MagicMock,
         mock_get_commit_container: MagicMock,
         mock_get_backend: MagicMock,
@@ -278,6 +313,7 @@ class TestExecuteCode:
         mock_get_backend.return_value = mock_backend
         mock_get_commit_container.return_value = True
         mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -314,15 +350,18 @@ class TestExecuteCode:
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
+            kube_namespace="default",
         )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
     @patch("llm_sandbox.mcp_server.server._get_commit_container")
     @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
     def test_execute_code_with_libraries(
         self,
         mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
         mock_get_keep_template: MagicMock,
         mock_get_commit_container: MagicMock,
         mock_get_backend: MagicMock,
@@ -333,6 +372,7 @@ class TestExecuteCode:
         mock_get_backend.return_value = mock_backend
         mock_get_commit_container.return_value = True
         mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -362,15 +402,18 @@ class TestExecuteCode:
             verbose=False,
             backend=mock_backend,
             session_timeout=60,
+            kube_namespace="default",
         )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
     @patch("llm_sandbox.mcp_server.server._get_commit_container")
     @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
     @patch("llm_sandbox.mcp_server.server.SandboxSession")
     def test_execute_code_javascript(
         self,
         mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
         mock_get_keep_template: MagicMock,
         mock_get_commit_container: MagicMock,
         mock_get_backend: MagicMock,
@@ -381,6 +424,7 @@ class TestExecuteCode:
         mock_get_backend.return_value = mock_backend
         mock_get_commit_container.return_value = True
         mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -404,15 +448,18 @@ class TestExecuteCode:
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
+            kube_namespace="default",
         )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
     @patch("llm_sandbox.mcp_server.server._get_commit_container")
     @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
     def test_execute_code_error_handling(
         self,
         mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
         mock_get_keep_template: MagicMock,
         mock_get_commit_container: MagicMock,
         mock_get_backend: MagicMock,
@@ -423,6 +470,7 @@ class TestExecuteCode:
         mock_get_backend.return_value = mock_backend
         mock_get_commit_container.return_value = True
         mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
 
         # Simulate an exception during session creation
         mock_session_cls.side_effect = RuntimeError("Docker not available")
@@ -440,10 +488,12 @@ class TestExecuteCode:
     @patch("llm_sandbox.mcp_server.server._get_backend")
     @patch("llm_sandbox.mcp_server.server._get_commit_container")
     @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
     def test_execute_code_session_error(
         self,
         mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
         mock_get_keep_template: MagicMock,
         mock_get_commit_container: MagicMock,
         mock_get_backend: MagicMock,
@@ -454,6 +504,7 @@ class TestExecuteCode:
         mock_get_backend.return_value = mock_backend
         mock_get_commit_container.return_value = True
         mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
