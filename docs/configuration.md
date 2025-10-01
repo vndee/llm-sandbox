@@ -510,8 +510,7 @@ When providing custom pod manifests, these configurations are **mandatory** for 
 
 - **Pod exits immediately**: Missing `"tty": True` configuration
 - **Permission denied errors**: Missing or incorrect `securityContext` configurations
-- **Connection timeouts**: Pod may not be fully ready - ensure proper resource limits and image availability
-
+- **Connection timeouts**: Pod may not be fully  ready - ensure proper resource limits and image availability
 #### Additional Kubernetes Configuration
 
 To configure resources, security context, volumes, and other Pod-level settings in Kubernetes, you should:

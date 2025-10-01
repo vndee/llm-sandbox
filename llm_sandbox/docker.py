@@ -362,7 +362,7 @@ class SandboxDockerSession(BaseSession):
         super().close()
 
         if self.container:
-            if self.keep_template and self.docker_image:
+            if self.commit_container and self.docker_image:
                 self._commit_container()
 
             # Only stop/remove container if we created it (not existing container)
