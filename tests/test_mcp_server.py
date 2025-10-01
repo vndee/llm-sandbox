@@ -14,6 +14,8 @@ from llm_sandbox.exceptions import MissingDependencyError
 from llm_sandbox.mcp_server.const import LANGUAGE_RESOURCES
 from llm_sandbox.mcp_server.server import (
     _get_backend,
+    _get_commit_container,
+    _get_keep_template,
     _supports_visualization,
     execute_code,
     get_language_details,
@@ -62,6 +64,122 @@ class TestGetBackend:
         mock_check_dependency.assert_called_once_with(SandboxBackend.PODMAN)
 
 
+class TestGetCommitContainer:
+    """Test _get_commit_container function."""
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "false"})
+    def test_get_commit_container_false(self) -> None:
+        """Test getting commit_container=False from environment variable."""
+        result = _get_commit_container()
+        assert result is False
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "0"})
+    def test_get_commit_container_zero(self) -> None:
+        """Test getting commit_container=False from '0' environment variable."""
+        result = _get_commit_container()
+        assert result is False
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "no"})
+    def test_get_commit_container_no(self) -> None:
+        """Test getting commit_container=False from 'no' environment variable."""
+        result = _get_commit_container()
+        assert result is False
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "off"})
+    def test_get_commit_container_off(self) -> None:
+        """Test getting commit_container=False from 'off' environment variable."""
+        result = _get_commit_container()
+        assert result is False
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "true"})
+    def test_get_commit_container_true(self) -> None:
+        """Test getting commit_container=True from environment variable."""
+        result = _get_commit_container()
+        assert result is True
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "1"})
+    def test_get_commit_container_one(self) -> None:
+        """Test getting commit_container=True from '1' environment variable."""
+        result = _get_commit_container()
+        assert result is True
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "yes"})
+    def test_get_commit_container_yes(self) -> None:
+        """Test getting commit_container=True from 'yes' environment variable."""
+        result = _get_commit_container()
+        assert result is True
+
+    @patch.dict(os.environ, {"COMMIT_CONTAINER": "on"})
+    def test_get_commit_container_on(self) -> None:
+        """Test getting commit_container=True from 'on' environment variable."""
+        result = _get_commit_container()
+        assert result is True
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_commit_container_default(self) -> None:
+        """Test getting commit_container=True when no environment variable is set."""
+        result = _get_commit_container()
+        assert result is True
+
+
+class TestGetKeepTemplate:
+    """Test _get_keep_template function."""
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "false"})
+    def test_get_keep_template_false(self) -> None:
+        """Test getting keep_template=False from environment variable."""
+        result = _get_keep_template()
+        assert result is False
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "0"})
+    def test_get_keep_template_zero(self) -> None:
+        """Test getting keep_template=False from '0' environment variable."""
+        result = _get_keep_template()
+        assert result is False
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "no"})
+    def test_get_keep_template_no(self) -> None:
+        """Test getting keep_template=False from 'no' environment variable."""
+        result = _get_keep_template()
+        assert result is False
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "off"})
+    def test_get_keep_template_off(self) -> None:
+        """Test getting keep_template=False from 'off' environment variable."""
+        result = _get_keep_template()
+        assert result is False
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "true"})
+    def test_get_keep_template_true(self) -> None:
+        """Test getting keep_template=True from environment variable."""
+        result = _get_keep_template()
+        assert result is True
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "1"})
+    def test_get_keep_template_one(self) -> None:
+        """Test getting keep_template=True from '1' environment variable."""
+        result = _get_keep_template()
+        assert result is True
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "yes"})
+    def test_get_keep_template_yes(self) -> None:
+        """Test getting keep_template=True from 'yes' environment variable."""
+        result = _get_keep_template()
+        assert result is True
+
+    @patch.dict(os.environ, {"KEEP_TEMPLATE": "on"})
+    def test_get_keep_template_on(self) -> None:
+        """Test getting keep_template=True from 'on' environment variable."""
+        result = _get_keep_template()
+        assert result is True
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_keep_template_default(self) -> None:
+        """Test getting keep_template=True when no environment variable is set."""
+        result = _get_keep_template()
+        assert result is True
+
+
 class TestSupportsVisualization:
     """Test _supports_visualization function."""
 
@@ -100,12 +218,22 @@ class TestExecuteCode:
     """Test execute_code tool function."""
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
-    def test_execute_code_basic_success(self, mock_session_cls: MagicMock, mock_get_backend: MagicMock) -> None:
+    def test_execute_code_basic_success(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
         """Test basic successful code execution."""
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -126,6 +254,7 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="python",
             keep_template=True,
+            commit_container=True,
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
@@ -133,12 +262,22 @@ class TestExecuteCode:
         mock_session.run.assert_called_once_with(code="print('Hello, World!')", libraries=[], timeout=30)
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
-    def test_execute_code_with_visualization(self, mock_session_cls: MagicMock, mock_get_backend: MagicMock) -> None:
+    def test_execute_code_with_visualization(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
         """Test code execution with visualization support."""
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -171,18 +310,29 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="python",
             keep_template=True,
+            commit_container=True,
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
         )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
-    def test_execute_code_with_libraries(self, mock_session_cls: MagicMock, mock_get_backend: MagicMock) -> None:
+    def test_execute_code_with_libraries(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
         """Test code execution with custom libraries."""
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -208,18 +358,29 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="python",
             keep_template=True,
+            commit_container=True,
             verbose=False,
             backend=mock_backend,
             session_timeout=60,
         )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
     @patch("llm_sandbox.mcp_server.server.SandboxSession")
-    def test_execute_code_javascript(self, mock_session_cls: MagicMock, mock_get_backend: MagicMock) -> None:
+    def test_execute_code_javascript(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
         """Test JavaScript code execution (no visualization support)."""
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -239,18 +400,29 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="javascript",
             keep_template=True,
+            commit_container=True,
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
         )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
-    def test_execute_code_error_handling(self, mock_session_cls: MagicMock, mock_get_backend: MagicMock) -> None:
+    def test_execute_code_error_handling(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
         """Test error handling during code execution."""
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
 
         # Simulate an exception during session creation
         mock_session_cls.side_effect = RuntimeError("Docker not available")
@@ -266,12 +438,22 @@ class TestExecuteCode:
         assert "Docker not available" in result_data["stderr"]
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
     @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
-    def test_execute_code_session_error(self, mock_session_cls: MagicMock, mock_get_backend: MagicMock) -> None:
+    def test_execute_code_session_error(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
         """Test error handling when session.run fails."""
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
 
         mock_session = MagicMock()
         mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)

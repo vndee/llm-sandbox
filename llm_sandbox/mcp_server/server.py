@@ -31,6 +31,18 @@ def _get_backend() -> SandboxBackend:
     return backend
 
 
+def _get_commit_container() -> bool:
+    """Get the commit_container setting from environment variable."""
+    commit_container_env = os.environ.get("COMMIT_CONTAINER", "true").lower()
+    return commit_container_env in ("true", "1", "yes", "on")
+
+
+def _get_keep_template() -> bool:
+    """Get the keep_template setting from environment variable."""
+    keep_template_env = os.environ.get("KEEP_TEMPLATE", "true").lower()
+    return keep_template_env in ("true", "1", "yes", "on")
+
+
 def _supports_visualization(language: str) -> bool:
     """Check if a language supports visualization capture."""
     lang_details = LANGUAGE_RESOURCES.get(language)
@@ -64,7 +76,8 @@ def execute_code(
 
         with session_cls(
             lang=language,
-            keep_template=True,
+            keep_template=_get_keep_template(),
+            commit_container=_get_commit_container(),
             verbose=False,
             backend=_get_backend(),
             session_timeout=timeout,

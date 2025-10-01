@@ -146,6 +146,71 @@ If you encounter connection issues with your backend, you may need to specify ad
 - `DOCKER_HOST`: Specify the Docker daemon socket (default: `unix:///var/run/docker.sock`)
 - `KUBECONFIG`: Path to your Kubernetes configuration file
 - `BACKEND`: Choose your container backend (`docker`, `podman`, or `kubernetes`)
+- `COMMIT_CONTAINER`: Control whether container changes are saved to the image (default: `true`)
+- `KEEP_TEMPLATE`: Control whether template containers are preserved (default: `true`)
+
+### Container Behavior Control
+
+The MCP server provides fine-grained control over container behavior through environment variables:
+
+**Prevent Container Image Changes:**
+```json
+{
+  "mcpServers": {
+    "llm-sandbox": {
+      "command": "python3",
+      "args": ["-m", "llm_sandbox.mcp_server.server"],
+      "env": {
+        "BACKEND": "docker",
+        "COMMIT_CONTAINER": "false"
+      }
+    }
+  }
+}
+```
+
+**Prevent Template Container Preservation:**
+```json
+{
+  "mcpServers": {
+    "llm-sandbox": {
+      "command": "python3",
+      "args": ["-m", "llm_sandbox.mcp_server.server"],
+      "env": {
+        "BACKEND": "docker",
+        "KEEP_TEMPLATE": "false"
+      }
+    }
+  }
+}
+```
+
+**Both Settings for Minimal Container Footprint:**
+```json
+{
+  "mcpServers": {
+    "llm-sandbox": {
+      "command": "python3",
+      "args": ["-m", "llm_sandbox.mcp_server.server"],
+      "env": {
+        "BACKEND": "docker",
+        "COMMIT_CONTAINER": "false",
+        "KEEP_TEMPLATE": "false"
+      }
+    }
+  }
+}
+```
+
+**Environment Variable Values:**
+Both `COMMIT_CONTAINER` and `KEEP_TEMPLATE` accept:
+- `"true"`, `"1"`, `"yes"`, `"on"` → `True`
+- `"false"`, `"0"`, `"no"`, `"off"` → `False`
+
+**Use Cases:**
+- `COMMIT_CONTAINER=false`: Prevent Docker images from growing over time, useful in CI/CD or automated environments
+- `KEEP_TEMPLATE=false`: Clean up template containers automatically, reduces Docker container clutter
+- Both disabled: Minimal resource usage, ideal for ephemeral environments
 
 ## Available Tools
 
