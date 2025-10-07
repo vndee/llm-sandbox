@@ -409,7 +409,7 @@ class ArtifactSandboxSession:
         self,
         code: str,
         libraries: list | None = None,
-        timeout: int = 30,
+        timeout: float | None = None,
     ) -> ExecutionResult:
         """Run code in the sandbox session and extract any generated artifacts.
 
@@ -514,6 +514,11 @@ class ArtifactSandboxSession:
         if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:
             raise LanguageNotSupportPlotError(self._session.language_handler.name)
 
+        # Use config default timeout if not specified
+        effective_timeout = timeout or self._session.config.get_execution_timeout()
+        if effective_timeout is None:
+            effective_timeout = 30
+
         # Delegate to language handler for language-specific artifact extraction
         result, plots = self._session.language_handler.run_with_artifacts(
             container=self._session,  # type: ignore[arg-type]
@@ -521,7 +526,7 @@ class ArtifactSandboxSession:
             libraries=libraries,
             enable_plotting=self.enable_plotting,
             output_dir="/tmp/sandbox_plots",
-            timeout=timeout,
+            timeout=int(effective_timeout),
         )
 
         return ExecutionResult(
