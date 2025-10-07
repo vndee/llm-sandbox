@@ -515,9 +515,7 @@ class ArtifactSandboxSession:
             raise LanguageNotSupportPlotError(self._session.language_handler.name)
 
         # Use config default timeout if not specified
-        effective_timeout = timeout or self._session.config.get_execution_timeout()
-        if effective_timeout is None:
-            effective_timeout = 30
+        effective_timeout = timeout or self._session.config.get_execution_timeout() or 60
 
         # Delegate to language handler for language-specific artifact extraction
         result, plots = self._session.language_handler.run_with_artifacts(
