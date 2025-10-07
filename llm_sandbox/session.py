@@ -423,7 +423,9 @@ class ArtifactSandboxSession:
                         seaborn, plotly, or other visualization libraries.
             libraries (list | None, optional): Additional libraries to install before running
                                                 the code. Defaults to None.
-            timeout (int, optional): Timeout in seconds for the code execution. Defaults to 30.
+            timeout (float | None, optional): Timeout in seconds for the code execution.
+                                                Defaults to the configuration's execution_timeout
+                                                (typically 60) or 60 if not configured.
 
         Returns:
             ExecutionResult: An object containing:
@@ -528,7 +530,7 @@ class ArtifactSandboxSession:
             libraries=libraries,
             enable_plotting=self.enable_plotting,
             output_dir="/tmp/sandbox_plots",
-            timeout=effective_timeout,
+            timeout=int(effective_timeout),
         )
 
         return ExecutionResult(
