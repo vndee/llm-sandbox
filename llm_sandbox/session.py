@@ -528,7 +528,7 @@ class ArtifactSandboxSession:
             libraries=libraries,
             enable_plotting=self.enable_plotting,
             output_dir="/tmp/sandbox_plots",
-            timeout=int(effective_timeout),
+            timeout=effective_timeout,
         )
 
         return ExecutionResult(
