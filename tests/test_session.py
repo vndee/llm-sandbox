@@ -203,6 +203,9 @@ class TestArtifactSandboxSession:
     def test_run_with_plotting_disabled(self, mock_create_session: MagicMock) -> None:
         """Test run method with plotting disabled."""
         mock_session = MagicMock()
+        mock_config = MagicMock()
+        mock_config.get_execution_timeout.return_value = 60.0
+        mock_session.config = mock_config
         mock_language_handler = MagicMock()
         mock_language_handler.run_with_artifacts.return_value = (MagicMock(exit_code=0, stdout="output", stderr=""), [])
         mock_session.language_handler = mock_language_handler
@@ -224,13 +227,16 @@ class TestArtifactSandboxSession:
             libraries=["numpy"],
             enable_plotting=False,
             output_dir="/tmp/sandbox_plots",
-            timeout=30,
+            timeout=60,
         )
 
     @patch("llm_sandbox.session.create_session")
     def test_run_with_plotting_enabled_supported_language(self, mock_create_session: MagicMock) -> None:
         """Test run method with plotting enabled and supported language."""
         mock_session = MagicMock()
+        mock_config = MagicMock()
+        mock_config.get_execution_timeout.return_value = 60.0
+        mock_session.config = mock_config
         mock_language_handler = MagicMock()
         mock_language_handler.is_support_plot_detection = True
         mock_plot = PlotOutput(format=FileType.PNG, content_base64="dGVzdA==")
@@ -258,7 +264,7 @@ class TestArtifactSandboxSession:
             libraries=None,
             enable_plotting=True,
             output_dir="/tmp/sandbox_plots",
-            timeout=30,
+            timeout=60,
         )
 
     @patch("llm_sandbox.session.create_session")
@@ -275,6 +281,35 @@ class TestArtifactSandboxSession:
 
         with pytest.raises(LanguageNotSupportPlotError):
             artifact_session.run("System.out.println('hello');")
+
+    @patch("llm_sandbox.session.create_session")
+    def test_run_with_custom_timeout(self, mock_create_session: MagicMock) -> None:
+        """Test run method with custom timeout parameter."""
+        mock_session = MagicMock()
+        mock_config = MagicMock()
+        mock_config.get_execution_timeout.return_value = 60.0
+        mock_session.config = mock_config
+        mock_language_handler = MagicMock()
+        mock_language_handler.run_with_artifacts.return_value = (MagicMock(exit_code=0, stdout="output", stderr=""), [])
+        mock_session.language_handler = mock_language_handler
+        mock_create_session.return_value = mock_session
+
+        artifact_session = ArtifactSandboxSession(enable_plotting=False)
+
+        # Test with custom timeout
+        result = artifact_session.run("print('hello')", ["numpy"], timeout=120)
+
+        assert isinstance(result, ExecutionResult)
+        assert result.exit_code == 0
+
+        mock_language_handler.run_with_artifacts.assert_called_once_with(
+            container=mock_session,
+            code="print('hello')",
+            libraries=["numpy"],
+            enable_plotting=False,
+            output_dir="/tmp/sandbox_plots",
+            timeout=120,
+        )
 
 
 class TestSessionConfig:

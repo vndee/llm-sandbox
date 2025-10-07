@@ -409,7 +409,7 @@ class ArtifactSandboxSession:
         self,
         code: str,
         libraries: list | None = None,
-        timeout: int = 30,
+        timeout: float | None = None,
     ) -> ExecutionResult:
         """Run code in the sandbox session and extract any generated artifacts.
 
@@ -423,7 +423,9 @@ class ArtifactSandboxSession:
                         seaborn, plotly, or other visualization libraries.
             libraries (list | None, optional): Additional libraries to install before running
                                                 the code. Defaults to None.
-            timeout (int, optional): Timeout in seconds for the code execution. Defaults to 30.
+            timeout (float | None, optional): Timeout in seconds for the code execution.
+                                                Defaults to the configuration's execution_timeout
+                                                (typically 60) or 60 if not configured.
 
         Returns:
             ExecutionResult: An object containing:
@@ -514,6 +516,13 @@ class ArtifactSandboxSession:
         if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:
             raise LanguageNotSupportPlotError(self._session.language_handler.name)
 
+        # Use config default timeout if not specified
+        if timeout is not None:
+            effective_timeout = timeout
+        else:
+            config_timeout = self._session.config.get_execution_timeout()
+            effective_timeout = config_timeout if config_timeout is not None else 60
+
         # Delegate to language handler for language-specific artifact extraction
         result, plots = self._session.language_handler.run_with_artifacts(
             container=self._session,  # type: ignore[arg-type]
@@ -521,7 +530,7 @@ class ArtifactSandboxSession:
             libraries=libraries,
             enable_plotting=self.enable_plotting,
             output_dir="/tmp/sandbox_plots",
-            timeout=timeout,
+            timeout=int(effective_timeout),
         )
 
         return ExecutionResult(
