@@ -15,7 +15,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = ["pydantic>=2.11.5"]
+dependencies = [
+    "mcp[cli]>=1.10.0",
+    "pydantic>=2.11.5",
+]
 
 [project.urls]
 Homepage = "https://vndee.github.io/llm-sandbox/"
