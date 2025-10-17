@@ -147,3 +147,16 @@ except ImportError:
 
 print("Python plot detection setup complete")
 """
+PYTHON_PLOT_CLEARING_CODE = """
+def clear_plots():
+    \"\"\"Clear all plots and reset counter.\"\"\"
+    global _plot_counter
+    _plot_counter = 0
+    import shutil
+    if os.path.exists('/tmp/sandbox_plots'):
+        shutil.rmtree('/tmp/sandbox_plots')
+    os.makedirs('/tmp/sandbox_plots', exist_ok=True)
+    print("All plots cleared and counter reset")
+
+clear_plots()
+"""

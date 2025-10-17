@@ -10,6 +10,7 @@ from .const import SandboxBackend, SupportedLanguage
 from .core.session_base import BaseSession
 from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
+from .language_handlers.artifact_detection import PYTHON_PLOT_CLEARING_CODE
 
 
 def _check_dependency(backend: SandboxBackend) -> None:
@@ -410,6 +411,7 @@ class ArtifactSandboxSession:
         code: str,
         libraries: list | None = None,
         timeout: float | None = None,
+        clear_plots: bool = False,
     ) -> ExecutionResult:
         """Run code in the sandbox session and extract any generated artifacts.
 
@@ -426,6 +428,8 @@ class ArtifactSandboxSession:
             timeout (float | None, optional): Timeout in seconds for the code execution.
                                                 Defaults to the configuration's execution_timeout
                                                 (typically 60) or 60 if not configured.
+            clear_plots (bool, optional): Whether to clear existing plots before running
+                                           the code. Defaults to False.
 
         Returns:
             ExecutionResult: An object containing:
@@ -511,10 +515,36 @@ class ArtifactSandboxSession:
             print(result.stdout)
             ```
 
+            Clearing plots between runs:
+            ```python
+            with ArtifactSandboxSession(lang="python") as session:
+                # First run with plots
+                plot_code = '''
+                import matplotlib.pyplot as plt
+                plt.plot([1, 2, 3], [1, 4, 2])
+                plt.show()
+                '''
+                result1 = session.run(plot_code)
+                print(f"First run: {len(result1.plots)} plots")
+
+                # Clear plots and run again
+                result2 = session.run("print('hello world')", clear_plots=True)
+                print(f"Second run: {len(result2.plots)} plots")
+
+                # Manual plot clearing
+                session.clear_plots()
+                result3 = session.run(plot_code)
+                print(f"Third run: {len(result3.plots)} plots")
+            ```
+
         """
         # Check if plotting is enabled and language supports it
         if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:
             raise LanguageNotSupportPlotError(self._session.language_handler.name)
+
+        # Clear plots if requested
+        if clear_plots and self.enable_plotting:
+            self._clear_plots_in_container()
 
         # Use config default timeout if not specified
         if timeout is not None:
@@ -539,6 +569,28 @@ class ArtifactSandboxSession:
             stderr=result.stderr,
             plots=plots,
         )
+
+    def _clear_plots_in_container(self) -> None:
+        """Clear plots in the container."""
+        if not self.enable_plotting:
+            return
+
+        self._session.execute_command(f'python3 -c "{PYTHON_PLOT_CLEARING_CODE}"')
+
+    def clear_plots(self) -> None:
+        """Manually clear all plots and reset the plot counter.
+
+        This method can be called between runs to clear existing plots
+        without creating a new session.
+
+        Raises:
+            Exception: If plot clearing is not supported or fails
+
+        """
+        if not self.enable_plotting:
+            return
+
+        self._clear_plots_in_container()
 
 
 SandboxSession = create_session
