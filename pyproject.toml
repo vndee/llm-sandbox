@@ -53,6 +53,7 @@ dev = [
     "nest-asyncio>=1.6.0",
     "mkdocs-minify-plugin>=0.8.0",
     "mkdocs-git-revision-date-localized-plugin>=1.4.6",
+    "mcp>=1.10.0",
 ]
 
 [build-system]
