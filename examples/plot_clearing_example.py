@@ -8,13 +8,14 @@ import docker
 
 from llm_sandbox import ArtifactSandboxSession, SandboxBackend
 
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
-
 
 def main() -> None:
     """Demonstrate plot clearing between runs."""
     # This example shows how to use the clear_plots feature
     # Note: Docker must be running for this to work
+
+    # Initialize Docker client
+    client = docker.from_env()
 
     example_code = textwrap.dedent("""
         import matplotlib.pyplot as plt
