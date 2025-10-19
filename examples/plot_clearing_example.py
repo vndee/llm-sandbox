@@ -74,8 +74,7 @@ def main() -> None:
 
     print("To run this example:")
     print("1. Make sure Docker is running")
-    print("2. Uncomment the session code above")
-    print("3. Run this script")
+    print("2. Run this script: python examples/plot_clearing_example.py")
 
     print("\\nFeatures demonstrated:")
     print("- clear_plots parameter in run() method")
