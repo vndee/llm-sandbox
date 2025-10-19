@@ -14,8 +14,12 @@ os.makedirs('/tmp/sandbox_output', exist_ok=True)
 # Global plot counter - persists across runs using a file
 _counter_file = '/tmp/sandbox_plots/.counter'
 if os.path.exists(_counter_file):
-    with open(_counter_file, 'r') as f:
-        _plot_counter = int(f.read().strip())
+    try:
+        with open(_counter_file, 'r') as f:
+            content = f.read().strip()
+            _plot_counter = int(content) if content else 0
+    except (ValueError, IOError):
+        _plot_counter = 0
 else:
     _plot_counter = 0
 
