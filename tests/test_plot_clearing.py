@@ -345,6 +345,111 @@ plt.show()
         assert ">" in clear_cmd
         assert ".counter" in clear_cmd
 
+    @patch("llm_sandbox.session.create_session")
+    def test_language_not_support_plot_error(self, mock_create_session: MagicMock) -> None:
+        """Test that LanguageNotSupportPlotError is raised when language doesn't support plotting."""
+        from llm_sandbox.exceptions import LanguageNotSupportPlotError
+
+        # Mock the internal session
+        mock_session = MagicMock()
+        mock_handler = MagicMock()
+        mock_handler.name = "java"
+        mock_handler.is_support_plot_detection = False  # Java doesn't support plot detection
+        mock_session.language_handler = mock_handler
+        mock_session.config = MagicMock()
+        mock_session.config.get_execution_timeout.return_value = 60
+        mock_create_session.return_value = mock_session
+
+        with (
+            ArtifactSandboxSession(lang="java", enable_plotting=True) as session,
+            pytest.raises(LanguageNotSupportPlotError),
+        ):
+            # Should raise LanguageNotSupportPlotError
+            session.run("System.out.println('Hello');")
+
+    @patch("llm_sandbox.session.create_session")
+    def test_clear_plots_when_plotting_disabled(self, mock_create_session: MagicMock) -> None:
+        """Test that clear_plots methods do nothing when plotting is disabled."""
+        # Mock the internal session
+        mock_session = MagicMock()
+        mock_handler = MagicMock()
+        mock_handler.name = "python"
+        mock_handler.is_support_plot_detection = True
+        mock_session.language_handler = mock_handler
+        mock_session.config = MagicMock()
+        mock_session.config.get_execution_timeout.return_value = 60
+        mock_create_session.return_value = mock_session
+
+        execute_command_called = [False]
+
+        def mock_execute_command(cmd: str, **_kwargs: Any) -> ConsoleOutput:
+            """Track if execute_command is called."""
+            _ = cmd  # Mark as intentionally unused
+            execute_command_called[0] = True
+            return ConsoleOutput(exit_code=0, stdout="", stderr="")
+
+        mock_session.execute_command.side_effect = mock_execute_command
+
+        def mock_run_with_artifacts(**_kwargs: Any) -> tuple[ConsoleOutput, list[bytes]]:
+            """Mock the run_with_artifacts with no plot generation."""
+            exec_result = ConsoleOutput(exit_code=0, stdout="hello", stderr="")
+            return exec_result, []
+
+        mock_handler.run_with_artifacts.side_effect = mock_run_with_artifacts
+
+        # Create session with plotting disabled
+        with ArtifactSandboxSession(lang="python", enable_plotting=False) as session:
+            # Test manual clear_plots - should return early without calling execute_command
+            execute_command_called[0] = False
+            session.clear_plots()
+            assert not execute_command_called[0], "execute_command should not be called when plotting is disabled"
+
+            # Test clear_plots parameter in run - should not call execute_command
+            execute_command_called[0] = False
+            result = session.run("print('hello')", clear_plots=True)
+            assert not execute_command_called[0], "execute_command should not be called when plotting is disabled"
+            assert result.stdout.strip() == "hello"
+
+    @patch("llm_sandbox.session.create_session")
+    def test_timeout_handling(self, mock_create_session: MagicMock) -> None:
+        """Test timeout handling in run method."""
+        # Mock the internal session
+        mock_session = MagicMock()
+        mock_handler = MagicMock()
+        mock_handler.name = "python"
+        mock_handler.is_support_plot_detection = True
+        mock_session.language_handler = mock_handler
+        mock_session.config = MagicMock()
+        mock_create_session.return_value = mock_session
+
+        captured_timeouts = []
+
+        def mock_run_with_artifacts(**kwargs: Any) -> tuple[ConsoleOutput, list[bytes]]:
+            """Capture the timeout value passed."""
+            captured_timeouts.append(kwargs.get("timeout"))
+            exec_result = ConsoleOutput(exit_code=0, stdout="", stderr="")
+            return exec_result, []
+
+        mock_handler.run_with_artifacts.side_effect = mock_run_with_artifacts
+
+        with ArtifactSandboxSession(lang="python") as session:
+            # Test with explicit timeout
+            mock_session.config.get_execution_timeout.return_value = 60
+            session.run("print('test')", timeout=120)
+            assert captured_timeouts[-1] == 120, "Should use explicit timeout"
+
+            # Test with config timeout
+            captured_timeouts.clear()
+            mock_session.config.get_execution_timeout.return_value = 90
+            session.run("print('test')")
+            assert captured_timeouts[-1] == 90, "Should use config timeout"
+
+            # Test with None config timeout (should default to 60)
+            captured_timeouts.clear()
+            mock_session.config.get_execution_timeout.return_value = None
+            session.run("print('test')")
+            assert captured_timeouts[-1] == 60, "Should default to 60 when config timeout is None"
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
