@@ -574,8 +574,10 @@ class ArtifactSandboxSession:
         if not self.enable_plotting:
             return
 
-        # Use shell commands to clear plots and reset counter
-        self._session.execute_command('sh -c "rm -rf /tmp/sandbox_plots/* && echo 0 > /tmp/sandbox_plots/.counter"')
+        # Use shell commands to create directory, clear plots, and reset counter
+        self._session.execute_command(
+            'sh -c "mkdir -p /tmp/sandbox_plots && rm -rf /tmp/sandbox_plots/* && echo 0 > /tmp/sandbox_plots/.counter"'
+        )
 
     def clear_plots(self) -> None:
         """Manually clear all plots and reset the plot counter.
