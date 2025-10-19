@@ -11,8 +11,21 @@ from pathlib import Path
 os.makedirs('/tmp/sandbox_plots', exist_ok=True)
 os.makedirs('/tmp/sandbox_output', exist_ok=True)
 
-# Global plot counter
-_plot_counter = 0
+# Global plot counter - persists across runs using a file
+_counter_file = '/tmp/sandbox_plots/.counter'
+if os.path.exists(_counter_file):
+    try:
+        with open(_counter_file, 'r') as f:
+            content = f.read().strip()
+            _plot_counter = int(content) if content else 0
+    except (ValueError, IOError):
+        _plot_counter = 0
+else:
+    _plot_counter = 0
+
+def _save_counter():
+    with open(_counter_file, 'w') as f:
+        f.write(str(_plot_counter))
 
 # === MATPLOTLIB SUPPORT ===
 try:
@@ -30,6 +43,7 @@ try:
             if fig and fig.get_axes():
                 # Save as PNG with sequential numbering
                 _plot_counter += 1
+                _save_counter()
                 filename = f'/tmp/sandbox_plots/{_plot_counter:06d}.png'
                 fig.savefig(filename, format='png', dpi=100, bbox_inches='tight')
         except Exception as e:
@@ -46,6 +60,7 @@ try:
             import shutil
             ext = Path(filename).suffix
             _plot_counter += 1
+            _save_counter()
             output_file = f'/tmp/sandbox_plots/{_plot_counter:06d}{ext}'
             shutil.copy2(filename, output_file)
         except Exception as e:
@@ -78,6 +93,7 @@ try:
         try:
             # Save the figure as HTML with sequential numbering
             _plot_counter += 1
+            _save_counter()
             html_file = f'/tmp/sandbox_plots/{_plot_counter:06d}.html'
             self.write_html(html_file)
         except Exception as e:
@@ -98,6 +114,7 @@ try:
             # Copy to our output directory with sequential numbering
             import shutil
             _plot_counter += 1
+            _save_counter()
             output_file = f'/tmp/sandbox_plots/{_plot_counter:06d}.html'
             shutil.copy2(file, output_file)
         except Exception as e:
@@ -119,6 +136,7 @@ try:
             import shutil
             ext = Path(file).suffix
             _plot_counter += 1
+            _save_counter()
             output_file = f'/tmp/sandbox_plots/{_plot_counter:06d}{ext}'
             shutil.copy2(file, output_file)
         except Exception as e:

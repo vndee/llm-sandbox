@@ -514,6 +514,412 @@ for result in results:
         print(f"  Error: {result['error']}")
 ```
 
+## Visualization and Plot Management
+
+### Iterative Data Visualization with Plot Clearing
+
+When working with AI agents that generate multiple visualizations, you often need to manage plot accumulation and clearing. This example shows how to handle plots across multiple iterations:
+
+```python
+from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+import base64
+import openai
+
+class AIDataVisualizer:
+    """AI-powered data visualization assistant with plot management"""
+
+    def __init__(self, api_key: str):
+        self.client = openai.OpenAI(api_key=api_key)
+
+    def generate_visualization(
+        self,
+        data_description: str,
+        visualization_request: str,
+        language: str = "python",
+        accumulate_plots: bool = False
+    ) -> dict:
+        """Generate visualizations based on user requests"""
+
+        # Generate code from AI
+        prompt = f"""
+        Create {language} code to visualize:
+        Data: {data_description}
+        Visualization: {visualization_request}
+
+        Use appropriate plotting libraries and create clear, labeled plots.
+        """
+
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": f"You are a data visualization expert. Generate {language} code with best practices."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        code = response.choices[0].message.content
+
+        # Execute and capture plots
+        with ArtifactSandboxSession(
+            lang=language,
+            backend=SandboxBackend.DOCKER,
+            enable_plotting=True
+        ) as session:
+            # Clear plots before run if not accumulating
+            result = session.run(code, clear_plots=not accumulate_plots)
+
+            return {
+                "code": code,
+                "success": result.exit_code == 0,
+                "plots": result.plots,
+                "plot_count": len(result.plots),
+                "output": result.stdout,
+                "error": result.stderr if result.stderr else None
+            }
+
+    def iterative_visualization_refinement(
+        self,
+        data_description: str,
+        initial_request: str,
+        refinement_requests: list
+    ) -> list:
+        """Iteratively refine visualizations, managing plot accumulation"""
+
+        results = []
+
+        # Initial visualization
+        print("Generating initial visualization...")
+        initial_result = self.generate_visualization(
+            data_description,
+            initial_request,
+            accumulate_plots=False  # Start fresh
+        )
+        results.append({
+            "iteration": 0,
+            "request": initial_request,
+            "result": initial_result
+        })
+
+        # Refinement iterations
+        for i, refinement in enumerate(refinement_requests, 1):
+            print(f"Refinement {i}: {refinement}...")
+
+            # Build on previous context
+            full_request = f"{initial_request}. {refinement}"
+
+            refined_result = self.generate_visualization(
+                data_description,
+                full_request,
+                accumulate_plots=False  # Each refinement is independent
+            )
+
+            results.append({
+                "iteration": i,
+                "request": refinement,
+                "result": refined_result
+            })
+
+        return results
+
+# Example usage
+visualizer = AIDataVisualizer("your-api-key")
+
+# Dataset description
+data_desc = "Monthly sales data for 2024: [1200, 1500, 1300, 1800, 2100, 2400, 2200, 2600, 2800, 3000, 3200, 3500]"
+
+# Initial request
+initial = "Create a line plot showing sales trends over months"
+
+# Refinement requests
+refinements = [
+    "Add a trend line and moving average",
+    "Include a bar chart comparing each month to the previous month",
+    "Add a pie chart showing quarterly distribution"
+]
+
+# Generate iterative visualizations
+results = visualizer.iterative_visualization_refinement(
+    data_desc,
+    initial,
+    refinements
+)
+
+# Save all plots
+for iteration_result in results:
+    iteration = iteration_result["iteration"]
+    result = iteration_result["result"]
+
+    print(f"\nIteration {iteration}: {iteration_result['request']}")
+    print(f"Generated {result['plot_count']} plots")
+
+    for i, plot in enumerate(result["plots"]):
+        filename = f"visualization_iter{iteration}_plot{i}.{plot.format.value}"
+        with open(filename, "wb") as f:
+            f.write(base64.b64decode(plot.content_base64))
+        print(f"  Saved: {filename}")
+```
+
+### Multi-Language Plot Comparison
+
+Compare visualizations across Python and R:
+
+```python
+from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+import base64
+
+class MultiLanguagePlotComparison:
+    """Compare plots generated by different languages"""
+
+    def compare_plotting_capabilities(self, data: dict) -> dict:
+        """Generate same visualization in Python and R"""
+
+        results = {
+            "python": None,
+            "r": None
+        }
+
+        # Python version
+        print("Generating Python plots...")
+        with ArtifactSandboxSession(
+            lang="python",
+            backend=SandboxBackend.DOCKER,
+            enable_plotting=True
+        ) as python_session:
+            python_code = f"""
+import matplotlib.pyplot as plt
+import numpy as np
+
+data = {data}
+x = np.arange(len(data))
+
+plt.figure(figsize=(12, 4))
+
+plt.subplot(1, 3, 1)
+plt.bar(x, data)
+plt.title('Bar Chart')
+plt.xlabel('Index')
+plt.ylabel('Value')
+
+plt.subplot(1, 3, 2)
+plt.plot(x, data, 'o-')
+plt.title('Line Plot')
+plt.xlabel('Index')
+plt.ylabel('Value')
+
+plt.subplot(1, 3, 3)
+plt.scatter(x, data, s=100, alpha=0.5)
+plt.title('Scatter Plot')
+plt.xlabel('Index')
+plt.ylabel('Value')
+
+plt.tight_layout()
+plt.show()
+"""
+            python_result = python_session.run(python_code)
+            results["python"] = {
+                "plot_count": len(python_result.plots),
+                "plots": python_result.plots,
+                "success": python_result.exit_code == 0
+            }
+
+        # R version
+        print("Generating R plots...")
+        with ArtifactSandboxSession(
+            lang="r",
+            backend=SandboxBackend.DOCKER,
+            enable_plotting=True
+        ) as r_session:
+            r_code = f"""
+data <- c({', '.join(map(str, data))})
+x <- seq_along(data)
+
+par(mfrow=c(1,3))
+
+# Bar Chart
+barplot(data, main='Bar Chart', xlab='Index', ylab='Value')
+
+# Line Plot
+plot(x, data, type='o', main='Line Plot', xlab='Index', ylab='Value')
+
+# Scatter Plot
+plot(x, data, main='Scatter Plot', xlab='Index', ylab='Value', pch=19, cex=2)
+"""
+            r_result = r_session.run(r_code)
+            results["r"] = {
+                "plot_count": len(r_result.plots),
+                "plots": r_result.plots,
+                "success": r_result.exit_code == 0
+            }
+
+        return results
+
+# Example usage
+comparator = MultiLanguagePlotComparison()
+
+test_data = [23, 45, 56, 78, 89, 90, 100, 120, 110, 95]
+
+comparison = comparator.compare_plotting_capabilities(test_data)
+
+print(f"Python generated {comparison['python']['plot_count']} plots")
+print(f"R generated {comparison['r']['plot_count']} plots")
+
+# Save comparison
+for lang, result in comparison.items():
+    if result["success"]:
+        for i, plot in enumerate(result["plots"]):
+            filename = f"comparison_{lang}_plot{i}.{plot.format.value}"
+            with open(filename, "wb") as f:
+                f.write(base64.b64decode(plot.content_base64))
+            print(f"Saved {filename}")
+```
+
+### Persistent Session with Plot Gallery
+
+Build a gallery of plots across multiple data analysis steps:
+
+```python
+from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+import base64
+
+class DataAnalysisSession:
+    """Maintain a persistent analysis session with plot gallery"""
+
+    def __init__(self, language: str = "python"):
+        self.session = ArtifactSandboxSession(
+            lang=language,
+            backend=SandboxBackend.DOCKER,
+            enable_plotting=True,
+            keep_template=True  # Keep container running
+        )
+        self.session.__enter__()
+        self.plot_gallery = []
+
+    def analyze(self, description: str, code: str, clear_previous: bool = False) -> dict:
+        """Run analysis code and track plots"""
+
+        result = self.session.run(code, clear_plots=clear_previous)
+
+        analysis_result = {
+            "description": description,
+            "success": result.exit_code == 0,
+            "plot_count": len(result.plots),
+            "plots": result.plots,
+            "output": result.stdout,
+            "cumulative_plots": len(result.plots)
+        }
+
+        if not clear_previous:
+            # Accumulating plots
+            self.plot_gallery.extend(result.plots)
+            analysis_result["cumulative_plots"] = len(self.plot_gallery)
+        else:
+            # Reset gallery
+            self.plot_gallery = list(result.plots)
+
+        return analysis_result
+
+    def save_gallery(self, output_dir: str = "plot_gallery"):
+        """Save all accumulated plots"""
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+
+        for i, plot in enumerate(self.plot_gallery):
+            filename = f"{output_dir}/plot_{i:04d}.{plot.format.value}"
+            with open(filename, "wb") as f:
+                f.write(base64.b64decode(plot.content_base64))
+
+        print(f"Saved {len(self.plot_gallery)} plots to {output_dir}/")
+
+    def close(self):
+        """Close the session"""
+        self.session.__exit__(None, None, None)
+
+# Example: Multi-step data analysis
+analysis_session = DataAnalysisSession("python")
+
+try:
+    # Step 1: Load and visualize raw data
+    step1 = analysis_session.analyze(
+        "Initial data exploration",
+        """
+import numpy as np
+import matplotlib.pyplot as plt
+
+np.random.seed(42)
+data = np.random.normal(100, 15, 1000)
+
+plt.figure(figsize=(10, 6))
+plt.hist(data, bins=50, edgecolor='black')
+plt.title('Raw Data Distribution')
+plt.xlabel('Value')
+plt.ylabel('Frequency')
+plt.show()
+
+print(f"Mean: {data.mean():.2f}, Std: {data.std():.2f}")
+"""
+    )
+    print(f"Step 1: Generated {step1['plot_count']} plots")
+
+    # Step 2: Statistical analysis
+    step2 = analysis_session.analyze(
+        "Statistical analysis",
+        """
+import matplotlib.pyplot as plt
+import scipy.stats as stats
+
+# Q-Q plot
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+stats.probplot(data, dist="norm", plot=ax1)
+ax1.set_title('Q-Q Plot')
+
+# Box plot
+ax2.boxplot(data)
+ax2.set_title('Box Plot')
+ax2.set_ylabel('Value')
+
+plt.tight_layout()
+plt.show()
+"""
+    )
+    print(f"Step 2: Generated {step2['plot_count']} plots, Total: {step2['cumulative_plots']}")
+
+    # Step 3: Comparison visualization
+    step3 = analysis_session.analyze(
+        "Comparison with theoretical distribution",
+        """
+import matplotlib.pyplot as plt
+import numpy as np
+
+plt.figure(figsize=(10, 6))
+plt.hist(data, bins=50, density=True, alpha=0.7, label='Observed', edgecolor='black')
+
+# Theoretical normal distribution
+mu, sigma = data.mean(), data.std()
+x = np.linspace(data.min(), data.max(), 100)
+plt.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2, label='Theoretical Normal')
+
+plt.title('Observed vs Theoretical Distribution')
+plt.xlabel('Value')
+plt.ylabel('Density')
+plt.legend()
+plt.show()
+"""
+    )
+    print(f"Step 3: Generated {step3['plot_count']} plots, Total: {step3['cumulative_plots']}")
+
+    # Save all plots to gallery
+    analysis_session.save_gallery("analysis_results")
+
+finally:
+    analysis_session.close()
+```
+
+For complete, runnable examples, see:
+
+- [Python Plot Clearing Example](https://github.com/vndee/llm-sandbox/blob/main/examples/plot_clearing_example.py)
+- [R Plot Clearing Example](https://github.com/vndee/llm-sandbox/blob/main/examples/r_plot_clearing_example.py)
+
 ## Best Practices
 
 ### 1. Code Validation Pipeline
