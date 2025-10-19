@@ -2,6 +2,12 @@
 
 """Example demonstrating plot clearing functionality in ArtifactSandboxSession."""
 
+import docker
+
+from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+
+client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+
 
 def main() -> None:
     """Demonstrate plot clearing between runs."""
@@ -33,9 +39,13 @@ def main() -> None:
     print("Example: Plot Clearing Feature")
     print("=" * 40)
 
-    # Example usage (commented out since Docker might not be running)
-    """
-    with ArtifactSandboxSession(lang="python", enable_plotting=True) as session:
+    with ArtifactSandboxSession(
+        client=client,
+        lang="python",
+        backend=SandboxBackend.DOCKER,
+        enable_plotting=True,
+        verbose=True,
+    ) as session:
         print("1. First run - should generate 1 plot")
         result1 = session.run(example_code)
         print(f"   Generated {len(result1.plots)} plots")
@@ -57,7 +67,6 @@ def main() -> None:
         session.clear_plots()
         result5 = session.run(example_code)
         print(f"   Generated {len(result5.plots)} plots")
-    """
 
     print("To run this example:")
     print("1. Make sure Docker is running")
