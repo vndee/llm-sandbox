@@ -47,6 +47,16 @@ class BaseSession(
         self.verbose = config.verbose
         self.logger = logging.getLogger(__name__)
 
+        # Configure logging if verbose is enabled
+        if self.verbose and not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            )
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.DEBUG)
+
         # Initialize language handler
         self.language_handler = LanguageHandlerFactory.create_handler(config.lang, self.logger)
 
