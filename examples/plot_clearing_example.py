@@ -2,6 +2,8 @@
 
 """Example demonstrating plot clearing functionality in ArtifactSandboxSession."""
 
+import textwrap
+
 import docker
 
 from llm_sandbox import ArtifactSandboxSession, SandboxBackend
@@ -14,27 +16,27 @@ def main() -> None:
     # This example shows how to use the clear_plots feature
     # Note: Docker must be running for this to work
 
-    example_code = """
-    import matplotlib.pyplot as plt
-    import numpy as np
+    example_code = textwrap.dedent("""
+        import matplotlib.pyplot as plt
+        import numpy as np
 
-    # Create a simple plot
-    x = np.linspace(0, 10, 100)
-    y = np.sin(x)
+        # Create a simple plot
+        x = np.linspace(0, 10, 100)
+        y = np.sin(x)
 
-    plt.figure(figsize=(8, 6))
-    plt.plot(x, y, label='sin(x)')
-    plt.title('Example Plot')
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-    """
+        plt.figure(figsize=(8, 6))
+        plt.plot(x, y, label='sin(x)')
+        plt.title('Example Plot')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+    """).strip()
 
-    non_plot_code = """
-    print("Hello, world! No plots here.")
-    """
+    non_plot_code = textwrap.dedent("""
+        print("Hello, world! No plots here.")
+    """).strip()
 
     print("Example: Plot Clearing Feature")
     print("=" * 40)
@@ -45,6 +47,7 @@ def main() -> None:
         backend=SandboxBackend.DOCKER,
         enable_plotting=True,
         verbose=True,
+        keep_template=True,
     ) as session:
         print("1. First run - should generate 1 plot")
         result1 = session.run(example_code)

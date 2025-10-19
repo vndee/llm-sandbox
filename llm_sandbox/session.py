@@ -10,7 +10,6 @@ from .const import SandboxBackend, SupportedLanguage
 from .core.session_base import BaseSession
 from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
-from .language_handlers.artifact_detection import PYTHON_PLOT_CLEARING_CODE
 
 
 def _check_dependency(backend: SandboxBackend) -> None:
@@ -429,7 +428,7 @@ class ArtifactSandboxSession:
                                                 Defaults to the configuration's execution_timeout
                                                 (typically 60) or 60 if not configured.
             clear_plots (bool, optional): Whether to clear existing plots before running
-                                           the code. Defaults to False.
+                                            the code. Defaults to False.
 
         Returns:
             ExecutionResult: An object containing:
@@ -575,7 +574,8 @@ class ArtifactSandboxSession:
         if not self.enable_plotting:
             return
 
-        self._session.execute_command(f'python3 -c "{PYTHON_PLOT_CLEARING_CODE}"')
+        # Use shell commands to clear plots and reset counter
+        self._session.execute_command('sh -c "rm -rf /tmp/sandbox_plots/* && echo 0 > /tmp/sandbox_plots/.counter"')
 
     def clear_plots(self) -> None:
         """Manually clear all plots and reset the plot counter.

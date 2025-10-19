@@ -7,8 +7,29 @@ R_PLOT_DETECTION_CODE = """
 dir.create('/tmp/sandbox_plots', recursive = TRUE, showWarnings = FALSE)
 dir.create('/tmp/sandbox_output', recursive = TRUE, showWarnings = FALSE)
 
-# Global plot counter
-.plot_counter <- 0
+# Global plot counter with file-based persistence
+.counter_file <- '/tmp/sandbox_plots/.counter'
+
+# Helper to read counter from file
+.read_counter <- function() {
+  if (file.exists(.counter_file)) {
+    tryCatch({
+      as.integer(readLines(.counter_file, n = 1, warn = FALSE))
+    }, error = function(e) {
+      0L
+    })
+  } else {
+    0L
+  }
+}
+
+# Helper to save counter to file
+.save_counter <- function() {
+  writeLines(as.character(.plot_counter), .counter_file)
+}
+
+# Initialize counter from file
+.plot_counter <- .read_counter()
 
 # === BASE R GRAPHICS SUPPORT ===
 # Override the graphics device functions to auto-save plots
@@ -23,6 +44,7 @@ plot.new <- function(...) {
 
   # Start a PNG device in the background to capture the plot
   .plot_counter <<- .plot_counter + 1
+  .save_counter()
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
 
   # Open PNG device
@@ -44,6 +66,7 @@ dev.off <- function(...) {
 # Override main plotting functions to ensure capture
 .enhanced_plot <- function(...) {
   .plot_counter <<- .plot_counter + 1
+  .save_counter()
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
 
   # Save to file
@@ -67,6 +90,7 @@ plot <- .enhanced_plot
 # Enhanced hist function
 .enhanced_hist <- function(...) {
   .plot_counter <<- .plot_counter + 1
+  .save_counter()
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
 
   png(png_file, width = 800, height = 600, res = 100)
@@ -80,6 +104,7 @@ hist <- .enhanced_hist
 # Enhanced boxplot function
 .enhanced_boxplot <- function(...) {
   .plot_counter <<- .plot_counter + 1
+  .save_counter()
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
 
   png(png_file, width = 800, height = 600, res = 100)
@@ -93,6 +118,7 @@ boxplot <- .enhanced_boxplot
 # Enhanced barplot function
 .enhanced_barplot <- function(...) {
   .plot_counter <<- .plot_counter + 1
+  .save_counter()
   png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
 
   png(png_file, width = 800, height = 600, res = 100)
@@ -116,6 +142,7 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
     # Save the plot
     tryCatch({
       .plot_counter <<- .plot_counter + 1
+      .save_counter()
       png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
       ggplot2::ggsave(png_file, plot = x, width = 10, height = 6, dpi = 100)
     }, error = function(e) {
@@ -136,6 +163,7 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
       # Copy to our output directory
       tryCatch({
         .plot_counter <<- .plot_counter + 1
+        .save_counter()
         ext <- tools::file_ext(filename)
         if (ext == "") ext <- "png"
         output_file <- sprintf('/tmp/sandbox_plots/%06d.%s', .plot_counter, ext)
@@ -165,6 +193,7 @@ if (requireNamespace("plotly", quietly = TRUE)) {
       # Save as HTML
       tryCatch({
         .plot_counter <<- .plot_counter + 1
+        .save_counter()
         html_file <- sprintf('/tmp/sandbox_plots/%06d.html', .plot_counter)
         htmlwidgets::saveWidget(x, html_file, selfcontained = TRUE)
       }, error = function(e) {
@@ -192,6 +221,7 @@ if (requireNamespace("lattice", quietly = TRUE)) {
       # Save the plot
       tryCatch({
         .plot_counter <<- .plot_counter + 1
+        .save_counter()
         png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
         png(png_file, width = 800, height = 600, res = 100)
         .original_print_trellis(x, ...)
@@ -212,6 +242,7 @@ if (requireNamespace("lattice", quietly = TRUE)) {
 # Function to manually save current plot
 save_current_plot <- function(format = "png") {
   .plot_counter <<- .plot_counter + 1
+  .save_counter()
 
   if (format == "png") {
     filename <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)

@@ -8,20 +8,35 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_sandbox import ArtifactSandboxSession
-from llm_sandbox.data import ConsoleOutput
+from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+from llm_sandbox.data import ConsoleOutput, FileType, PlotOutput
 
 
-def create_mock_plot_data() -> bytes:
-    """Create a mock plot data (1x1 pixel PNG).
+def create_mock_plot_data(count: int = 1) -> bytes | list[PlotOutput]:
+    """Create mock plot data (1x1 pixel PNG).
+
+    Args:
+        count: Number of plot outputs to create. If 1, returns bytes. If > 1, returns list[PlotOutput].
 
     Returns:
-        bytes: Minimal valid PNG data representing a 1x1 transparent pixel
+        bytes or list[PlotOutput]: Minimal valid PNG data or list of PlotOutput objects
 
     """
-    return base64.b64decode(
+    png_data = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     )
+
+    if count == 1:
+        return png_data
+
+    # Return list of PlotOutput objects
+    return [
+        PlotOutput(
+            format=FileType.PNG,
+            content_base64=base64.b64encode(png_data).decode("utf-8"),
+        )
+        for _ in range(count)
+    ]
 
 
 class TestPlotClearing:
@@ -53,16 +68,16 @@ class TestPlotClearing:
 
             # First run: 1 plot
             if call_count[0] == 1:
-                return exec_result, [plot_data]
+                return exec_result, [plot_data]  # type: ignore[list-item]
             # Second run: 2 plots (cumulative)
             if call_count[0] == 2:
-                return exec_result, [plot_data, plot_data]
+                return exec_result, [plot_data, plot_data]  # type: ignore[list-item]
             # Third run with clear: 0 plots
             if call_count[0] == 3:
                 return exec_result, []
             # Fourth run after clear: 1 plot
             if call_count[0] == 4:
-                return exec_result, [plot_data]
+                return exec_result, [plot_data]  # type: ignore[list-item]
             return exec_result, []
 
         mock_handler.run_with_artifacts.side_effect = mock_run_with_artifacts
@@ -112,7 +127,7 @@ plt.show()
 
         def mock_execute_command(cmd: str, **kwargs: Any) -> ConsoleOutput:
             """Mock execute_command to detect clear operations."""
-            if "clear_plots" in cmd:
+            if "rm -rf /tmp/sandbox_plots" in cmd and ".counter" in cmd:
                 plots_cleared[0] = True
             return ConsoleOutput(exit_code=0, stdout="", stderr="")
 
@@ -127,7 +142,7 @@ plt.show()
             exec_result = ConsoleOutput(exit_code=0, stdout="", stderr="")
 
             # Always return 1 plot (simulating new plot after clear)
-            return exec_result, [plot_data]
+            return exec_result, [plot_data]  # type: ignore[list-item]
 
         mock_handler.run_with_artifacts.side_effect = mock_run_with_artifacts
 
@@ -202,7 +217,7 @@ plt.show()
 
             # First run: 1 matplotlib plot
             if call_count[0] == 1 or call_count[0] == 2:
-                return exec_result, [plot_data]
+                return exec_result, [plot_data]  # type: ignore[list-item]
             return exec_result, []
 
         mock_handler.run_with_artifacts.side_effect = mock_run_with_artifacts
@@ -234,6 +249,101 @@ plt.show()
 
             # Should have reset the counter
             assert plotly_plots <= initial_plots
+
+    @pytest.mark.parametrize(
+        "backend",
+        [
+            SandboxBackend.DOCKER,
+            SandboxBackend.PODMAN,
+            SandboxBackend.KUBERNETES,
+        ],
+    )
+    @patch("llm_sandbox.session.create_session")
+    def test_cross_backend_compatibility(self, mock_create_session: MagicMock, backend: SandboxBackend) -> None:
+        """Test that plot clearing works across all backends (Docker, Podman, Kubernetes)."""
+        # Track clear operations
+        clear_commands = []
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_create_session.return_value = mock_session
+
+        # Mock execute_command to capture commands
+        def mock_execute_command(cmd: str, **kwargs: Any) -> ConsoleOutput:
+            clear_commands.append(cmd)
+            return ConsoleOutput(exit_code=0, stdout="", stderr="")
+
+        mock_session.execute_command.side_effect = mock_execute_command
+        mock_session.language_handler.is_support_plot_detection = True
+        mock_session.language_handler.run_with_artifacts.return_value = (
+            ConsoleOutput(exit_code=0, stdout="", stderr=""),
+            create_mock_plot_data(2),
+        )
+        mock_session.config.get_execution_timeout.return_value = 60
+
+        # Create session with specified backend
+        with ArtifactSandboxSession(
+            lang="python",
+            backend=backend,
+            enable_plotting=True,
+        ) as session:
+            # Test auto-clear
+            clear_commands.clear()
+            session.run("print('test')", clear_plots=True)
+
+            # Verify clear command was executed
+            assert len(clear_commands) > 0, f"{backend.value} did not execute clear command"
+
+            # Verify the command structure is correct for all backends
+            clear_cmd = clear_commands[0]
+            assert "rm -rf /tmp/sandbox_plots/*" in clear_cmd, f"{backend.value} missing rm command"
+            assert "echo 0 >" in clear_cmd, f"{backend.value} missing echo command"
+            assert ".counter" in clear_cmd, f"{backend.value} missing counter file"
+
+            # All backends should use shell for wildcards and redirection
+            assert "sh -c" in clear_cmd or "sh" in clear_cmd, f"{backend.value} not using shell"
+
+    @patch("llm_sandbox.session.create_session")
+    def test_shell_command_compatibility(self, mock_create_session: MagicMock) -> None:
+        """Test that shell commands (wildcards, redirection) work correctly."""
+        executed_commands = []
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_create_session.return_value = mock_session
+
+        def mock_execute_command(cmd: str, **kwargs: Any) -> ConsoleOutput:
+            executed_commands.append(cmd)
+            return ConsoleOutput(exit_code=0, stdout="", stderr="")
+
+        mock_session.execute_command.side_effect = mock_execute_command
+        mock_session.language_handler.is_support_plot_detection = True
+        mock_session.language_handler.run_with_artifacts.return_value = (
+            ConsoleOutput(exit_code=0, stdout="", stderr=""),
+            [],
+        )
+        mock_session.config.get_execution_timeout.return_value = 60
+
+        with ArtifactSandboxSession(
+            lang="python",
+            backend=SandboxBackend.DOCKER,
+            enable_plotting=True,
+        ) as session:
+            session.clear_plots()
+
+        # Verify the command uses shell features correctly
+        assert len(executed_commands) > 0
+        clear_cmd = executed_commands[0]
+
+        # Must use sh -c for wildcards and redirection to work
+        assert "sh -c" in clear_cmd
+        # Wildcard for removing all plots
+        assert "/tmp/sandbox_plots/*" in clear_cmd
+        # Command chaining with &&
+        assert "&&" in clear_cmd
+        # Output redirection
+        assert ">" in clear_cmd
+        assert ".counter" in clear_cmd
 
 
 if __name__ == "__main__":
