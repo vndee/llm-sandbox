@@ -502,6 +502,35 @@ linker = "rust-lld"
         # Nothing to do for Hyperlight - stateless execution
         self._log("Environment setup skipped (Hyperlight is stateless)", "debug")
 
+    def _handle_timeout(self) -> None:
+        """Handle timeout cleanup for Hyperlight backend.
+
+        Hyperlight VMs are automatically destroyed after execution,
+        so minimal cleanup is needed on timeout.
+        """
+        if self.verbose:
+            self._log("Hyperlight VM execution timed out", "warning")
+
+        # Clean up temporary resources
+        if not self.config.keep_template:
+            if self._temp_guest_dir and self._temp_guest_dir.exists():
+                shutil.rmtree(self._temp_guest_dir, ignore_errors=True)
+
+    def _connect_to_existing_container(self, container_id: str) -> None:
+        """Connect to existing Hyperlight container (not supported).
+
+        Args:
+            container_id: Container ID (not used for Hyperlight)
+
+        Raises:
+            NotImplementedError: Hyperlight does not support connecting to existing VMs
+        """
+        msg = (
+            "Hyperlight backend does not support connecting to existing containers. "
+            "Each session creates a new micro VM that is destroyed after execution."
+        )
+        raise NotImplementedError(msg)
+
     def install(self, libraries: list[str], **_kwargs: Any) -> ConsoleOutput:
         """Install libraries (not supported in Hyperlight).
 
@@ -521,7 +550,7 @@ linker = "rust-lld"
             "Libraries must be included in the guest binary at compile time."
         )
         self._log(msg, "warning")
-        return ConsoleOutput(exit_code=1, output=msg)
+        return ConsoleOutput(exit_code=1, stderr=msg, stdout="")
 
     def __enter__(self) -> "SandboxHyperlightSession":
         """Enter context manager."""
