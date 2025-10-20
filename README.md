@@ -32,6 +32,7 @@ Documentation: https://vndee.github.io/llm-sandbox/
 - **Docker**: Most popular and widely supported option
 - **Kubernetes**: Enterprise-grade orchestration for scalable deployments
 - **Podman**: Rootless containers for enhanced security
+- **Hyperlight**: Experimental micro VM backend for ultra-fast, lightweight execution
 
 ### 🌐 Multi-Language Support
 Execute code in multiple programming languages with automatic dependency management:
@@ -610,6 +611,7 @@ graph LR
     C --> C1[Docker]
     C --> C2[Kubernetes]
     C --> C3[Podman]
+    C --> C4[Hyperlight]
 
     style A fill:#e1f5fe
     style B fill:#f3e5f5
@@ -624,6 +626,7 @@ graph LR
     style C1 fill:#e0f2f1
     style C2 fill:#e0f2f1
     style C3 fill:#e0f2f1
+    style C4 fill:#e0f2f1
 ```
 
 ## 📚 Documentation
