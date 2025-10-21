@@ -175,8 +175,6 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
       return(result)
     }, ns = "ggplot2")
   }
-
-  cat("ggplot2 plotting enabled\n")
 }
 
 # === PLOTLY SUPPORT ===
@@ -203,8 +201,6 @@ if (requireNamespace("plotly", quietly = TRUE)) {
       return(result)
     }
   }
-
-  cat("plotly plotting enabled\n")
 }
 
 # === LATTICE SUPPORT ===
@@ -233,8 +229,6 @@ if (requireNamespace("lattice", quietly = TRUE)) {
       return(result)
     }
   }
-
-  cat("lattice plotting enabled\n")
 }
 
 # === GENERAL PLOT CAPTURE FUNCTIONS ===
@@ -266,6 +260,4 @@ save_current_plot <- function(format = "png") {
 get_plot_count <- function() {
   return(.plot_counter)
 }
-
-cat("R plot detection setup complete\n")
 """
