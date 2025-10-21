@@ -193,7 +193,7 @@ p5 <- scatter_data %>%
 print(p5)
 
 print("=== All visualizations completed successfully! ===")
-print(paste("Total plots generated:", length(list.files("/tmp/sandbox_plots", pattern = "\\.(png|svg|pdf)$"))))
+print(paste("Total plots generated:", length(list.files("/tmp/sandbox_plots", pattern = "\\\\.(png|svg|pdf)$"))))
 """
 
 # Create plots directory
