@@ -202,6 +202,10 @@ Path("plots/r_artifacts").mkdir(parents=True, exist_ok=True)
 print("🎨 Starting R Artifact Demo with ArtifactSandboxSession...")
 
 # Run the R artifact demo
+# NOTE: To avoid reinstalling packages on every run:
+# Option 1: Use a custom image with packages pre-installed (recommended for production)
+# Option 2: Set commit_container=True to save the container state after installing packages
+# Option 3: Reuse the same session for multiple run() calls (packages persist within a session)
 with ArtifactSandboxSession(
     client=client,
     lang="r",
@@ -213,6 +217,7 @@ with ArtifactSandboxSession(
     print("📊 Executing R code with comprehensive plotting...")
 
     # Run the R code with required libraries
+    # Libraries are installed once and persist for all subsequent run() calls in this session
     result = session.run(r_code, libraries=["ggplot2", "dplyr", "gridExtra", "tidyr", "scales"])
 
     print("\n✅ Execution completed!")
