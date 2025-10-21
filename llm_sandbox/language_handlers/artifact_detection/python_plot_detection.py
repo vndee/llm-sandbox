@@ -159,9 +159,6 @@ except ImportError:
 try:
     import seaborn as sns
     # Seaborn uses matplotlib backend, so it's already covered
-    print("Seaborn plotting enabled via matplotlib backend")
 except ImportError:
     pass
-
-print("Python plot detection setup complete")
 """
