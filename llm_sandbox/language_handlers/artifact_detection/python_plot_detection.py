@@ -40,12 +40,20 @@ try:
         global _plot_counter
         try:
             fig = plt.gcf()
+            # Only save if there are axes AND they contain actual plot elements
             if fig and fig.get_axes():
-                # Save as PNG with sequential numbering
-                _plot_counter += 1
-                _save_counter()
-                filename = f'/tmp/sandbox_plots/{_plot_counter:06d}.png'
-                fig.savefig(filename, format='png', dpi=100, bbox_inches='tight')
+                # Check if any axes have content (lines, patches, collections, images, etc.)
+                has_content = any(
+                    ax.lines or ax.patches or ax.collections or ax.images or ax.texts
+                    for ax in fig.get_axes()
+                )
+
+                if has_content:
+                    # Save as PNG with sequential numbering
+                    _plot_counter += 1
+                    _save_counter()
+                    filename = f'/tmp/sandbox_plots/{_plot_counter:06d}.png'
+                    fig.savefig(filename, format='png', dpi=100, bbox_inches='tight')
         except Exception as e:
             print(f"Matplotlib capture error: {e}")
         finally:
@@ -159,7 +167,7 @@ except ImportError:
 try:
     import seaborn as sns
     # Seaborn uses matplotlib backend, so it's already covered
-    print("Seaborn plotting enabled via matplotlib backend")
+    # No need to print anything as it's just using matplotlib hooks
 except ImportError:
     pass
 
