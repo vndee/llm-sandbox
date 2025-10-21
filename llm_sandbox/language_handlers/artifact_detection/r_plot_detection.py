@@ -130,53 +130,89 @@ boxplot <- .enhanced_boxplot
 barplot <- .enhanced_barplot
 
 # === GGPLOT2 SUPPORT ===
-if (requireNamespace("ggplot2", quietly = TRUE)) {
-
-  # Enhanced print method for ggplot objects
-  .original_print_ggplot <- getS3method("print", "ggplot")
-
-  print.ggplot <- function(x, ...) {
-    # Call original print method
-    result <- .original_print_ggplot(x, ...)
-
-    # Save the plot
-    tryCatch({
-      .plot_counter <<- .plot_counter + 1
-      .save_counter()
-      png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
-      ggplot2::ggsave(png_file, plot = x, width = 10, height = 6, dpi = 100)
-    }, error = function(e) {
-      cat("ggplot2 capture error:", e$message, "\n")
-    })
-
-    return(result)
+# Function to set up ggplot2 hooks after package is loaded
+.setup_ggplot2_hooks <- function() {
+  if (!isNamespaceLoaded("ggplot2")) {
+    return(FALSE)
   }
 
-  # Enhanced ggsave function
-  if (exists("ggsave", envir = asNamespace("ggplot2"))) {
-    .original_ggsave <- ggplot2::ggsave
+  tryCatch({
+    # Enhanced print method for ggplot objects
+    .original_print_ggplot <<- getS3method("print", "ggplot")
 
-    assignInNamespace("ggsave", function(filename, plot = ggplot2::last_plot(), ...) {
-      # Call original ggsave
-      result <- .original_ggsave(filename, plot, ...)
+    print.ggplot <- function(x, ...) {
+      # Call original print method
+      result <- .original_print_ggplot(x, ...)
 
-      # Copy to our output directory
+      # Save the plot
       tryCatch({
         .plot_counter <<- .plot_counter + 1
         .save_counter()
-        ext <- tools::file_ext(filename)
-        if (ext == "") ext <- "png"
-        output_file <- sprintf('/tmp/sandbox_plots/%06d.%s', .plot_counter, ext)
-        file.copy(filename, output_file, overwrite = TRUE)
+        png_file <- sprintf('/tmp/sandbox_plots/%06d.png', .plot_counter)
+        ggplot2::ggsave(png_file, plot = x, width = 10, height = 6, dpi = 100)
       }, error = function(e) {
-        cat("ggplot2 ggsave capture error:", e$message, "\n")
+        cat("ggplot2 capture error:", e$message, "\n")
       })
 
       return(result)
-    }, ns = "ggplot2")
-  }
+    }
 
-  cat("ggplot2 plotting enabled\n")
+    # Enhanced ggsave function
+    if (exists("ggsave", envir = asNamespace("ggplot2"))) {
+      .original_ggsave <- ggplot2::ggsave
+
+      assignInNamespace("ggsave", function(filename, plot = ggplot2::last_plot(), ...) {
+        # Call original ggsave
+        result <- .original_ggsave(filename, plot, ...)
+
+        # Copy to our output directory
+        tryCatch({
+          .plot_counter <<- .plot_counter + 1
+          .save_counter()
+          ext <- tools::file_ext(filename)
+          if (ext == "") ext <- "png"
+          output_file <- sprintf('/tmp/sandbox_plots/%06d.%s', .plot_counter, ext)
+          file.copy(filename, output_file, overwrite = TRUE)
+        }, error = function(e) {
+          cat("ggplot2 ggsave capture error:", e$message, "\n")
+        })
+
+        return(result)
+      }, ns = "ggplot2")
+    }
+
+    cat("ggplot2 plotting enabled\n")
+    return(TRUE)
+  }, error = function(e) {
+    cat("Error setting up ggplot2 hooks:", e$message, "\n")
+    return(FALSE)
+  })
+}
+
+# Hook into library/require to setup ggplot2 when it's loaded
+.original_library <- base::library
+.original_require <- base::require
+
+library <- function(...) {
+  result <- .original_library(...)
+  # Check if ggplot2 was just loaded
+  if (isNamespaceLoaded("ggplot2") && !exists(".ggplot2_hooks_setup", envir = .GlobalEnv)) {
+    if (.setup_ggplot2_hooks()) {
+      .ggplot2_hooks_setup <<- TRUE
+    }
+  }
+  return(result)
+}
+
+require <- function(...) {
+  result <- .original_require(...)
+  # Check if ggplot2 was just loaded
+  if (isNamespaceLoaded("ggplot2") && !exists(".ggplot2_hooks_setup", envir = .GlobalEnv)) {
+    if (.setup_ggplot2_hooks()) {
+      .ggplot2_hooks_setup <<- TRUE
+    }
+  }
+  return(result)
 }
 
 # === PLOTLY SUPPORT ===
