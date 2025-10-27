@@ -1,4 +1,5 @@
 import io
+import logging
 import shlex
 import tarfile
 import time
@@ -150,6 +151,10 @@ class KubernetesContainerAPI:
             tar.add(src, arcname=Path(dest).name)
         tarstream.seek(0)
 
+        # Get total size for logging
+        tar_size = len(tarstream.getvalue())
+        tarstream.seek(0)
+
         exec_command = ["tar", "xf", "-", "-C", dest_dir]
         resp = stream(
             self.client.connect_get_namespaced_pod_exec,
@@ -164,27 +169,47 @@ class KubernetesContainerAPI:
             _preload_content=False,
         )
 
-        # Send tar data
-        while resp.is_open():
-            resp.update(timeout=1)
+        chunk_size = 65536
+        bytes_written = 0
 
-            chunk = tarstream.read(4096)
-            if chunk:
+        try:
+            while True:
+                chunk = tarstream.read(chunk_size)
+                if not chunk:
+                    break
                 resp.write_stdin(chunk)
-            else:
-                break
+                bytes_written += len(chunk)
 
-        # Ensure proper stream closure and wait for completion
-        resp.write_stdin("")  # Signal end of input
-        resp.close()
+            resp.write_stdin("")
 
-        # Note: We don't check returncode here as it may not be available immediately after stream close
+            stderr_output = ""
+            for _ in range(10):
+                resp.update(timeout=1)
+                if resp.peek_stderr():
+                    stderr_output += resp.read_stderr()
+                if not resp.is_open():
+                    break
+
+        finally:
+            resp.close()
+
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            "Copied %d bytes (%d tar size) from '%s' to pod '%s:%s'",
+            bytes_written,
+            tar_size,
+            src,
+            container,
+            dest,
+        )
+
+        if stderr_output and "error" in stderr_output.lower():
+            logger.warning("Tar extraction warnings for %s: %s", dest, stderr_output)
 
     def copy_from_container(self, container: Any, src: str, **kwargs: Any) -> tuple[bytes, dict]:
         """Copy file from Kubernetes pod."""
         container_name = kwargs.get("container_name")  # Get the specific container name
 
-        # First check if the path exists and get its stats
         stat_command = f"stat -c '%s %Y %n' {shlex.quote(str(src))} 2>/dev/null || echo 'NOT_FOUND'"
         exec_command = [SH_SHELL, "-c", stat_command]
 
@@ -210,7 +235,6 @@ class KubernetesContainerAPI:
         if stdout_output.strip() == "NOT_FOUND":
             return b"", {"size": 0}
 
-        # Parse stat output
         stat_parts = stdout_output.strip().split(" ", 2)
         if len(stat_parts) >= 3:  # noqa: PLR2004
             file_size = int(stat_parts[0])
