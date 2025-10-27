@@ -151,7 +151,6 @@ class KubernetesContainerAPI:
             tar.add(src, arcname=Path(dest).name)
         tarstream.seek(0)
 
-        # Get total size for logging
         tar_size = len(tarstream.getvalue())
         tarstream.seek(0)
 
@@ -161,7 +160,7 @@ class KubernetesContainerAPI:
             container,
             self.namespace,
             command=exec_command,
-            container=container_name,  # Specify which container to use
+            container=container_name,
             stderr=True,
             stdin=True,
             stdout=True,
@@ -218,7 +217,7 @@ class KubernetesContainerAPI:
             container,
             self.namespace,
             command=exec_command,
-            container=container_name,  # Specify which container to use
+            container=container_name,
             stderr=True,
             stdin=False,
             stdout=True,
@@ -245,7 +244,6 @@ class KubernetesContainerAPI:
             mtime = 0
             file_name = src
 
-        # Get tar archive with base64 encoding
         src_path = Path(src)
         parent_dir = src_path.parent
         target_name = src_path.name
@@ -257,7 +255,7 @@ class KubernetesContainerAPI:
             container,
             self.namespace,
             command=exec_command,
-            container=container_name,  # Specify which container to use
+            container=container_name,
             stderr=True,
             stdin=False,
             stdout=True,
@@ -274,7 +272,6 @@ class KubernetesContainerAPI:
         if not stdout_output.strip():
             return b"", {"size": 0}
 
-        # Decode the base64 data
         try:
             import base64
 
