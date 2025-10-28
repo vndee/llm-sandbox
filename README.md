@@ -25,6 +25,7 @@ Documentation: https://vndee.github.io/llm-sandbox/
 ### 🛡️ Security First
 - **Isolated Execution**: Code runs in isolated containers with no access to host system
 - **Security Policies**: Define custom security policies to control code execution
+- **Security Presets**: Ready-to-use configurations combining code analysis with container restrictions
 - **Resource Limits**: Set CPU, memory, and execution time limits
 - **Network Isolation**: Control network access for sandboxed code
 
@@ -363,6 +364,34 @@ with SandboxSession(
     result = session.run("print('Hello, World!')")
     print(result)
 ```
+
+#### Security Presets
+
+Use predefined security configurations that combine code-level analysis with container restrictions:
+
+```python
+from llm_sandbox import SandboxSession, get_security_preset
+
+# Get a complete security configuration
+config = get_security_preset("production", "python", "docker")
+
+# Use it in a session
+with SandboxSession(
+    lang="python",
+    security_policy=config.security_policy,
+    runtime_configs=config.runtime_config
+) as session:
+    result = session.run("print('Secure execution!')")
+    print(result)
+```
+
+**Available Presets:**
+- `development`: Permissive, for local development (1GB RAM, network enabled)
+- `production`: Strict, for production use (512MB RAM, no network, read-only)
+- `strict`: Very strict, for untrusted code (128MB RAM, no network, all capabilities dropped)
+- `educational`: Balanced, for learning platforms (256MB RAM, network enabled)
+
+See [Security Presets Documentation](docs/configuration.md#security-presets) for more details.
 
 #### Remote Docker Host
 

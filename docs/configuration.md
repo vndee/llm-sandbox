@@ -377,7 +377,7 @@ For Docker and Podman backends, runtime configuration options are passed as **ex
 # Docker-specific runtime configuration
 runtime_configs = {
     "privileged": False,
-    "memory": "512m",
+    "mem_limit": "512m",  # Memory limit (use mem_limit, not memory)
     "cpu_period": 100000,
     "cpu_quota": 50000,
     "network_mode": "bridge",
@@ -400,7 +400,7 @@ session = SandboxSession(
 # Podman-specific runtime configuration
 runtime_config = {
     "privileged": False,
-    "memory": "512m",
+    "mem_limit": "512m",  # Memory limit (use mem_limit, not memory)
     "cpu_shares": 512,
     "network_mode": "bridge",
     "volumes": {"/host/path": {"bind": "/container/path", "mode": "ro"}},
@@ -528,7 +528,7 @@ To configure resources, security context, volumes, and other Pod-level settings 
 ```python
 # Memory and CPU limits
 runtime_configs = {
-    "memory": "1g",           # 1GB memory limit
+    "mem_limit": "1g",        # 1GB memory limit (use mem_limit, not memory)
     "cpu_period": 100000,     # CPU period in microseconds
     "cpu_quota": 50000,       # CPU quota (50% of one CPU)
     "memswap_limit": "2g"     # Memory + swap limit
@@ -631,6 +631,136 @@ policy = SecurityPolicy(
 with SandboxSession(lang="python", security_policy=policy) as session:
     pass
 ```
+
+### Security Presets
+
+LLM Sandbox provides predefined security configurations that combine `SecurityPolicy` (code-level analysis) with backend-specific `runtime_configs` (container-level security). These presets offer ready-to-use security configurations for common scenarios.
+
+#### Available Presets
+
+- **development**: Permissive configuration for local development and testing
+- **production**: Strict configuration for production applications
+- **strict**: Very strict configuration for untrusted code execution
+- **educational**: Balanced configuration for educational platforms
+
+#### Basic Usage
+
+```python
+from llm_sandbox import SandboxSession, get_security_preset
+
+# Get a complete security configuration
+config = get_security_preset("production", "python", "docker")
+
+# Use it in a session
+with SandboxSession(
+    lang="python",
+    security_policy=config.security_policy,
+    runtime_configs=config.runtime_config
+) as session:
+    result = session.run("print('Hello, World!')")
+```
+
+#### Preset Comparison
+
+| Preset | Severity Threshold | Network | Memory | Read-Only | User |
+|--------|-------------------|---------|--------|-----------|------|
+| **development** | HIGH | bridge (allowed) | 1GB | No | root |
+| **production** | MEDIUM | none (disabled) | 512MB | Yes | nobody:nogroup |
+| **strict** | LOW | none (disabled) | 128MB | Yes | nobody:nogroup |
+| **educational** | MEDIUM | bridge (allowed) | 256MB | Yes | 1000:1000 |
+
+#### Customizing Presets
+
+You can start with a preset and customize it for your needs:
+
+```python
+from llm_sandbox import get_security_preset, SecurityPattern, SecurityIssueSeverity
+
+# Start with production preset
+config = get_security_preset("production", "python", "docker")
+
+# Modify runtime configuration
+config.runtime_config["mem_limit"] = "1g"  # Increase memory limit
+config.runtime_config["network_mode"] = "bridge"  # Enable network
+
+# Add custom security patterns
+custom_pattern = SecurityPattern(
+    pattern=r"\bpandas\.",
+    description="Pandas library usage",
+    severity=SecurityIssueSeverity.LOW
+)
+config.security_policy.add_pattern(custom_pattern)
+
+# Use the customized configuration
+with SandboxSession(
+    lang="python",
+    security_policy=config.security_policy,
+    runtime_configs=config.runtime_config
+) as session:
+    pass
+```
+
+#### Backend-Specific Configurations
+
+**Docker and Podman**: Security presets include complete runtime configurations with resource limits, network settings, user permissions, and security options.
+
+```python
+# Docker/Podman example
+config = get_security_preset("strict", "python", "docker")
+print(config.runtime_config)
+# {
+#     "mem_limit": "128m",
+#     "cpu_period": 100000,
+#     "cpu_quota": 50000,
+#     "network_mode": "none",
+#     "read_only": True,
+#     "tmpfs": {"/tmp": "size=50m,noexec,nosuid,nodev"},
+#     "user": "nobody:nogroup",
+#     "cap_drop": ["ALL"],
+#     "security_opt": ["no-new-privileges:true"]
+# }
+```
+
+**Kubernetes**: Security presets only include SecurityPolicy. You must provide your own pod manifest with appropriate security context and resource limits.
+
+```python
+# Kubernetes example
+config = get_security_preset("production", "python", "kubernetes")
+# config.runtime_config is None for Kubernetes
+# You must provide pod_manifest parameter separately
+```
+
+#### Complete Example
+
+```python
+from llm_sandbox import SandboxSession, get_security_preset
+
+# List available presets
+from llm_sandbox import list_available_presets
+print("Available presets:", list_available_presets())
+# ['development', 'production', 'strict', 'educational']
+
+# Use strict preset for untrusted code
+config = get_security_preset("strict", "python", "docker")
+
+with SandboxSession(
+    lang="python",
+    security_policy=config.security_policy,
+    runtime_configs=config.runtime_config
+) as session:
+    # Check code safety before execution
+    code = "import os; os.system('ls')"
+    is_safe, violations = session.is_safe(code)
+    
+    if not is_safe:
+        print("Code blocked by security policy!")
+        for violation in violations:
+            print(f"  - {violation.description}")
+    else:
+        result = session.run(code)
+```
+
+For more examples, see `examples/security_presets_demo.py` in the repository.
 
 For more information, see the [Security Policies](security.md) page.
 
