@@ -479,6 +479,113 @@ with SandboxSession(lang="python", security_policy=policy) as session:
             print(f"  - {v.description}")
 ```
 
+## Performance Optimization with Container Pooling
+
+For high-performance applications that execute code frequently, container pooling can provide **up to 10x performance improvement** by reusing pre-warmed containers instead of creating new ones for each execution.
+
+!!! tip "When to Use Container Pooling"
+    Container pooling is ideal for:
+
+    - High-frequency code execution (multiple executions per minute)
+    - Web APIs and production services
+    - Concurrent request handling
+    - Batch processing workloads
+
+### Quick Start with Pooling
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import PoolConfig
+
+# Configure the pool
+pool_config = PoolConfig(
+    max_pool_size=10,          # Maximum 10 containers
+    min_pool_size=3,           # Keep at least 3 warm
+    enable_prewarming=True,    # Create containers on startup
+)
+
+# Use pooled session - containers are reused automatically
+# Libraries are installed during container initialization
+with SandboxSession(
+    lang="python",
+    use_pool=True,
+    pool_config=pool_config,
+    libraries=["numpy", "pandas"],  # Pre-install in all pooled containers
+) as session:
+    result = session.run("import pandas as pd; print(pd.__version__)")
+    print(result.stdout)
+    # Container automatically returned to pool on exit
+```
+
+### Shared Pool for Multiple Sessions
+
+For maximum efficiency, share a single pool across multiple sessions:
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import create_pool_manager, PoolConfig
+
+# Create a shared pool manager
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(max_pool_size=10, min_pool_size=3),
+    lang="python",
+)
+
+try:
+    # Execute multiple sessions using the same pool
+    for i in range(10):
+        with SandboxSession(lang="python", pool_manager=pool) as session:
+            result = session.run(f'print("Execution {i}")')
+            print(result.stdout.strip())
+finally:
+    # Clean up pool when done
+    pool.close()
+```
+
+### Performance Comparison
+
+```python
+import time
+from llm_sandbox import SandboxSession
+
+# Without pooling (slower)
+start = time.time()
+for i in range(5):
+    with SandboxSession(lang="python") as session:
+        session.run("print('test')")
+no_pool_time = time.time() - start
+
+# With pooling (faster)
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(max_pool_size=3, min_pool_size=2),
+    lang="python",
+)
+
+start = time.time()
+for i in range(5):
+    with SandboxSession(lang="python", pool_manager=pool) as session:
+        session.run("print('test')")
+pool_time = time.time() - start
+pool.close()
+
+print(f"Without pool: {no_pool_time:.2f}s")
+print(f"With pool: {pool_time:.2f}s")
+print(f"Speedup: {no_pool_time/pool_time:.2f}x faster")
+```
+
+!!! info "Learn More"
+    For comprehensive documentation on container pooling including:
+
+    - Advanced configuration options
+    - Thread-safe concurrent execution
+    - Health monitoring and lifecycle management
+    - Backend-specific features
+    - Troubleshooting guide
+
+    See the [Container Pooling Guide](container-pooling.md).
+
 ## Common Use Cases
 
 ### 1. LLM Code Execution

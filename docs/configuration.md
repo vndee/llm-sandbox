@@ -832,6 +832,126 @@ print("Environment ready!")
 # Container state is saved and can be reused
 ```
 
+## Container Pooling Configuration
+
+For high-performance applications, container pooling dramatically improves execution speed by reusing pre-warmed containers. See the [Container Pooling Guide](container-pooling.md) for comprehensive documentation.
+
+### Basic Pool Configuration
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import PoolConfig
+
+# Configure pool parameters
+pool_config = PoolConfig(
+    max_pool_size=10,                      # Maximum containers
+    min_pool_size=3,                       # Minimum warm containers
+    idle_timeout=300.0,                    # Recycle idle containers
+    enable_prewarming=True,                # Create containers on startup
+)
+
+# Use pooled session
+# Libraries are installed during container initialization
+with SandboxSession(
+    lang="python",
+    use_pool=True,
+    pool_config=pool_config,
+    libraries=["numpy", "pandas"],  # Pre-install in all pooled containers
+) as session:
+    result = session.run("import pandas as pd; print(pd.__version__)")
+```
+
+### Pool Manager Configuration
+
+For shared pools across multiple sessions:
+
+```python
+from llm_sandbox.pool import create_pool_manager, PoolConfig, ExhaustionStrategy
+
+# Create pool manager with custom configuration
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(
+        # Size limits
+        max_pool_size=20,
+        min_pool_size=5,
+
+        # Timeouts
+        idle_timeout=300.0,
+        acquisition_timeout=30.0,
+
+        # Health and lifecycle
+        health_check_interval=60.0,
+        max_container_lifetime=3600.0,
+        max_container_uses=100,
+
+        # Exhaustion handling
+        exhaustion_strategy=ExhaustionStrategy.WAIT,
+
+        # Pre-warming
+        enable_prewarming=True,
+    ),
+    lang="python",
+    libraries=["requests", "numpy"],  # Pre-install in all pooled containers
+)
+
+# Use the shared pool
+try:
+    with SandboxSession(lang="python", pool_manager=pool) as session:
+        result = session.run("print('Hello from pool!')")
+finally:
+    pool.close()
+```
+
+### Pool Configuration Reference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_pool_size` | int | 10 | Maximum containers in pool |
+| `min_pool_size` | int | 0 | Minimum warm containers |
+| `idle_timeout` | float \| None | 300.0 | Recycle idle containers (seconds) |
+| `acquisition_timeout` | float \| None | 30.0 | Wait time for exhausted pool |
+| `health_check_interval` | float | 60.0 | Health check frequency |
+| `max_container_lifetime` | float \| None | 3600.0 | Maximum container lifetime |
+| `max_container_uses` | int \| None | None | Maximum uses before recycling |
+| `exhaustion_strategy` | ExhaustionStrategy | WAIT | Pool exhaustion behavior |
+| `enable_prewarming` | bool | True | Create containers on startup |
+
+!!! note "Installing Libraries"
+    Libraries are pre-installed by passing the `libraries` parameter when creating the pool manager or session, not via PoolConfig.
+
+### Exhaustion Strategies
+
+Three strategies for handling pool exhaustion:
+
+```python
+from llm_sandbox.pool import ExhaustionStrategy
+
+# 1. WAIT - Wait for available container (default)
+PoolConfig(
+    exhaustion_strategy=ExhaustionStrategy.WAIT,
+    acquisition_timeout=30.0,
+)
+
+# 2. FAIL_FAST - Raise error immediately
+PoolConfig(
+    exhaustion_strategy=ExhaustionStrategy.FAIL_FAST,
+)
+
+# 3. TEMPORARY - Create temporary container
+PoolConfig(
+    exhaustion_strategy=ExhaustionStrategy.TEMPORARY,
+)
+```
+
+!!! tip "Performance Tuning"
+    - **High-frequency execution**: Use larger pools (max_pool_size=20+, min_pool_size=5+)
+    - **Moderate usage**: Medium pools (max_pool_size=10, min_pool_size=2-3)
+    - **Occasional usage**: Don't use pooling, create containers on-demand
+    - **Pre-installed libraries**: Dramatically reduce execution time
+
+See the [Container Pooling Guide](container-pooling.md) for advanced configuration, monitoring, and best practices.
+
 ## Configuration Best Practices
 
 ### 1. Use Appropriate Resource Limits

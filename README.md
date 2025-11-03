@@ -51,6 +51,7 @@ Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, L
 - **File Operations**: Copy files to/from sandbox environments
 - **Custom Images**: Use your own container images
 - **Fast Production Mode**: Skip environment setup for faster container startup
+- **Container Pooling**: Pre-warm and reuse containers for improved performance (NEW!)
 
 ## 📦 Installation
 
@@ -430,6 +431,182 @@ with SandboxSession(
     result = session.run("print('Hello from Podman!')")
     print(result)
 ```
+
+## ⚡ Container Pooling (Performance Optimization)
+
+Container pooling dramatically improves performance by reusing pre-warmed containers instead of creating new ones for each execution. This is particularly beneficial for applications that execute code frequently.
+
+### Key Benefits
+- **Faster Execution**: Eliminate container creation overhead (up to 10x faster)
+- **Pre-warmed Environments**: Containers are initialized with your dependencies
+- **Thread-Safe**: Safely handle concurrent requests
+- **Resource Efficient**: Automatic container lifecycle management
+- **Flexible Configuration**: Control pool size, timeouts, and behavior
+
+### Basic Pool Usage
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import PoolConfig
+
+# Configure the pool
+pool_config = PoolConfig(
+    max_pool_size=10,          # Maximum containers
+    min_pool_size=3,           # Keep at least 3 warm
+    idle_timeout=300.0,        # Recycle idle containers after 5 min
+    enable_prewarming=True,    # Create containers on startup
+)
+
+# Use pooled session (pool created automatically)
+with SandboxSession(
+    lang="python",
+    use_pool=True,
+    pool_config=pool_config,
+) as session:
+    result = session.run("print('Hello from pool!')")
+    # Container automatically returned to pool
+```
+
+### Sharing a Pool Across Sessions
+
+For maximum efficiency, share a single pool across multiple sessions:
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import create_pool_manager, PoolConfig
+
+# Create a shared pool manager
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(
+        max_pool_size=10,
+        min_pool_size=3,
+    ),
+    lang="python",
+    libraries=["numpy", "pandas"],  # Pre-install libraries in all containers
+)
+
+# Use the pool in multiple sessions
+with SandboxSession(lang="python", pool_manager=pool) as session1:
+    result1 = session1.run("import pandas; print(pandas.__version__)")
+
+with SandboxSession(lang="python", pool_manager=pool) as session2:
+    result2 = session2.run("import numpy; print(numpy.__version__)")
+
+# Clean up when done
+pool.close()
+```
+
+### Concurrent Execution
+
+Container pools are thread-safe and handle concurrent requests efficiently:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import create_pool_manager, PoolConfig
+
+# Create shared pool
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(max_pool_size=5),
+    lang="python",
+)
+
+def run_code(task_id: int):
+    with SandboxSession(lang="python", pool_manager=pool) as session:
+        return session.run(f'print("Task {task_id}")')
+
+try:
+    # Execute 20 tasks concurrently using only 5 containers
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(run_code, range(20)))
+finally:
+    pool.close()
+```
+
+### Pool Configuration Options
+
+```python
+from llm_sandbox.pool import PoolConfig, ExhaustionStrategy
+
+config = PoolConfig(
+    # Pool size limits
+    max_pool_size=10,                      # Maximum containers in pool
+    min_pool_size=2,                       # Minimum warm containers
+
+    # Timeout configuration
+    idle_timeout=300.0,                    # Recycle idle containers (seconds)
+    acquisition_timeout=30.0,              # Wait time for available container
+
+    # Health and lifecycle
+    health_check_interval=60.0,            # Health check frequency
+    max_container_lifetime=3600.0,         # Max container lifetime
+    max_container_uses=100,                # Max uses before recycling
+
+    # Pool exhaustion behavior
+    exhaustion_strategy=ExhaustionStrategy.WAIT,  # WAIT, FAIL_FAST, or TEMPORARY
+
+    # Pre-warming
+    enable_prewarming=True,                # Pre-warm containers
+    prewarm_libraries=["requests", "numpy"], # Pre-install libraries
+)
+```
+
+### Pool Exhaustion Strategies
+
+When all containers are busy, the pool can handle it in different ways:
+
+#### 1. WAIT (Default)
+Wait for a container to become available:
+```python
+config = PoolConfig(
+    max_pool_size=5,
+    exhaustion_strategy=ExhaustionStrategy.WAIT,
+    acquisition_timeout=30.0,  # Wait up to 30 seconds
+)
+```
+
+#### 2. FAIL_FAST
+Immediately raise an error:
+```python
+config = PoolConfig(
+    max_pool_size=5,
+    exhaustion_strategy=ExhaustionStrategy.FAIL_FAST,
+)
+```
+
+#### 3. TEMPORARY
+Create a temporary container outside the pool:
+```python
+config = PoolConfig(
+    max_pool_size=5,
+    exhaustion_strategy=ExhaustionStrategy.TEMPORARY,
+)
+```
+
+### Monitoring Pool Statistics
+
+```python
+from llm_sandbox.pool import create_pool_manager
+
+pool = create_pool_manager(backend="docker", lang="python")
+
+# Get pool statistics
+stats = pool.get_stats()
+print(f"Total containers: {stats['total_size']}")
+print(f"Idle containers: {stats['state_counts']['idle']}")
+print(f"Busy containers: {stats['state_counts']['busy']}")
+
+pool.close()
+```
+
+### Examples
+
+See the `examples/` directory for complete demonstrations:
+- [pool_basic_demo.py](examples/pool_basic_demo.py) - Basic pool usage and configuration
+- [pool_concurrent_demo.py](examples/pool_concurrent_demo.py) - Concurrent execution patterns
+- [pool_monitoring_demo.py](examples/pool_monitoring_demo.py) - Health monitoring and lifecycle management
 
 ## 🤖 LLM Framework Integration
 
