@@ -11,7 +11,7 @@ from .core.session_base import BaseSession
 from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
 from .pool.base import ContainerPoolManager
-from .pool.config import PoolConfig
+from .pool.session import PooledSandboxSession
 
 
 def _check_dependency(backend: SandboxBackend) -> None:
@@ -29,12 +29,10 @@ def _check_dependency(backend: SandboxBackend) -> None:
 
 def create_session(
     backend: SandboxBackend = SandboxBackend.DOCKER,
-    use_pool: bool = False,
-    pool_manager: ContainerPoolManager | None = None,
-    pool_config: PoolConfig | None = None,
+    pool: ContainerPoolManager | None = None,
     *args: Any,
     **kwargs: Any,
-) -> BaseSession:
+) -> BaseSession | PooledSandboxSession:
     r"""Create a new sandbox session for executing code in an isolated environment.
 
     This function creates a sandbox session that supports multiple programming languages
@@ -47,12 +45,9 @@ def create_session(
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
-        use_pool (bool): Whether to use container pooling for improved performance.
-            When True, containers are acquired from a pool instead of being created new.
-        pool_manager (ContainerPoolManager | None): Existing pool manager to use.
-            If provided, use_pool is automatically set to True.
-        pool_config (PoolConfig | None): Configuration for the container pool.
-            Only used if use_pool is True and pool_manager is None.
+        pool (ContainerPoolManager | None): Pool manager to use for container pooling.
+            If provided, containers are acquired from the pool instead of being created new.
+            Create a pool manager using `create_pool_manager()` from llm_sandbox.pool.
         *args: Additional positional arguments passed to the session constructor
         **kwargs: Additional keyword arguments passed to the session constructor.
                 Common options include:
@@ -72,41 +67,23 @@ def create_session(
     Examples:
         Using container pooling for improved performance:
         ```python
-        from llm_sandbox.pool import PoolConfig
+        from llm_sandbox import SandboxSession
+        from llm_sandbox.pool import create_pool_manager, PoolConfig
 
-        # Create pool configuration
-        pool_config = PoolConfig(
-            max_pool_size=10,
-            min_pool_size=3,
-            enable_prewarming=True,
+        # Create a pool manager
+        pool = create_pool_manager(
+            backend="docker",
+            config=PoolConfig(max_pool_size=10, min_pool_size=3),
+            lang="python",
         )
 
         # Use pooled session
-        with SandboxSession(
-            use_pool=True,
-            pool_config=pool_config,
-            lang="python",
-        ) as session:
+        with SandboxSession(pool=pool, lang="python") as session:
             result = session.run("print('Hello from pool!')")
             print(result.stdout)
-        ```
 
-        Sharing a pool manager across multiple sessions:
-        ```python
-        from llm_sandbox.pool import create_pool_manager, PoolConfig
-
-        # Create shared pool manager
-        pool = create_pool_manager(
-            backend=SandboxBackend.DOCKER,
-            config=PoolConfig(max_pool_size=10),
-            lang="python",
-        )
-
-        # Use the shared pool in multiple sessions
-        with SandboxSession(pool_manager=pool, lang="python") as session1:
-            result1 = session1.run("print('Session 1')")
-
-        with SandboxSession(pool_manager=pool, lang="python") as session2:
+        # Multiple sessions can share the same pool
+        with SandboxSession(pool=pool, lang="python") as session2:
             result2 = session2.run("print('Session 2')")
 
         # Clean up pool when done
@@ -245,21 +222,17 @@ def create_session(
         ```
 
     """
-    # Check if required dependency is installed
-    _check_dependency(backend)
-
-    # Use pooled session if requested or pool_manager provided
-    if use_pool or pool_manager is not None:
+    # Use pooled session if pool manager is provided
+    if pool is not None:
         from llm_sandbox.pool.session import PooledSandboxSession
 
-        # Note: pool_manager, pool_config, and backend are already keyword args
-        # so we only pass *args and **kwargs to avoid duplication
         return PooledSandboxSession(
-            pool_manager=pool_manager,
-            pool_config=pool_config,
-            backend=backend,
+            pool_manager=pool,
             **kwargs,
         )
+
+    # Check if required dependency is installed for non-pooled sessions
+    _check_dependency(backend)
 
     # Create the appropriate session based on backend
     match backend:
@@ -437,7 +410,7 @@ class ArtifactSandboxSession:
 
         """
         # Create the base session
-        self._session: BaseSession = create_session(
+        self._session: BaseSession | PooledSandboxSession = create_session(
             backend=backend,
             image=image,
             dockerfile=dockerfile,

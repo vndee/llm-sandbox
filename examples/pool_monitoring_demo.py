@@ -1,3 +1,5 @@
+# ruff: noqa: T201, F841, S110
+
 """Pool monitoring and health management demonstration.
 
 This example demonstrates pool monitoring capabilities:
@@ -10,17 +12,22 @@ This example demonstrates pool monitoring capabilities:
 
 import threading
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
-from llm_sandbox import SandboxSession
-from llm_sandbox.pool import PoolConfig, create_pool_manager
+import docker
+
+from llm_sandbox import SandboxSession, SupportedLanguage
+from llm_sandbox.const import SandboxBackend
+from llm_sandbox.pool import ContainerPoolManager, PoolConfig, create_pool_manager
+
+client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
 
 
-def print_pool_stats(pool, title: str = "Pool Statistics") -> None:
+def print_pool_stats(pool: ContainerPoolManager, title: str = "Pool Statistics") -> None:
     """Print formatted pool statistics.
 
     Args:
-        pool: Pool manager instance
+        pool: Container pool manager instance
         title: Title for the statistics output
 
     """
@@ -32,7 +39,7 @@ def print_pool_stats(pool, title: str = "Pool Statistics") -> None:
     print(f"  Minimum size: {stats['min_size']}")
     print("  Container states:")
 
-    for state, count in stats['state_counts'].items():
+    for state, count in stats["state_counts"].items():
         if count > 0:
             print(f"    {state}: {count}")
 
@@ -45,13 +52,14 @@ def demo_real_time_monitoring() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend="docker",
+        backend=SandboxBackend.DOCKER,
         config=PoolConfig(
             max_pool_size=3,
             min_pool_size=2,
             health_check_interval=5.0,
         ),
-        lang="python",
+        lang=SupportedLanguage.PYTHON,
+        client=client,
     )
 
     try:
@@ -61,30 +69,30 @@ def demo_real_time_monitoring() -> None:
         # Acquire a container
         print("\nAcquiring container...")
         container1 = pool.acquire()
-        print(f"   Acquired: {container1.container_id[:12]}")
+        print(f"  Acquired: {container1.container_id[:12]}")
         print_pool_stats(pool, "After Acquiring 1 Container")
 
         # Acquire another
         print("\nAcquiring another container...")
         container2 = pool.acquire()
-        print(f"   Acquired: {container2.container_id[:12]}")
+        print(f"  Acquired: {container2.container_id[:12]}")
         print_pool_stats(pool, "After Acquiring 2 Containers")
 
         # Release one
         print("\nReleasing first container...")
         pool.release(container1)
-        print(f"   Released: {container1.container_id[:12]}")
+        print(f"  Released: {container1.container_id[:12]}")
         print_pool_stats(pool, "After Releasing 1 Container")
 
         # Release second
         print("\nReleasing second container...")
         pool.release(container2)
-        print(f"   Released: {container2.container_id[:12]}")
+        print(f"  Released: {container2.container_id[:12]}")
         print_pool_stats(pool, "Final State")
 
     finally:
         pool.close()
-        print("\n Pool closed")
+        print("\n Pool closed")
 
 
 def demo_health_checking() -> None:
@@ -93,13 +101,14 @@ def demo_health_checking() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend="docker",
+        backend=SandboxBackend.DOCKER,
         config=PoolConfig(
             max_pool_size=3,
             min_pool_size=2,
             health_check_interval=3.0,  # Check every 3 seconds
         ),
-        lang="python",
+        lang=SupportedLanguage.PYTHON,
+        client=client,
     )
 
     try:
@@ -117,7 +126,7 @@ def demo_health_checking() -> None:
 
         # Use a container to ensure it stays healthy
         print("\n  Using a container...")
-        with SandboxSession(lang="python", pool_manager=pool) as session:
+        with SandboxSession(lang=SupportedLanguage.PYTHON, pool_manager=pool) as session:
             result = session.run('print("Health check test")')
             print(f"    Output: {result.stdout.strip()}")
 
@@ -125,7 +134,7 @@ def demo_health_checking() -> None:
 
     finally:
         pool.close()
-        print("\n Pool closed")
+        print("\nPool closed")
 
 
 def demo_idle_timeout() -> None:
@@ -134,14 +143,15 @@ def demo_idle_timeout() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend="docker",
+        backend=SandboxBackend.DOCKER,
         config=PoolConfig(
             max_pool_size=4,
             min_pool_size=1,
             idle_timeout=8.0,  # 8 second idle timeout
             health_check_interval=2.0,
         ),
-        lang="python",
+        lang=SupportedLanguage.PYTHON,
+        client=client,
     )
 
     try:
@@ -150,10 +160,10 @@ def demo_idle_timeout() -> None:
         # Create some containers
         print("\n  Acquiring 3 containers...")
         containers = []
-        for i in range(3):
+        for _ in range(3):
             c = pool.acquire()
             containers.append(c)
-            print(f"     Acquired: {c.container_id[:12]}")
+            print(f"  Acquired: {c.container_id[:12]}")
 
         print_pool_stats(pool, "After Acquiring 3 Containers")
 
@@ -161,7 +171,7 @@ def demo_idle_timeout() -> None:
         print("\n  Releasing all containers...")
         for c in containers:
             pool.release(c)
-            print(f"     Released: {c.container_id[:12]}")
+            print(f"  Released: {c.container_id[:12]}")
 
         print_pool_stats(pool, "After Releasing (All Idle)")
 
@@ -173,11 +183,11 @@ def demo_idle_timeout() -> None:
 
         print("\n")
         print_pool_stats(pool, "After Idle Timeout")
-        print("\n   Idle containers were recycled, min_pool_size maintained")
+        print("\n  Idle containers were recycled, min_pool_size maintained")
 
     finally:
         pool.close()
-        print("\n Pool closed")
+        print("\n Pool closed")
 
 
 def demo_container_lifecycle() -> None:
@@ -186,7 +196,7 @@ def demo_container_lifecycle() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend="docker",
+        backend=SandboxBackend.DOCKER,
         config=PoolConfig(
             max_pool_size=3,
             min_pool_size=1,
@@ -194,7 +204,8 @@ def demo_container_lifecycle() -> None:
             max_container_uses=5,  # Max 5 uses
             health_check_interval=3.0,
         ),
-        lang="python",
+        lang=SupportedLanguage.PYTHON,
+        client=client,
     )
 
     try:
@@ -205,12 +216,12 @@ def demo_container_lifecycle() -> None:
         # Get a container and use it multiple times
         container = pool.acquire()
         print(f"\n  Acquired container: {container.container_id[:12]}")
-        print(f"    Created at: {datetime.fromtimestamp(container.created_at).strftime('%H:%M:%S')}")
+        print(f"    Created at: {datetime.fromtimestamp(container.created_at, tz=UTC).strftime('%H:%M:%S')}")
         print(f"    Use count: {container.use_count}")
 
         # Use it several times
         print("\n  Using container 5 times...")
-        for i in range(5):
+        for _ in range(5):
             pool.release(container)
             time.sleep(0.5)
             container = pool.acquire()
@@ -227,9 +238,9 @@ def demo_container_lifecycle() -> None:
         print(f"    Use count: {new_container.use_count}")
 
         if new_container.container_id != container.container_id:
-            print("   Got a different container (old one was recycled)")
+            print("  Got a different container (old one was recycled)")
         else:
-            print("   Got same container (not yet recycled)")
+            print("  Got same container (not yet recycled)")
 
         pool.release(new_container)
 
@@ -237,7 +248,7 @@ def demo_container_lifecycle() -> None:
 
     finally:
         pool.close()
-        print("\n Pool closed")
+        print("\n Pool closed")
 
 
 def demo_concurrent_monitoring() -> None:
@@ -246,27 +257,28 @@ def demo_concurrent_monitoring() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend="docker",
+        backend=SandboxBackend.DOCKER,
         config=PoolConfig(
             max_pool_size=3,
             min_pool_size=1,
         ),
-        lang="python",
+        lang=SupportedLanguage.PYTHON,
+        client=client,
     )
 
     # Flag to control monitoring thread
     stop_monitoring = threading.Event()
     stats_history = []
 
-    def monitor_pool():
+    def monitor_pool() -> None:
         """Background thread to monitor pool stats."""
         while not stop_monitoring.is_set():
             stats = pool.get_stats()
             stats_history.append({
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "busy": stats['state_counts'].get('busy', 0),
-                "idle": stats['state_counts'].get('idle', 0),
-                "total": stats['total_size'],
+                "time": datetime.now(UTC).strftime("%H:%M:%S"),
+                "busy": stats["state_counts"].get("busy", 0),
+                "idle": stats["state_counts"].get("idle", 0),
+                "total": stats["total_size"],
             })
             time.sleep(0.5)
 
@@ -278,9 +290,9 @@ def demo_concurrent_monitoring() -> None:
         print("  Starting concurrent operations...")
 
         # Simulate concurrent workload
-        def worker(worker_id: int):
+        def worker(worker_id: int) -> None:
             for i in range(2):
-                with SandboxSession(lang="python", pool_manager=pool) as session:
+                with SandboxSession(lang=SupportedLanguage.PYTHON, pool_manager=pool) as session:
                     time.sleep(0.3)
                     session.run(f'print("Worker {worker_id}, iteration {i}")')
 
@@ -305,11 +317,11 @@ def demo_concurrent_monitoring() -> None:
             print(f"  {stat['time']} |   {stat['busy']}  |   {stat['idle']}  |   {stat['total']}")
 
         print("  " + "-" * 46)
-        print("\n   Pool handled concurrent requests efficiently")
+        print("\n  Pool handled concurrent requests efficiently")
 
     finally:
         pool.close()
-        print("\n Pool closed")
+        print("\n Pool closed")
 
 
 def main() -> None:

@@ -9,6 +9,7 @@ from llm_sandbox.pool.config import PoolConfig
 
 
 def create_pool_manager(
+    client: Any,
     backend: SandboxBackend = SandboxBackend.DOCKER,
     config: PoolConfig | None = None,
     lang: SupportedLanguage = SupportedLanguage.PYTHON,
@@ -17,6 +18,7 @@ def create_pool_manager(
     """Create a container pool manager for the specified backend.
 
     Args:
+        client: Client to use for container creation
         backend: Container backend to use (docker, kubernetes, podman)
         config: Pool configuration (uses defaults if None)
         lang: Programming language for containers
@@ -96,17 +98,17 @@ def create_pool_manager(
         case SandboxBackend.DOCKER:
             from llm_sandbox.pool.docker_pool import DockerPoolManager
 
-            return DockerPoolManager(config=config, lang=lang, **kwargs)
+            return DockerPoolManager(client=client, config=config, lang=lang, **kwargs)
 
         case SandboxBackend.KUBERNETES:
             from llm_sandbox.pool.kubernetes_pool import KubernetesPoolManager
 
-            return KubernetesPoolManager(config=config, lang=lang, **kwargs)
+            return KubernetesPoolManager(client=client, config=config, lang=lang, **kwargs)
 
         case SandboxBackend.PODMAN:
             from llm_sandbox.pool.podman_pool import PodmanPoolManager
 
-            return PodmanPoolManager(config=config, lang=lang, **kwargs)
+            return PodmanPoolManager(client=client, config=config, lang=lang, **kwargs)
 
         case _:
             raise UnsupportedBackendError(backend=backend)

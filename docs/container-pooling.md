@@ -7,6 +7,43 @@ Container pooling is a performance optimization feature that dramatically improv
 
 ## Overview
 
+### Architecture
+
+The container pooling feature uses a **composition-based architecture** that cleanly separates concerns:
+
+**1. Pool Managers** (Backend-Specific)
+:   Responsible for creating and managing the pool of containers.
+
+    - `DockerPoolManager` - Manages Docker containers
+    - `KubernetesPoolManager` - Manages Kubernetes pods
+    - `PodmanPoolManager` - Manages Podman containers
+
+    Pool managers use backend-specific sessions to **create** new containers with full environment setup (venv, dependencies, etc.).
+
+**2. Pooled Sessions** (User-Facing)
+:   Responsible for acquiring pooled containers and executing code.
+
+    - `PooledSandboxSession` - Acquires a container from the pool, creates a backend session connected to it via `container_id`, and delegates all operations to the backend session
+    - `ArtifactPooledSandboxSession` - Adds artifact extraction capabilities on top of pooled sessions
+
+    Pooled sessions leverage existing backend session implementations (e.g., `SandboxDockerSession`) by connecting to pre-created containers, eliminating code duplication.
+
+**How it works:**
+
+1. Pool manager creates and maintains a pool of warm containers
+2. When you create a `PooledSandboxSession`, it acquires an available container from the pool
+3. The pooled session creates a backend-specific session (e.g., `SandboxDockerSession`) connected to the acquired container
+4. All operations (`run()`, `execute_command()`, `copy_to_runtime()`, etc.) are delegated to the backend session
+5. When done, the container is returned to the pool for reuse (not destroyed)
+
+!!! tip "Clean Architecture Benefits"
+    This composition-based design means:
+
+    - **No code duplication** - All backend-specific logic remains in backend sessions
+    - **Automatic feature support** - New features added to backend sessions work immediately with pooling
+    - **Easy maintenance** - Changes only need to be made in one place
+    - **Full compatibility** - Pooled sessions support all parameters (`stream`, `verbose`, etc.) that regular sessions support
+
 ### What is Container Pooling?
 
 Container pooling maintains a pool of ready-to-use containers that can be quickly assigned to execute code and then returned to the pool for reuse. Instead of creating a new container for each execution (which involves image pulling, container startup, and environment setup), pooling allows you to:
@@ -49,31 +86,37 @@ Container pooling maintains a pool of ready-to-use containers that can be quickl
 
 ### Basic Usage
 
-The simplest way to use container pooling is with the `use_pool` parameter:
+Container pooling requires two steps: create a pool manager, then use it in sessions:
 
 ```python
 from llm_sandbox import SandboxSession
-from llm_sandbox.pool import PoolConfig
+from llm_sandbox.pool import create_pool_manager, PoolConfig
 
-# Configure the pool
-pool_config = PoolConfig(
-    max_pool_size=10,          # Maximum 10 containers
-    min_pool_size=3,           # Keep at least 3 warm containers
-    enable_prewarming=True,    # Pre-warm containers
+# Step 1: Create a pool manager
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(
+        max_pool_size=10,          # Maximum 10 containers
+        min_pool_size=3,           # Keep at least 3 warm containers
+        enable_prewarming=True,    # Pre-warm containers
+    ),
+    lang="python",
 )
 
-# Create a pooled session
-with SandboxSession(
-    lang="python",
-    use_pool=True,
-    pool_config=pool_config,
-) as session:
+# Step 2: Use the pool in sessions
+with SandboxSession(pool=pool, lang="python") as session:
     result = session.run("print('Hello from pooled container!')")
     print(result.stdout)
     # Container automatically returned to pool on exit
+
+# Step 3: Clean up when done
+pool.close()
 ```
 
-### Shared Pool Manager
+!!! tip "Pool Manager is Required"
+    You must create a pool manager using `create_pool_manager()` before using pooled sessions. The pool manager cannot be auto-created.
+
+### Sharing a Pool Across Sessions
 
 For better resource efficiency, share a single pool across multiple sessions:
 
@@ -82,7 +125,7 @@ from llm_sandbox import SandboxSession
 from llm_sandbox.pool import create_pool_manager, PoolConfig
 
 # Create a shared pool manager
-# Note: Libraries are installed during session initialization
+# Libraries are pre-installed in all pooled containers
 pool = create_pool_manager(
     backend="docker",
     config=PoolConfig(
@@ -90,16 +133,16 @@ pool = create_pool_manager(
         min_pool_size=3,
     ),
     lang="python",
-    libraries=["numpy", "pandas"],  # Libraries installed in all pooled containers
+    libraries=["numpy", "pandas"],  # Pre-installed in all containers
 )
 
 try:
-    # Use the pool in multiple sessions
-    with SandboxSession(lang="python", pool_manager=pool) as session1:
+    # Multiple sessions share the same pool
+    with SandboxSession(pool=pool, lang="python") as session1:
         result1 = session1.run("import pandas as pd; print(pd.__version__)")
         print(f"Session 1: {result1.stdout}")
 
-    with SandboxSession(lang="python", pool_manager=pool) as session2:
+    with SandboxSession(pool=pool, lang="python") as session2:
         result2 = session2.run("import numpy as np; print(np.__version__)")
         print(f"Session 2: {result2.stdout}")
 
@@ -353,7 +396,7 @@ pool = create_pool_manager(
 
 def run_code(task_id: int):
     """Execute code in a thread-safe manner."""
-    with SandboxSession(lang="python", pool_manager=pool) as session:
+    with SandboxSession(pool=pool, lang="python") as session:
         result = session.run(f'print("Task {task_id} completed")')
         return result.stdout
 
@@ -393,7 +436,7 @@ pool = create_pool_manager(
 
 def execute_task(task_id: int, code: str):
     """Execute a task and return results."""
-    with SandboxSession(lang="python", pool_manager=pool) as session:
+    with SandboxSession(pool=pool, lang="python") as session:
         result = session.run(code)
         return {
             "task_id": task_id,
@@ -436,7 +479,7 @@ def benchmark_without_pool(num_tasks: int):
     start = time.time()
 
     for i in range(num_tasks):
-        with SandboxSession(lang="python", use_pool=False) as session:
+        with SandboxSession(lang="python") as session:
             session.run("print('test')")
 
     return time.time() - start
@@ -453,7 +496,7 @@ def benchmark_with_pool(num_tasks: int):
         start = time.time()
 
         for i in range(num_tasks):
-            with SandboxSession(lang="python", pool_manager=pool) as session:
+            with SandboxSession(pool=pool, lang="python") as session:
                 session.run("print('test')")
 
         return time.time() - start

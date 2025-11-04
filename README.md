@@ -447,24 +447,30 @@ Container pooling dramatically improves performance by reusing pre-warmed contai
 
 ```python
 from llm_sandbox import SandboxSession
-from llm_sandbox.pool import PoolConfig
+from llm_sandbox.pool import PoolConfig, create_pool_manager
 
-# Configure the pool
-pool_config = PoolConfig(
-    max_pool_size=10,          # Maximum containers
-    min_pool_size=3,           # Keep at least 3 warm
-    idle_timeout=300.0,        # Recycle idle containers after 5 min
-    enable_prewarming=True,    # Create containers on startup
+# Create a pool manager explicitly
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(
+        max_pool_size=10,          # Maximum containers
+        min_pool_size=3,           # Keep at least 3 warm
+        idle_timeout=300.0,        # Recycle idle containers after 5 min
+        enable_prewarming=True,    # Create containers on startup
+    ),
+    lang="python",
 )
 
-# Use pooled session (pool created automatically)
+# Use the pool in a session
 with SandboxSession(
     lang="python",
-    use_pool=True,
-    pool_config=pool_config,
+    pool=pool,
 ) as session:
     result = session.run("print('Hello from pool!')")
-    # Container automatically returned to pool
+
+# Container is automatically returned to pool when the session closes
+# Clean up the pool when done
+pool.close()
 ```
 
 ### Sharing a Pool Across Sessions
@@ -487,10 +493,10 @@ pool = create_pool_manager(
 )
 
 # Use the pool in multiple sessions
-with SandboxSession(lang="python", pool_manager=pool) as session1:
+with SandboxSession(lang="python", pool=pool) as session1:
     result1 = session1.run("import pandas; print(pandas.__version__)")
 
-with SandboxSession(lang="python", pool_manager=pool) as session2:
+with SandboxSession(lang="python", pool=pool) as session2:
     result2 = session2.run("import numpy; print(numpy.__version__)")
 
 # Clean up when done
@@ -514,7 +520,7 @@ pool = create_pool_manager(
 )
 
 def run_code(task_id: int):
-    with SandboxSession(lang="python", pool_manager=pool) as session:
+    with SandboxSession(lang="python", pool=pool) as session:
         return session.run(f'print("Task {task_id}")')
 
 try:

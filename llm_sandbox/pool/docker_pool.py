@@ -49,7 +49,7 @@ class DockerPoolManager(ContainerPoolManager):
         if not image and not dockerfile:
             image = DefaultImage.__dict__[lang.upper()]
 
-        super().__init__(config, lang, image, **session_kwargs)
+        super().__init__(client=client, config=config, lang=lang, image=image, **session_kwargs)
 
     def _create_session_for_container(self) -> Any:
         """Create a Docker session for initializing a container.

@@ -1,19 +1,32 @@
 """Pool-aware session classes for using containers from a pool."""
 
+import logging
 from types import TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from llm_sandbox.const import SandboxBackend, SupportedLanguage
-from llm_sandbox.core.config import SessionConfig
-from llm_sandbox.core.session_base import BaseSession
+from llm_sandbox.const import SandboxBackend
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.pool.base import ContainerPoolManager, PooledContainer
-from llm_sandbox.pool.config import PoolConfig
-from llm_sandbox.pool.factory import create_pool_manager
 from llm_sandbox.security import SecurityPolicy
 
+if TYPE_CHECKING:
+    from llm_sandbox.core.session_base import BaseSession
 
-class PooledSandboxSession(BaseSession):
+
+class DuplicateClientError(ValueError):
+    """Error raised when a client is specified both in the pool manager and in the session."""
+
+    def __init__(self) -> None:
+        """Initialize the error."""
+        message = (
+            "Cannot specify 'client' parameter when using pooling mode. "
+            "The client is managed by the pool manager. "
+            "Please configure the client in the pool manager instead."
+        )
+        super().__init__(message)
+
+
+class PooledSandboxSession:
     """Sandbox session that uses containers from a pool.
 
     This session class acquires containers from a pool manager instead
@@ -22,19 +35,17 @@ class PooledSandboxSession(BaseSession):
 
     The session automatically:
     - Acquires a container from the pool on open()
-    - Uses the pooled container for execution
+    - Creates a backend-specific session connected to the pooled container
+    - Uses the backend session for all operations (leveraging existing implementations)
     - Returns the container to the pool on close()
     - Handles pool exhaustion based on configured strategy
     """
 
     def __init__(
         self,
-        pool_manager: ContainerPoolManager | None = None,
-        pool_config: PoolConfig | None = None,
-        backend: SandboxBackend = SandboxBackend.DOCKER,
-        lang: str = SupportedLanguage.PYTHON,
-        image: str | None = None,
+        pool_manager: ContainerPoolManager,
         verbose: bool = False,
+        stream: bool = False,
         workdir: str = "/sandbox",
         security_policy: SecurityPolicy | None = None,
         default_timeout: float | None = None,
@@ -45,12 +56,9 @@ class PooledSandboxSession(BaseSession):
         """Initialize pooled sandbox session.
 
         Args:
-            pool_manager: Existing pool manager to use (creates new if None)
-            pool_config: Pool configuration (only used if pool_manager is None)
-            backend: Container backend (docker, kubernetes, podman)
-            lang: Programming language
-            image: Container image to use
+            pool_manager: Pool manager to acquire containers from (required)
             verbose: Enable verbose logging
+            stream: Enable streaming output for command execution
             workdir: Working directory in container
             security_policy: Security policy to enforce
             default_timeout: Default timeout for operations
@@ -59,35 +67,22 @@ class PooledSandboxSession(BaseSession):
             **kwargs: Additional backend-specific arguments
 
         Examples:
-            Using with auto-created pool:
             ```python
-            from llm_sandbox.pool import PooledSandboxSession, PoolConfig
+            from llm_sandbox.pool import create_pool_manager, PooledSandboxSession, PoolConfig
 
-            pool_config = PoolConfig(max_pool_size=5, min_pool_size=2)
-
-            with PooledSandboxSession(
-                pool_config=pool_config,
-                lang="python",
-            ) as session:
-                result = session.run("print('Hello from pool!')")
-                print(result.stdout)
-            ```
-
-            Using with shared pool manager:
-            ```python
-            from llm_sandbox.pool import create_pool_manager, PooledSandboxSession
-
-            # Create shared pool
+            # Create a pool manager
             pool = create_pool_manager(
                 backend="docker",
-                config=PoolConfig(max_pool_size=10),
+                config=PoolConfig(max_pool_size=10, min_pool_size=2),
                 lang="python",
             )
 
-            # Multiple sessions can share the same pool
-            with PooledSandboxSession(pool_manager=pool) as session1:
-                result1 = session1.run("print('Session 1')")
+            # Use the pool in a session
+            with PooledSandboxSession(pool_manager=pool) as session:
+                result = session.run("print('Hello from pool!')")
+                print(result.stdout)
 
+            # Multiple sessions can share the same pool
             with PooledSandboxSession(pool_manager=pool) as session2:
                 result2 = session2.run("print('Session 2')")
 
@@ -96,37 +91,62 @@ class PooledSandboxSession(BaseSession):
             ```
 
         """
-        # Create session config
-        config = SessionConfig(
-            lang=SupportedLanguage(lang.upper()),
-            image=image,
-            verbose=verbose,
-            workdir=workdir,
-            security_policy=security_policy,
-            default_timeout=default_timeout,
-            execution_timeout=execution_timeout,
-            session_timeout=session_timeout,
-        )
-
-        super().__init__(config=config, **kwargs)
-
         # Pool management
-        self.backend = backend
         self._pool_manager = pool_manager
-        self._pool_config = pool_config or PoolConfig()
-        self._owns_pool = pool_manager is None
         self._pooled_container: PooledContainer | None = None
+
+        # Infer backend from pool manager
+        self.backend = self._infer_backend_from_pool()
+
+        # Session parameters (stored for creating backend session later)
+        self._verbose = verbose
+        self._stream = stream
+        self._workdir = workdir
+        self._security_policy = security_policy
+        self._default_timeout = default_timeout
+        self._execution_timeout = execution_timeout
+        self._session_timeout = session_timeout
+
+        # Extract common parameters that the backend session expects, falling back to pool defaults
+        self._lang = kwargs.pop("lang", self._pool_manager.lang)
+        self._image = kwargs.pop("image", self._pool_manager.image)
         self._session_kwargs = kwargs
 
-        # Create pool manager if not provided
-        if self._owns_pool:
-            self._pool_manager = create_pool_manager(
-                backend=backend,
-                config=self._pool_config,
-                lang=SupportedLanguage(lang.upper()),
-                image=image,
-                **kwargs,
+        # The actual backend session (created on open())
+        self._backend_session: BaseSession | None = None
+
+        # Logger for verbose output
+        self._logger = logging.getLogger(__name__)
+        if self._verbose and not self._logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
             )
+            handler.setFormatter(formatter)
+            self._logger.addHandler(handler)
+            self._logger.setLevel(logging.DEBUG)
+
+    def _infer_backend_from_pool(self) -> SandboxBackend:
+        """Infer backend type from pool manager class.
+
+        Returns:
+            SandboxBackend enum value
+
+        Raises:
+            RuntimeError: If backend cannot be determined
+
+        """
+        pool_class_name = self._pool_manager.__class__.__name__
+
+        if "Docker" in pool_class_name:
+            return SandboxBackend.DOCKER
+        if "Kubernetes" in pool_class_name:
+            return SandboxBackend.KUBERNETES
+        if "Podman" in pool_class_name:
+            return SandboxBackend.PODMAN
+
+        msg = f"Cannot infer backend from pool manager class: {pool_class_name}"
+        raise RuntimeError(msg)
 
     def open(self) -> None:
         """Open session by acquiring a container from the pool.
@@ -137,18 +157,22 @@ class PooledSandboxSession(BaseSession):
             RuntimeError: If pool manager is not initialized
 
         """
-        super().open()
-
         # Acquire container from pool
         if not self._pool_manager:
             msg = "Pool manager not initialized"
             raise RuntimeError(msg)
 
         self._pooled_container = self._pool_manager.acquire()
-        self.container = self._pooled_container.container
-        self.container_api = self._create_container_api()
 
-        self._log(f"Acquired container {self._pooled_container.container_id} from pool")
+        # Create backend-specific session connected to the pooled container
+        self._backend_session = self._create_backend_session(self._pooled_container.container_id)
+
+        # Open the backend session (this connects to the existing container)
+        if self._backend_session:
+            self._backend_session.open()
+
+        if self._verbose:
+            self._logger.info("Acquired container %s from pool", self._pooled_container.container_id)
 
     def close(self) -> None:
         """Close session and return container to pool.
@@ -156,195 +180,230 @@ class PooledSandboxSession(BaseSession):
         The container is returned to the pool for reuse unless:
         - It has been marked unhealthy
         - The pool has been closed
-        - The session owns the pool (in which case pool is closed)
         """
-        super().close()
+        # Close the backend session (but don't remove the container)
+        if self._backend_session:
+            self._backend_session.close()
+            self._backend_session = None
 
+        # Return container to pool
         if self._pooled_container and self._pool_manager:
-            self._log(f"Returning container {self._pooled_container.container_id} to pool")
+            if self._verbose:
+                self._logger.info("Returning container %s to pool", self._pooled_container.container_id)
             self._pool_manager.release(self._pooled_container)
             self._pooled_container = None
 
-        self.container = None
+    def _create_backend_session(self, container_id: str) -> Any:
+        """Create backend-specific session for the pooled container.
 
-        # Close pool if we own it
-        if self._owns_pool and self._pool_manager:
-            self._pool_manager.close()
-            self._pool_manager = None
-
-    def _create_container_api(self) -> Any:
-        """Create appropriate container API for the backend.
+        Args:
+            container_id: ID of the pooled container
 
         Returns:
-            Container API instance
+            Backend-specific session instance
 
         Raises:
-            RuntimeError: If pool manager is not initialized
+            ValueError: If 'client' parameter is passed (client is managed by pool)
+            RuntimeError: If backend is not supported
 
         """
-        if not self._pool_manager:
-            msg = "Pool manager not initialized"
-            raise RuntimeError(msg)
-
         match self.backend:
             case SandboxBackend.DOCKER:
-                from llm_sandbox.docker import DockerContainerAPI
-                from llm_sandbox.pool.docker_pool import DockerPoolManager
+                from llm_sandbox.docker import SandboxDockerSession
 
-                if not isinstance(self._pool_manager, DockerPoolManager):
-                    msg = f"Expected DockerPoolManager, got {type(self._pool_manager)}"
-                    raise TypeError(msg)
+                # Validate that pool-managed parameters are not passed
+                session_kwargs = self._session_kwargs.copy()
+                if "client" in session_kwargs:
+                    raise DuplicateClientError
 
-                return DockerContainerAPI(
+                return SandboxDockerSession(
                     client=self._pool_manager.client,
-                    stream=False,
+                    image=self._image,
+                    lang=self._lang,
+                    verbose=self._verbose,
+                    stream=self._stream,
+                    workdir=self._workdir,
+                    security_policy=self._security_policy,
+                    default_timeout=self._default_timeout,
+                    execution_timeout=self._execution_timeout,
+                    session_timeout=self._session_timeout,
+                    container_id=container_id,  # Connect to existing pooled container
+                    skip_environment_setup=True,  # Pool already set up the environment
+                    **session_kwargs,
                 )
 
             case SandboxBackend.KUBERNETES:
-                from llm_sandbox.kubernetes import KubernetesContainerAPI
-                from llm_sandbox.pool.kubernetes_pool import KubernetesPoolManager
+                from llm_sandbox.kubernetes import SandboxKubernetesSession
 
-                if not isinstance(self._pool_manager, KubernetesPoolManager):
-                    msg = f"Expected KubernetesPoolManager, got {type(self._pool_manager)}"
-                    raise TypeError(msg)
+                # Validate that pool-managed parameters are not passed
+                session_kwargs = self._session_kwargs.copy()
+                if "client" in session_kwargs:
+                    raise DuplicateClientError
 
-                return KubernetesContainerAPI(
+                namespace = session_kwargs.pop("namespace", None) or (
+                    self._pool_manager.namespace if hasattr(self._pool_manager, "namespace") else "default"
+                )
+
+                return SandboxKubernetesSession(
                     client=self._pool_manager.client,
-                    namespace=self._pool_manager.namespace,
+                    namespace=namespace,
+                    image=self._image,
+                    lang=self._lang,
+                    verbose=self._verbose,
+                    workdir=self._workdir,
+                    security_policy=self._security_policy,
+                    default_timeout=self._default_timeout,
+                    execution_timeout=self._execution_timeout,
+                    session_timeout=self._session_timeout,
+                    pod_id=container_id,  # Connect to existing pooled pod
+                    skip_environment_setup=True,
+                    **session_kwargs,
                 )
 
             case SandboxBackend.PODMAN:
-                from llm_sandbox.podman import PodmanContainerAPI
-                from llm_sandbox.pool.podman_pool import PodmanPoolManager
+                from llm_sandbox.podman import SandboxPodmanSession
 
-                if not isinstance(self._pool_manager, PodmanPoolManager):
-                    msg = f"Expected PodmanPoolManager, got {type(self._pool_manager)}"
-                    raise TypeError(msg)
+                # Validate that pool-managed parameters are not passed
+                session_kwargs = self._session_kwargs.copy()
+                if "client" in session_kwargs:
+                    raise DuplicateClientError
 
-                return PodmanContainerAPI(
+                return SandboxPodmanSession(
                     client=self._pool_manager.client,
-                    stream=False,
+                    image=self._image,
+                    lang=self._lang,
+                    verbose=self._verbose,
+                    stream=self._stream,
+                    workdir=self._workdir,
+                    security_policy=self._security_policy,
+                    default_timeout=self._default_timeout,
+                    execution_timeout=self._execution_timeout,
+                    session_timeout=self._session_timeout,
+                    container_id=container_id,  # Connect to existing pooled container
+                    skip_environment_setup=True,
+                    **session_kwargs,
                 )
 
-    def _handle_timeout(self) -> None:
-        """Handle timeout cleanup for pooled session.
+            case _:
+                msg = f"Unsupported backend: {self.backend}"
+                raise RuntimeError(msg)
 
-        For pooled sessions, we don't want to destroy the container,
-        just return it to the pool.
-        """
-        # Just close the session, which will return container to pool
-        try:
-            self.close()
-        except Exception as e:  # noqa: BLE001
-            self._log(f"Error during timeout cleanup: {e}", "error")
-
-    def _connect_to_existing_container(self, container_id: str) -> None:
-        """Not supported for pooled sessions.
-
-        Pooled sessions always acquire containers from the pool.
+    def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
+        """Run code in the pooled container.
 
         Args:
-            container_id: Container ID (ignored)
+            code: Code to execute
+            libraries: Libraries to install before execution
+            timeout: Execution timeout
+
+        Returns:
+            ConsoleOutput with execution results
 
         Raises:
-            NotImplementedError: Always raised
+            NotOpenSessionError: If session is not open
+            RuntimeError: If backend session is not initialized
 
         """
-        msg = "Pooled sessions do not support connecting to existing containers"
-        raise NotImplementedError(msg)
-
-    def environment_setup(self) -> None:
-        """Skip environment setup for pooled containers.
-
-        Pooled containers are pre-warmed during pool initialization,
-        so we don't need to set up the environment again.
-        """
-        if self.config.skip_environment_setup or self._pooled_container:
-            self._log("Skipping environment setup for pooled container", "info")
-            return
-
-        # Call parent if somehow not using pooled container
-        super().environment_setup()
-
-    def _ensure_directory_exists(self, path: str) -> None:
-        """Ensure a directory exists in the container.
-
-        Args:
-            path: Directory path to create
-
-        """
-        if not self.container_api:
-            msg = "Container API not initialized"
-            raise RuntimeError(msg)
-        self.container_api.execute_command(self.container, f"mkdir -p {path}")
-
-    def _ensure_ownership(self, paths: list[str]) -> None:
-        """Ensure proper ownership of files or directories.
-
-        Args:
-            paths: List of paths to set ownership for
-
-        """
-        # For pooled containers, ownership is already set during initialization
-
-    def _process_stream_output(self, output: Any) -> tuple[str, str]:
-        """Process streaming output from container.
-
-        Args:
-            output: Output stream from container
-
-        Returns:
-            Tuple of (stdout, stderr)
-
-        """
-        stdout_lines = []
-        stderr_lines = []
-
-        for line in output:
-            if isinstance(line, dict):
-                if "stream" in line:
-                    stdout_lines.append(line["stream"])
-                elif "error" in line:
-                    stderr_lines.append(line["error"])
-            elif isinstance(line, str):
-                stdout_lines.append(line)
-
-        return "".join(stdout_lines), "".join(stderr_lines)
-
-    def _process_non_stream_output(self, output: Any) -> tuple[str, str]:
-        """Process non-streaming output from container.
-
-        Args:
-            output: Result from container execution
-
-        Returns:
-            Tuple of (stdout, stderr)
-
-        """
-        if isinstance(output, bytes):
-            return output.decode("utf-8"), ""
-        return str(output), ""
-
-    def get_archive(self, path: str) -> tuple[Any, ...]:
-        """Get an archive of a file or directory from the container.
-
-        Args:
-            path: Path to file or directory in container
-
-        Returns:
-            Tuple containing archive data and metadata
-
-        """
-        if not self.container_api:
-            msg = "Container API not initialized"
+        if not self._backend_session:
+            msg = "Session not open - call open() first or use context manager"
             raise RuntimeError(msg)
 
-        # Check if container API has get_archive method
-        if not hasattr(self.container_api, "get_archive"):
-            msg = f"Container API {type(self.container_api)} does not support get_archive"
-            raise NotImplementedError(msg)
+        return self._backend_session.run(code, libraries=libraries, timeout=timeout)
 
-        return self.container_api.get_archive(self.container, path)  # type: ignore[attr-defined,no-any-return]
+    def execute_command(self, command: str, workdir: str | None = None) -> ConsoleOutput:
+        """Execute a command in the pooled container.
+
+        Args:
+            command: Command to execute
+            workdir: Working directory for command execution
+
+        Returns:
+            ConsoleOutput with command results
+
+        Raises:
+            RuntimeError: If backend session is not initialized
+
+        """
+        if not self._backend_session:
+            msg = "Session not open - call open() first or use context manager"
+            raise RuntimeError(msg)
+
+        return self._backend_session.execute_command(command, workdir=workdir)
+
+    def copy_to_runtime(self, src: str, dest: str) -> None:
+        """Copy file to the pooled container.
+
+        Args:
+            src: Source file path on host
+            dest: Destination path in container
+
+        Raises:
+            RuntimeError: If backend session is not initialized
+
+        """
+        if not self._backend_session:
+            msg = "Session not open - call open() first or use context manager"
+            raise RuntimeError(msg)
+
+        self._backend_session.copy_to_runtime(src, dest)
+
+    def copy_from_runtime(self, src: str, dest: str) -> None:
+        """Copy file from the pooled container.
+
+        Args:
+            src: Source path in container
+            dest: Destination file path on host
+
+        Raises:
+            RuntimeError: If backend session is not initialized
+
+        """
+        if not self._backend_session:
+            msg = "Session not open - call open() first or use context manager"
+            raise RuntimeError(msg)
+
+        self._backend_session.copy_from_runtime(src, dest)
+
+    def __enter__(self) -> "PooledSandboxSession":
+        """Enter context manager."""
+        self.open()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit context manager."""
+        self.close()
+
+    @property
+    def backend_session(self) -> Any:
+        """Get the backend session instance.
+
+        Returns:
+            The underlying backend-specific session
+
+        Raises:
+            RuntimeError: If session is not open
+
+        """
+        if self._backend_session is None:
+            msg = "Session not open - call open() first or use context manager"
+            raise RuntimeError(msg)
+        return self._backend_session
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate unknown attributes to backend session.
+
+        This allows pooled sessions to support all methods/attributes
+        of the underlying backend session.
+        """
+        if self._backend_session is None:
+            msg = f"Cannot access '{name}' - session not open"
+            raise AttributeError(msg)
+        return getattr(self._backend_session, name)
 
 
 class ArtifactPooledSandboxSession:
@@ -356,13 +415,10 @@ class ArtifactPooledSandboxSession:
 
     def __init__(
         self,
-        pool_manager: ContainerPoolManager | None = None,
-        pool_config: PoolConfig | None = None,
-        backend: SandboxBackend = SandboxBackend.DOCKER,
-        image: str | None = None,
-        lang: str = SupportedLanguage.PYTHON,
+        pool_manager: ContainerPoolManager,
         *,
         verbose: bool = False,
+        stream: bool = False,
         workdir: str = "/sandbox",
         enable_plotting: bool = True,
         security_policy: SecurityPolicy | None = None,
@@ -371,12 +427,9 @@ class ArtifactPooledSandboxSession:
         """Create a new artifact pooled sandbox session.
 
         Args:
-            pool_manager: Existing pool manager to use
-            pool_config: Pool configuration
-            backend: Container backend
-            image: Container image to use
-            lang: Programming language
+            pool_manager: Pool manager to acquire containers from (required)
             verbose: Enable verbose logging
+            stream: Enable streaming output for command execution
             workdir: Working directory
             enable_plotting: Enable plot extraction
             security_policy: Security policy
@@ -384,15 +437,19 @@ class ArtifactPooledSandboxSession:
 
         Examples:
             ```python
-            from llm_sandbox.pool import ArtifactPooledSandboxSession, PoolConfig
+            from llm_sandbox.pool import create_pool_manager, ArtifactPooledSandboxSession, PoolConfig
             import base64
-            from pathlib import Path
 
-            pool_config = PoolConfig(max_pool_size=5, min_pool_size=2)
+            # Create a pool manager
+            pool = create_pool_manager(
+                backend="docker",
+                config=PoolConfig(max_pool_size=5, min_pool_size=2),
+                lang="python",
+                libraries=["matplotlib", "numpy"],
+            )
 
             with ArtifactPooledSandboxSession(
-                pool_config=pool_config,
-                lang="python",
+                pool_manager=pool,
                 enable_plotting=True,
             ) as session:
                 code = '''
@@ -407,23 +464,22 @@ class ArtifactPooledSandboxSession:
                 plt.show()
                 '''
 
-                result = session.run(code, libraries=["matplotlib", "numpy"])
+                result = session.run(code)
 
                 # Save plots
                 for i, plot in enumerate(result.plots):
                     with open(f"plot_{i}.{plot.format.value}", "wb") as f:
                         f.write(base64.b64decode(plot.content_base64))
+
+            pool.close()
             ```
 
         """
         # Create the base pooled session
         self._session = PooledSandboxSession(
             pool_manager=pool_manager,
-            pool_config=pool_config,
-            backend=backend,
-            image=image,
-            lang=lang,
             verbose=verbose,
+            stream=stream,
             workdir=workdir,
             security_policy=security_policy,
             **kwargs,
@@ -471,9 +527,12 @@ class ArtifactPooledSandboxSession:
         from llm_sandbox.data import ExecutionResult
         from llm_sandbox.exceptions import LanguageNotSupportPlotError
 
+        # Get backend session
+        backend_session = self._session.backend_session
+
         # Check if plotting is supported
-        if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:
-            raise LanguageNotSupportPlotError(self._session.language_handler.name)
+        if self.enable_plotting and not backend_session.language_handler.is_support_plot_detection:
+            raise LanguageNotSupportPlotError(backend_session.language_handler.name)
 
         # Clear plots if requested
         if clear_plots and self.enable_plotting:
@@ -483,12 +542,12 @@ class ArtifactPooledSandboxSession:
         if timeout is not None:
             effective_timeout = timeout
         else:
-            config_timeout = self._session.config.get_execution_timeout()
+            config_timeout = backend_session.config.get_execution_timeout()
             effective_timeout = config_timeout if config_timeout is not None else 60
 
         # Delegate to language handler for artifact extraction
-        result, plots = self._session.language_handler.run_with_artifacts(
-            container=self._session,
+        result, plots = backend_session.language_handler.run_with_artifacts(
+            container=backend_session,
             code=code,
             libraries=libraries,
             enable_plotting=self.enable_plotting,

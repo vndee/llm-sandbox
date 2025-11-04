@@ -117,6 +117,7 @@ class ContainerPoolManager(ABC):
 
     def __init__(
         self,
+        client: Any,
         config: PoolConfig,
         lang: SupportedLanguage,
         image: str | None = None,
@@ -125,12 +126,14 @@ class ContainerPoolManager(ABC):
         """Initialize the container pool manager.
 
         Args:
+            client: Client to use for container creation
             config: Pool configuration
             lang: Programming language for containers
             image: Container image to use
             **session_kwargs: Additional keyword arguments for session creation
 
         """
+        self.client = client
         self.config = config
         self.lang = lang
         self.image = image
@@ -414,6 +417,13 @@ class ContainerPoolManager(ABC):
         else:
             self._pool.append(container)
             self.logger.info("Created and initialized container %s", container.container_id)
+            # Wake up any waiters since a new idle container is now available
+            try:
+                self._condition.notify()
+            except Exception:
+                # Notification best-effort; acquisition path rechecks availability
+                pass
+
             return container
         finally:
             # Close session (won't destroy container since we detached it)

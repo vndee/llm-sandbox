@@ -57,7 +57,7 @@ class PodmanPoolManager(DockerPoolManager):
             image = DefaultImage.__dict__[lang.upper()]
 
         # Initialize base pool manager (skip DockerPoolManager.__init__)
-        ContainerPoolManager.__init__(self, config, lang, image, **session_kwargs)
+        ContainerPoolManager.__init__(self, client=client, config=config, lang=lang, image=image, **session_kwargs)
 
     def _create_session_for_container(self) -> Any:
         """Create a Podman session for initializing a container.
