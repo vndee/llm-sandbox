@@ -4,7 +4,7 @@ from typing import Any
 
 from podman import PodmanClient
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.pool.config import PoolConfig
 from llm_sandbox.pool.docker_pool import DockerPoolManager
 
@@ -46,9 +46,10 @@ class PodmanPoolManager(DockerPoolManager):
         self.dockerfile = dockerfile
         self.runtime_configs = runtime_configs or {}
 
-        # Resolve image
-        if not image and not dockerfile:
-            image = DefaultImage.__dict__[lang.upper()]
+        # Resolve image using helper
+        from llm_sandbox.pool.base import resolve_default_image
+
+        image = resolve_default_image(lang, image, dockerfile)
 
         # Call parent init with proper parameters
         super().__init__(

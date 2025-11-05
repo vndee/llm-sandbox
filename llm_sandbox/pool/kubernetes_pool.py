@@ -6,7 +6,7 @@ from kubernetes import client as k8s_client
 from kubernetes.client import CoreV1Api
 from kubernetes.client.exceptions import ApiException
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.pool.base import ContainerPoolManager
 from llm_sandbox.pool.config import PoolConfig
 
@@ -55,9 +55,10 @@ class KubernetesPoolManager(ContainerPoolManager):
         self.namespace = namespace
         self.pod_manifest_template = pod_manifest
 
-        # Resolve image
-        if not image:
-            image = DefaultImage.__dict__[lang.upper()]
+        # Resolve image using helper
+        from llm_sandbox.pool.base import resolve_default_image
+
+        image = resolve_default_image(lang, image)
 
         super().__init__(client=client, config=config, lang=lang, image=image, **session_kwargs)
 

@@ -9,9 +9,28 @@ from enum import Enum
 from types import TracebackType
 from typing import Any
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.pool.config import ExhaustionStrategy, PoolConfig
 from llm_sandbox.pool.exceptions import PoolClosedError, PoolExhaustedError
+
+
+def resolve_default_image(lang: SupportedLanguage, image: str | None, dockerfile: str | None = None) -> str | None:
+    """Resolve default image for a language if not explicitly provided.
+
+    Args:
+        lang: Programming language
+        image: Explicitly provided image (None to use default)
+        dockerfile: Dockerfile path (if provided, no default image needed)
+
+    Returns:
+        Image name or None if dockerfile is provided
+
+    """
+    if image:
+        return image
+    if dockerfile:
+        return None
+    return DefaultImage.__dict__[lang.upper()]
 
 
 class ContainerState(str, Enum):
