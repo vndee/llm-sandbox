@@ -39,25 +39,28 @@ class PodmanPoolManager(DockerPoolManager):
             **session_kwargs: Additional session arguments
 
         """
-        # Initialize Podman client
+        # Initialize Podman client if not provided
         if client is None:
             client = PodmanClient()
 
-        # Set client before calling parent init to avoid docker.from_env() call
-        self.client = client
         self.dockerfile = dockerfile
         self.runtime_configs = runtime_configs or {}
 
-        # Call grandparent init to skip DockerPoolManager's client creation
-        from llm_sandbox.const import DefaultImage
-        from llm_sandbox.pool.base import ContainerPoolManager
+        # Resolve image using helper
+        from llm_sandbox.pool.base import resolve_default_image
 
-        # Resolve image
-        if not image and not dockerfile:
-            image = DefaultImage.__dict__[lang.upper()]
+        image = resolve_default_image(lang, image, dockerfile)
 
-        # Initialize base pool manager (skip DockerPoolManager.__init__)
-        ContainerPoolManager.__init__(self, client=client, config=config, lang=lang, image=image, **session_kwargs)
+        # Call parent init with proper parameters
+        super().__init__(
+            config=config,
+            lang=lang,
+            image=image,
+            dockerfile=dockerfile,
+            client=client,
+            runtime_configs=runtime_configs,
+            **session_kwargs,
+        )
 
     def _create_session_for_container(self) -> Any:
         """Create a Podman session for initializing a container.

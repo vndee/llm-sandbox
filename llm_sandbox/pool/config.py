@@ -42,13 +42,13 @@ class PoolConfig(BaseModel):
     # Timeout configuration
     idle_timeout: float | None = Field(
         default=300.0,
-        ge=0,
+        gt=0,
         description="Seconds before an idle container is recycled (None for no timeout)",
     )
 
     acquisition_timeout: float | None = Field(
         default=30.0,
-        ge=0,
+        gt=0,
         description="Seconds to wait for a container when pool is exhausted (None for no timeout, \
                         only applies to WAIT strategy)",
     )
@@ -56,13 +56,13 @@ class PoolConfig(BaseModel):
     # Health and lifecycle configuration
     health_check_interval: float = Field(
         default=60.0,
-        ge=1,
+        gt=0,
         description="Seconds between health checks for idle containers",
     )
 
     max_container_lifetime: float | None = Field(
         default=3600.0,
-        ge=0,
+        gt=0,
         description="Maximum lifetime of a container in seconds before recycling (None for no limit)",
     )
 

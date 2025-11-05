@@ -6,7 +6,7 @@ import docker
 from docker.errors import NotFound
 from docker.models.containers import Container
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.pool.base import ContainerPoolManager
 from llm_sandbox.pool.config import PoolConfig
 
@@ -41,13 +41,17 @@ class DockerPoolManager(ContainerPoolManager):
             **session_kwargs: Additional session arguments
 
         """
-        self.client = client or docker.from_env()
+        # Initialize client first if not provided
+        if client is None:
+            client = docker.from_env()
+
         self.dockerfile = dockerfile
         self.runtime_configs = runtime_configs or {}
 
-        # Resolve image
-        if not image and not dockerfile:
-            image = DefaultImage.__dict__[lang.upper()]
+        # Resolve image using helper
+        from llm_sandbox.pool.base import resolve_default_image
+
+        image = resolve_default_image(lang, image, dockerfile)
 
         super().__init__(client=client, config=config, lang=lang, image=image, **session_kwargs)
 
