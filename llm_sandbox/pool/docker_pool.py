@@ -41,7 +41,10 @@ class DockerPoolManager(ContainerPoolManager):
             **session_kwargs: Additional session arguments
 
         """
-        self.client = client or docker.from_env()
+        # Initialize client first if not provided
+        if client is None:
+            client = docker.from_env()
+
         self.dockerfile = dockerfile
         self.runtime_configs = runtime_configs or {}
 

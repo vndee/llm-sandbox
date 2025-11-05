@@ -52,7 +52,6 @@ class KubernetesPoolManager(ContainerPoolManager):
                 k8s_config.load_incluster_config()
             client = CoreV1Api()
 
-        self.client = client
         self.namespace = namespace
         self.pod_manifest_template = pod_manifest
 
@@ -60,7 +59,7 @@ class KubernetesPoolManager(ContainerPoolManager):
         if not image:
             image = DefaultImage.__dict__[lang.upper()]
 
-        super().__init__(config, lang, image, **session_kwargs)
+        super().__init__(client=client, config=config, lang=lang, image=image, **session_kwargs)
 
     def _create_session_for_container(self) -> Any:
         """Create a Kubernetes session for initializing a pod.
@@ -148,15 +147,13 @@ class KubernetesPoolManager(ContainerPoolManager):
                     if not status.ready:
                         return False
 
+            return True
+
         except ApiException as e:
             if e.status == NOT_FOUND_ERROR_CODE:
                 return False
             self.logger.exception("Health check error")
             return False
-
         except Exception:
             self.logger.exception("Health check error")
             return False
-
-        else:
-            return True

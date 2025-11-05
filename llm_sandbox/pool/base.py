@@ -109,10 +109,41 @@ class ContainerPoolManager(ABC):
     containers with thread-safe acquisition/release, health checking,
     and automatic recycling.
 
+    Thread Safety:
+        All public methods (acquire, release, close, get_stats) are thread-safe
+        and can be called concurrently from multiple threads. The pool uses a
+        reentrant lock (RLock) and condition variable for synchronization.
+
+        Background threads for health checking and pre-warming run independently
+        and coordinate with the main pool operations through the same lock.
+
     Subclasses must implement backend-specific operations:
-    - _create_container_impl()
+    - _create_session_for_container()
     - _destroy_container_impl()
+    - _get_container_id()
     - _health_check_impl()
+
+    Example:
+        ```python
+        from llm_sandbox.pool import create_pool_manager, PoolConfig
+        from llm_sandbox.const import SandboxBackend, SupportedLanguage
+
+        # Create pool manager
+        pool = create_pool_manager(
+            backend=SandboxBackend.DOCKER,
+            config=PoolConfig(max_pool_size=10, min_pool_size=3),
+            lang=SupportedLanguage.PYTHON,
+        )
+
+        # Use pool in multiple threads
+        with pool:
+            container = pool.acquire()
+            try:
+                # Use container...
+                pass
+            finally:
+                pool.release(container)
+        ```
     """
 
     def __init__(
@@ -387,6 +418,12 @@ class ContainerPoolManager(ABC):
         (venv creation, pip upgrades, go mod init, library installation, etc.) automatically.
 
         Returns:
+            PooledContainer: A new pooled container ready for use, added to the pool
+
+        Raises:
+            Exception: If container creation or initialization fails
+
+        """
             A new pooled container ready for use
 
         """
@@ -418,11 +455,7 @@ class ContainerPoolManager(ABC):
             self._pool.append(container)
             self.logger.info("Created and initialized container %s", container.container_id)
             # Wake up any waiters since a new idle container is now available
-            try:
-                self._condition.notify()
-            except Exception:
-                # Notification best-effort; acquisition path rechecks availability
-                pass
+            self._condition.notify()
 
             return container
         finally:
@@ -465,35 +498,44 @@ class ContainerPoolManager(ABC):
 
     def _perform_health_checks(self) -> None:
         """Perform health checks on idle containers."""
+        # First, collect containers to check (with short lock)
+        containers_to_check = []
         with self._lock:
             if self._closed:
                 return
+            
+            # Copy idle containers for checking
+            containers_to_check = [
+                container for container in self._pool 
+                if container.state == ContainerState.IDLE
+            ]
+        
+        # Perform health checks without holding lock
+        unhealthy = []
+        for container in containers_to_check:
+            # Check idle timeout
+            if self.config.idle_timeout and container.get_idle_time() > self.config.idle_timeout:
+                self.logger.info(
+                    "Container %s exceeded idle timeout (%.1fs), recycling",
+                    container.container_id,
+                    container.get_idle_time(),
+                )
+                unhealthy.append(container)
+                continue
 
-            unhealthy = []
-            for container in self._pool:
-                if container.state == ContainerState.IDLE:
-                    # Check idle timeout
-                    if self.config.idle_timeout and container.get_idle_time() > self.config.idle_timeout:
-                        self.logger.info(
-                            "Container %s exceeded idle timeout (%.1fs), recycling",
-                            container.container_id,
-                            container.get_idle_time(),
-                        )
-                        unhealthy.append(container)
-                        continue
-
-                    # Perform health check
-                    if not self._health_check_impl(container.container):
-                        self.logger.warning("Container %s failed health check", container.container_id)
-                        container.mark_unhealthy()
-                        unhealthy.append(container)
-
-            # Remove unhealthy containers
-            for container in unhealthy:
-                self._destroy_container(container)
-
-            # Ensure minimum pool size
-            if unhealthy:
+            # Perform health check
+            if not self._health_check_impl(container.container):
+                self.logger.warning("Container %s failed health check", container.container_id)
+                unhealthy.append(container)
+        
+        # Remove unhealthy containers (with lock)
+        if unhealthy:
+            with self._lock:
+                for container in unhealthy:
+                    container.mark_unhealthy()
+                    self._destroy_container(container)
+                
+                # Ensure minimum pool size
                 self._ensure_min_pool_size()
 
     def _prewarming_loop(self) -> None:
