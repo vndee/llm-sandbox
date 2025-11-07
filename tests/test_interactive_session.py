@@ -220,7 +220,7 @@ def test_interactive_session_state_with_docker() -> None:
         assert "value" in magic.stdout
 
         pwd_result = session.run("%pwd")
-        assert "/sandbox" in pwd_result.stdout
+        assert "/sandbox" in pwd_result.stdout, f"Unexpected pwd output: {pwd_result.stdout!r}"
 
         whoami = session.run("user = !whoami\nprint('\\n'.join(user))")
-        assert "root" in whoami.stdout
+        assert "root" in whoami.stdout, f"Unexpected whoami output: {whoami.stdout!r}"
