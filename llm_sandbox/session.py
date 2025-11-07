@@ -10,6 +10,14 @@ from .const import SandboxBackend, SupportedLanguage
 from .core.session_base import BaseSession
 from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
+from .interactive import InteractiveSandboxSession
+
+__all__ = [
+    "ArtifactSandboxSession",
+    "InteractiveSandboxSession",
+    "SandboxSession",
+    "create_session",
+]
 
 
 def _check_dependency(backend: SandboxBackend) -> None:

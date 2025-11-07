@@ -205,6 +205,26 @@ print(paste("Average Score:", avg_score))
     )
 ```
 
+### Interactive Sessions
+
+For notebook-style workflows you can use `InteractiveSandboxSession`, which keeps the Python interpreter state across multiple `run` calls.
+
+```python
+from llm_sandbox import InteractiveSandboxSession
+
+with InteractiveSandboxSession(
+    lang="python",
+    kernel_type="ipython",
+    history_size=200,
+    enable_magic=True,
+) as session:
+    session.run("value = 21 * 2")
+    result = session.run("print(f'Result: {value}')")
+    print(result.stdout)  # -> Result: 42
+```
+
+The interactive session currently targets the Docker backend and Python language. It provisions the required IPython and `cloudpickle` packages inside the container on-the-fly, honours the configured memory limit, and keeps a bounded execution history so you can resume stateful experiments safely.
+
 ### Capturing Plots and Visualizations
 
 #### Python Plots

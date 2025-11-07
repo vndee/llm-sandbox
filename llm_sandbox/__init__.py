@@ -5,7 +5,7 @@ from .core.config import SessionConfig
 from .data import ConsoleOutput, ExecutionResult, FileType, PlotOutput
 from .exceptions import ContainerError, ResourceError, SandboxError, SecurityError, ValidationError
 from .security import SecurityIssueSeverity, SecurityPattern, SecurityPolicy
-from .session import ArtifactSandboxSession, SandboxSession, create_session
+from .session import ArtifactSandboxSession, InteractiveSandboxSession, SandboxSession, create_session
 
 __all__ = [
     "ArtifactSandboxSession",
@@ -14,6 +14,7 @@ __all__ = [
     "DefaultImage",
     "ExecutionResult",
     "FileType",
+    "InteractiveSandboxSession",
     "PlotOutput",
     "ResourceError",
     "SandboxBackend",
