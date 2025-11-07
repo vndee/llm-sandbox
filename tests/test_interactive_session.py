@@ -218,3 +218,9 @@ def test_interactive_session_state_with_docker() -> None:
 
         magic = session.run("%who")
         assert "value" in magic.stdout
+
+        pwd_result = session.run("%pwd")
+        assert "/sandbox" in pwd_result.stdout
+
+        whoami = session.run("user = !whoami\nprint('\\n'.join(user))")
+        assert "root" in whoami.stdout
