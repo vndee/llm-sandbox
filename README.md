@@ -223,7 +223,7 @@ with InteractiveSandboxSession(
     print(result.stdout)  # -> Result: 42
 ```
 
-The interactive session currently targets the Docker backend and Python language. It provisions the required IPython and `cloudpickle` packages inside the container on-the-fly, honours the configured memory limit, and keeps a bounded execution history so you can resume stateful experiments safely.
+Interactive sessions currently target the Docker backend and Python language. They spin up a long-running IPython kernel inside the sandbox, so each `run()` behaves like a notebook cell—state, imports, and magic commands stay alive until the context manager exits, without any extra networking or manual serialization.
 
 ### Capturing Plots and Visualizations
 
