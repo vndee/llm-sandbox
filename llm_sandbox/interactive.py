@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import tempfile
 import textwrap
 import time
@@ -208,10 +209,13 @@ class InteractiveSandboxSession(SandboxDockerSession):
         if self.settings.enable_magic:
             args.append("--enable-magic")
 
-        launch_command = (
-            f"rm -f {self._ready_file} {self._pid_file} && "
-            f"nohup {' '.join(args)} > {self._log_file} 2>&1 & echo $! > {self._pid_file}"
+        runner_cmd = " ".join(shlex.quote(arg) for arg in args)
+        inner_command = (
+            f"rm -f {self._ready_file} {self._pid_file}; "
+            f"nohup {runner_cmd} > {self._log_file} 2>&1 & "
+            f"echo $! > {self._pid_file}"
         )
+        launch_command = f"/bin/sh -c {shlex.quote(inner_command)}"
         result = self.execute_command(launch_command)
         if result.exit_code:
             msg = "Failed to start interactive runtime"
