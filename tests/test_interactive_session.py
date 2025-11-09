@@ -32,6 +32,8 @@ def _stub_docker_session(self: InteractiveSandboxSession, *args: Any, **kwargs: 
     self.is_open = True
     self.using_existing_container = False
     self.verbose = False
+    self._python_env_dir = "/sandbox/.sandbox-venv"
+    self._python_pip_cache_dir = "/sandbox/.sandbox-pip-cache"
 
 
 def test_interactive_session_requires_docker_backend() -> None:

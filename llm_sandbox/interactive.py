@@ -26,9 +26,6 @@ from llm_sandbox.exceptions import (
 from .const import StrEnum
 from .exceptions import UnsupportedBackendError
 
-PYTHON_EXECUTABLE = "/tmp/venv/bin/python"
-PYTHON_PIP_EXECUTABLE = "/tmp/venv/bin/pip"
-PIP_CACHE_DIR = "/tmp/pip_cache"
 RUNTIME_START_TIMEOUT = 30.0
 RESULT_POLL_INTERVAL = 0.2
 
@@ -110,6 +107,9 @@ class InteractiveSandboxSession(SandboxDockerSession):
         self._pid_file = f"{self._channel_dir}/runner.pid"
         self._log_file = f"{self._channel_dir}/runner.log"
         self._runner_ready = False
+        self._python_exec_path = self.python_executable_path
+        self._pip_exec_path = self.pip_executable_path
+        self._pip_cache_dir = self.pip_cache_dir_path
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -169,8 +169,8 @@ class InteractiveSandboxSession(SandboxDockerSession):
     def _ensure_runtime_dependencies(self) -> None:
         packages = ["ipython"]
         install_command = (
-            f"{PYTHON_PIP_EXECUTABLE} install --quiet --disable-pip-version-check "
-            f"--cache-dir {PIP_CACHE_DIR} {' '.join(packages)}"
+            f"{self._pip_exec_path} install --quiet --disable-pip-version-check "
+            f"--cache-dir {self._pip_cache_dir} {' '.join(packages)}"
         )
         result = self.execute_command(install_command)
         if result.exit_code:
@@ -195,7 +195,7 @@ class InteractiveSandboxSession(SandboxDockerSession):
 
     def _start_runner_process(self) -> None:
         args = [
-            PYTHON_EXECUTABLE,
+            self._python_exec_path,
             self._runner_script_path,
             "--channel-dir",
             self._channel_dir,
