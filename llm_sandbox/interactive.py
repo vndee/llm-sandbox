@@ -34,6 +34,8 @@ class KernelType(StrEnum):
     """Supported kernel types for interactive sessions."""
 
     IPYTHON = "ipython"
+
+
 @dataclass(slots=True)
 class InteractiveSettings:
     """Configuration values for interactive execution."""
@@ -41,7 +43,6 @@ class InteractiveSettings:
     kernel_type: KernelType = KernelType.IPYTHON
     max_memory: str | None = None
     history_size: int = 1000
-    enable_magic: bool = True
     timeout: float | None = 300.0
     poll_interval: float = 0.1
 
@@ -66,7 +67,6 @@ class InteractiveSandboxSession(SandboxDockerSession):
         kernel_type: KernelType | str = KernelType.IPYTHON,
         max_memory: str | None = "1GB",
         history_size: int = 1000,
-        enable_magic: bool = True,
         timeout: float | None = 300.0,
         runtime_configs: dict[str, Any] | None = None,
         **kwargs: Any,
@@ -91,7 +91,6 @@ class InteractiveSandboxSession(SandboxDockerSession):
             kernel_type=kernel_enum,
             max_memory=max_memory,
             history_size=history_size,
-            enable_magic=enable_magic,
             timeout=timeout,
         )
 
@@ -206,9 +205,6 @@ class InteractiveSandboxSession(SandboxDockerSession):
             "--ready-file",
             self._ready_file,
         ]
-        if self.settings.enable_magic:
-            args.append("--enable-magic")
-
         runner_cmd = " ".join(shlex.quote(arg) for arg in args)
         inner_command = (
             f"rm -f {self._ready_file} {self._pid_file}; "
@@ -320,7 +316,6 @@ _INTERACTIVE_RUNNER_SCRIPT = textwrap.dedent(
         parser.add_argument("--history-size", type=int, default=1000)
         parser.add_argument("--poll-interval", type=float, default=0.1)
         parser.add_argument("--ready-file", required=True)
-        parser.add_argument("--enable-magic", action="store_true")
         args = parser.parse_args()
 
         base_dir = Path(args.channel_dir)
@@ -361,6 +356,10 @@ _INTERACTIVE_RUNNER_SCRIPT = textwrap.dedent(
                     success = bool(result.success)
                 except SystemExit:
                     raise
+                except KeyboardInterrupt:
+                    success = False
+                    if not stderr_buffer.getvalue():
+                        stderr_buffer.write("KeyboardInterrupt\\n")
                 except Exception:  # noqa: BLE001
                     success = False
                     traceback.print_exc(file=stderr_buffer)

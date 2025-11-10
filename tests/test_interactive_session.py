@@ -112,7 +112,7 @@ def test_run_times_out_when_result_missing() -> None:
     session._interrupt_runner.assert_called_once()
 
 
-def _start_local_runner(tmp_path: Path, enable_magic: bool = True) -> tuple[Path, subprocess.Popen[bytes]]:
+def _start_local_runner(tmp_path: Path) -> tuple[Path, subprocess.Popen[bytes]]:
     runner_path = tmp_path / "runner.py"
     runner_path.write_text(_INTERACTIVE_RUNNER_SCRIPT, encoding="utf-8")
 
@@ -132,8 +132,6 @@ def _start_local_runner(tmp_path: Path, enable_magic: bool = True) -> tuple[Path
         "--ready-file",
         str(ready_file),
     ]
-    if enable_magic:
-        command.append("--enable-magic")
 
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # noqa: S603
 

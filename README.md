@@ -216,7 +216,6 @@ with InteractiveSandboxSession(
     lang="python",
     kernel_type="ipython",
     history_size=200,
-    enable_magic=True,
 ) as session:
     session.run("value = 21 * 2")
     result = session.run("print(f'Result: {value}')")
