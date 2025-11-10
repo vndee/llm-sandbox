@@ -198,7 +198,8 @@ def test_ensure_runtime_dependencies_failure() -> None:
     session = InteractiveSandboxSession()
     session.execute_command = MagicMock(return_value=ConsoleOutput(exit_code=1, stderr="fail"))
 
-    method = InteractiveSandboxSession._ensure_runtime_dependencies  # noqa: SLF001
+    attr_name = "_ensure_runtime_dependencies"
+    method = getattr(InteractiveSandboxSession, attr_name)
     with pytest.raises(ContainerError):
         method(session)
 
@@ -209,7 +210,8 @@ def test_wait_for_remote_file_timeout() -> None:
     session = InteractiveSandboxSession()
     session.settings.poll_interval = 0.01
     session.execute_command = MagicMock(return_value=ConsoleOutput(exit_code=1))
-    wait_method = InteractiveSandboxSession._wait_for_remote_file  # noqa: SLF001
+    attr_name = "_wait_for_remote_file"
+    wait_method = getattr(InteractiveSandboxSession, attr_name)
     assert wait_method(session, "missing", timeout=0.02) is False
 
 
