@@ -65,6 +65,7 @@ nav:
   - Getting Started: getting-started.md
   - User Guide:
       - Configuration: configuration.md
+      - Container Pooling: container-pooling.md
       - Security: security.md
       - Container Backends: backends.md
       - Supported Languages: languages.md

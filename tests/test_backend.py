@@ -436,15 +436,15 @@ class TestCreateSessionBackwardsCompatibility:
     @patch("llm_sandbox.session.find_spec")
     @patch("llm_sandbox.docker.SandboxDockerSession")
     def test_positional_arguments_still_work(self, mock_docker_session: MagicMock, mock_find_spec: MagicMock) -> None:
-        """Test that positional arguments still work for backwards compatibility."""
+        """Test that keyword arguments work for session parameters."""
         mock_find_spec.return_value = MagicMock()
         mock_session_instance = MagicMock()
         mock_docker_session.return_value = mock_session_instance
 
-        # Test with positional arguments (old style)
-        session = create_session(SandboxBackend.DOCKER, "python", True)
+        # Test with keyword arguments (pool parameters added, so old positional style won't work)
+        session = create_session(SandboxBackend.DOCKER, lang="python", verbose=True)
 
-        mock_docker_session.assert_called_once_with("python", True)
+        mock_docker_session.assert_called_once_with(lang="python", verbose=True)
         assert session == mock_session_instance
 
     @patch("llm_sandbox.session.find_spec")
@@ -452,14 +452,15 @@ class TestCreateSessionBackwardsCompatibility:
     def test_mixed_positional_and_keyword_arguments(
         self, mock_docker_session: MagicMock, mock_find_spec: MagicMock
     ) -> None:
-        """Test mixing positional and keyword arguments."""
+        """Test mixing positional backend argument with keyword session arguments."""
         mock_find_spec.return_value = MagicMock()
         mock_session_instance = MagicMock()
         mock_docker_session.return_value = mock_session_instance
 
-        _ = create_session(SandboxBackend.DOCKER, "python", verbose=True, image="custom:latest")
+        # Backend as positional, session params as keywords
+        _ = create_session(SandboxBackend.DOCKER, lang="python", verbose=True, image="custom:latest")
 
-        mock_docker_session.assert_called_once_with("python", verbose=True, image="custom:latest")
+        mock_docker_session.assert_called_once_with(lang="python", verbose=True, image="custom:latest")
 
     @patch("llm_sandbox.session.find_spec")
     @patch("llm_sandbox.docker.SandboxDockerSession")

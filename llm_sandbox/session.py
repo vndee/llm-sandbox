@@ -10,6 +10,8 @@ from .const import SandboxBackend, SupportedLanguage
 from .core.session_base import BaseSession
 from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
+from .pool.base import ContainerPoolManager
+from .pool.session import PooledSandboxSession
 
 
 def _check_dependency(backend: SandboxBackend) -> None:
@@ -27,9 +29,10 @@ def _check_dependency(backend: SandboxBackend) -> None:
 
 def create_session(
     backend: SandboxBackend = SandboxBackend.DOCKER,
+    pool: ContainerPoolManager | None = None,
     *args: Any,
     **kwargs: Any,
-) -> BaseSession:
+) -> BaseSession | PooledSandboxSession:
     r"""Create a new sandbox session for executing code in an isolated environment.
 
     This function creates a sandbox session that supports multiple programming languages
@@ -42,6 +45,9 @@ def create_session(
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
+        pool (ContainerPoolManager | None): Pool manager to use for container pooling.
+            If provided, containers are acquired from the pool instead of being created new.
+            Create a pool manager using `create_pool_manager()` from llm_sandbox.pool.
         *args: Additional positional arguments passed to the session constructor
         **kwargs: Additional keyword arguments passed to the session constructor.
                 Common options include:
@@ -59,6 +65,31 @@ def create_session(
         UnsupportedBackendError: If the chosen backend is not supported
 
     Examples:
+        Using container pooling for improved performance:
+        ```python
+        from llm_sandbox import SandboxSession
+        from llm_sandbox.pool import create_pool_manager, PoolConfig
+
+        # Create a pool manager
+        pool = create_pool_manager(
+            backend="docker",
+            config=PoolConfig(max_pool_size=10, min_pool_size=3),
+            lang="python",
+        )
+
+        # Use pooled session
+        with SandboxSession(pool=pool, lang="python") as session:
+            result = session.run("print('Hello from pool!')")
+            print(result.stdout)
+
+        # Multiple sessions can share the same pool
+        with SandboxSession(pool=pool, lang="python") as session2:
+            result2 = session2.run("print('Session 2')")
+
+        # Clean up pool when done
+        pool.close()
+        ```
+
         Connect to existing Docker container:
         ```python
         # Assumes you have a running container with ID 'abc123...'
@@ -191,7 +222,16 @@ def create_session(
         ```
 
     """
-    # Check if required dependency is installed
+    # Use pooled session if pool manager is provided
+    if pool is not None:
+        from llm_sandbox.pool.session import PooledSandboxSession
+
+        return PooledSandboxSession(
+            pool_manager=pool,
+            **kwargs,
+        )
+
+    # Check if required dependency is installed for non-pooled sessions
     _check_dependency(backend)
 
     # Create the appropriate session based on backend
@@ -370,7 +410,7 @@ class ArtifactSandboxSession:
 
         """
         # Create the base session
-        self._session: BaseSession = create_session(
+        self._session: BaseSession | PooledSandboxSession = create_session(
             backend=backend,
             image=image,
             dockerfile=dockerfile,
