@@ -116,7 +116,11 @@ class InteractiveSandboxSession(SandboxDockerSession):
     def open(self) -> None:
         """Open interactive session and prepare runtime assets."""
         super().open()
-        self._bootstrap_runtime()
+        try:
+            self._bootstrap_runtime()
+        except Exception:
+            super().close()
+            raise
 
     def close(self) -> None:
         """Close the interactive session."""
