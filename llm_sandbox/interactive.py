@@ -50,6 +50,9 @@ class InteractiveSettings:
         if self.history_size < 0:
             msg = "history_size must be non-negative"
             raise ValueError(msg)
+        if self.poll_interval <= 0:
+            msg = "poll_interval must be positive"
+            raise ValueError(msg)
 
 
 class InteractiveSandboxSession(SandboxDockerSession):
