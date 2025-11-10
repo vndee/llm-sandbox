@@ -1,4 +1,3 @@
-# ruff: noqa: SLF001
 """Tests for the InteractiveSandboxSession."""
 
 import json
@@ -52,14 +51,14 @@ def test_interactive_session_requires_python_language() -> None:
 def test_run_executes_code_and_returns_output() -> None:
     """Run should deliver stdout/stderr from the persistent interpreter."""
     session = InteractiveSandboxSession(kernel_type=KernelType.IPYTHON)
-    session._commands_dir = "/sandbox/.interactive/commands"
-    session._results_dir = "/sandbox/.interactive/results"
-    session._runner_ready = True
+    session._commands_dir = "/sandbox/.interactive/commands"  # noqa: SLF001
+    session._results_dir = "/sandbox/.interactive/results"  # noqa: SLF001
+    session._runner_ready = True  # noqa: SLF001
     session.settings.timeout = 2
     session.settings.poll_interval = 0.01
 
     session.install = MagicMock()
-    session._check_session_timeout = MagicMock()
+    session._check_session_timeout = MagicMock()  # noqa: SLF001
 
     def fake_copy_from_runtime(src: str, dest: str) -> None:
         req_id = Path(src).stem.split("-")[-1]
@@ -88,16 +87,16 @@ def test_run_executes_code_and_returns_output() -> None:
 def test_run_times_out_when_result_missing() -> None:
     """Run should raise SandboxTimeoutError when the result never arrives."""
     session = InteractiveSandboxSession(kernel_type=KernelType.IPYTHON, timeout=0.2)
-    session._commands_dir = "/sandbox/.interactive/commands"
-    session._results_dir = "/sandbox/.interactive/results"
-    session._runner_ready = True
+    session._commands_dir = "/sandbox/.interactive/commands"  # noqa: SLF001
+    session._results_dir = "/sandbox/.interactive/results"  # noqa: SLF001
+    session._runner_ready = True  # noqa: SLF001
     session.settings.poll_interval = 0.01
 
     session.install = MagicMock()
-    session._check_session_timeout = MagicMock()
+    session._check_session_timeout = MagicMock()  # noqa: SLF001
     session.copy_to_runtime = MagicMock()
     session.copy_from_runtime = MagicMock()
-    session._interrupt_runner = MagicMock()
+    session._interrupt_runner = MagicMock()  # noqa: SLF001
 
     def fake_execute_command(command: str, **_: Any) -> ConsoleOutput:
         if command.startswith("test -f"):
@@ -109,7 +108,7 @@ def test_run_times_out_when_result_missing() -> None:
     with pytest.raises(SandboxTimeoutError):
         session.run("value = 1")
 
-    session._interrupt_runner.assert_called_once()
+    session._interrupt_runner.assert_called_once()  # noqa: SLF001
 
 
 def _start_local_runner(tmp_path: Path) -> tuple[Path, subprocess.Popen[bytes]]:
