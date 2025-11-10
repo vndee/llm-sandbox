@@ -33,10 +33,7 @@ RESULT_POLL_INTERVAL = 0.2
 class KernelType(StrEnum):
     """Supported kernel types for interactive sessions."""
 
-    STANDARD = "standard"
     IPYTHON = "ipython"
-
-
 @dataclass(slots=True)
 class InteractiveSettings:
     """Configuration values for interactive execution."""
