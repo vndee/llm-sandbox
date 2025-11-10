@@ -38,7 +38,16 @@ class KernelType(StrEnum):
 
 @dataclass(slots=True)
 class InteractiveSettings:
-    """Configuration values for interactive execution."""
+    """Configuration for interactive execution.
+
+    Attributes:
+        kernel_type: Kernel backend used for execution (default: ``KernelType.IPYTHON``).
+        max_memory: Optional memory limit passed to the runtime backend.
+        history_size: Number of cached execution entries retained in the kernel (default: 1000).
+        timeout: Default per-cell timeout in seconds; ``None`` means no timeout (default: 300).
+        poll_interval: Interval in seconds for polling runner status files (default: 0.1).
+
+    """
 
     kernel_type: KernelType = KernelType.IPYTHON
     max_memory: str | None = None

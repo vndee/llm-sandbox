@@ -137,7 +137,7 @@ def _start_local_runner(tmp_path: Path) -> tuple[Path, subprocess.Popen[bytes]]:
     deadline = time.time() + 5
     while time.time() < deadline:
         if proc.poll() is not None:
-            stdout, stderr = proc.communicate()
+            _stdout, stderr = proc.communicate()
             stderr_text = stderr.decode("utf-8", "ignore")
             message = f"Runner exited early: {stderr_text}"
             raise RuntimeError(message)
@@ -146,7 +146,7 @@ def _start_local_runner(tmp_path: Path) -> tuple[Path, subprocess.Popen[bytes]]:
         time.sleep(0.05)
     else:
         proc.kill()
-        stdout, stderr = proc.communicate()
+        _stdout, stderr = proc.communicate()
         stderr_text = stderr.decode("utf-8", "ignore")
         message = f"Runner did not start: {stderr_text}"
         raise TimeoutError(message)
