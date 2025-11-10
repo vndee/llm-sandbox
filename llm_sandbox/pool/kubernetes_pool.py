@@ -6,7 +6,7 @@ from kubernetes import client as k8s_client
 from kubernetes.client import CoreV1Api
 from kubernetes.client.exceptions import ApiException
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.pool.base import ContainerPoolManager
 from llm_sandbox.pool.config import PoolConfig
 
@@ -52,15 +52,15 @@ class KubernetesPoolManager(ContainerPoolManager):
                 k8s_config.load_incluster_config()
             client = CoreV1Api()
 
-        self.client = client
         self.namespace = namespace
         self.pod_manifest_template = pod_manifest
 
-        # Resolve image
-        if not image:
-            image = DefaultImage.__dict__[lang.upper()]
+        # Resolve image using helper
+        from llm_sandbox.pool.base import resolve_default_image
 
-        super().__init__(config, lang, image, **session_kwargs)
+        image = resolve_default_image(lang, image)
+
+        super().__init__(client=client, config=config, lang=lang, image=image, **session_kwargs)
 
     def _create_session_for_container(self) -> Any:
         """Create a Kubernetes session for initializing a pod.
@@ -148,15 +148,13 @@ class KubernetesPoolManager(ContainerPoolManager):
                     if not status.ready:
                         return False
 
+            return True
+
         except ApiException as e:
             if e.status == NOT_FOUND_ERROR_CODE:
                 return False
             self.logger.exception("Health check error")
             return False
-
         except Exception:
             self.logger.exception("Health check error")
             return False
-
-        else:
-            return True
