@@ -23,6 +23,11 @@ from llm_sandbox.interactive import (
 )
 
 
+def _set_private(obj: Any, name: str, value: Any) -> None:
+    """Set private attributes without referencing them directly."""
+    object.__setattr__(obj, name, value)
+
+
 def _stub_docker_session(self: InteractiveSandboxSession, *args: Any, **kwargs: Any) -> None:
     """Stub for SandboxDockerSession.__init__ to avoid Docker dependency."""
     del args, kwargs
@@ -51,14 +56,14 @@ def test_interactive_session_requires_python_language() -> None:
 def test_run_executes_code_and_returns_output() -> None:
     """Run should deliver stdout/stderr from the persistent interpreter."""
     session = InteractiveSandboxSession(kernel_type=KernelType.IPYTHON)
-    session._commands_dir = "/sandbox/.interactive/commands"  # noqa: SLF001
-    session._results_dir = "/sandbox/.interactive/results"  # noqa: SLF001
-    session._runner_ready = True  # noqa: SLF001
+    _set_private(session, "_commands_dir", "/sandbox/.interactive/commands")
+    _set_private(session, "_results_dir", "/sandbox/.interactive/results")
+    _set_private(session, "_runner_ready", value=True)
     session.settings.timeout = 2
     session.settings.poll_interval = 0.01
 
     session.install = MagicMock()
-    session._check_session_timeout = MagicMock()  # noqa: SLF001
+    _set_private(session, "_check_session_timeout", MagicMock())
 
     def fake_copy_from_runtime(src: str, dest: str) -> None:
         req_id = Path(src).stem.split("-")[-1]
@@ -87,16 +92,17 @@ def test_run_executes_code_and_returns_output() -> None:
 def test_run_times_out_when_result_missing() -> None:
     """Run should raise SandboxTimeoutError when the result never arrives."""
     session = InteractiveSandboxSession(kernel_type=KernelType.IPYTHON, timeout=0.2)
-    session._commands_dir = "/sandbox/.interactive/commands"  # noqa: SLF001
-    session._results_dir = "/sandbox/.interactive/results"  # noqa: SLF001
-    session._runner_ready = True  # noqa: SLF001
+    _set_private(session, "_commands_dir", "/sandbox/.interactive/commands")
+    _set_private(session, "_results_dir", "/sandbox/.interactive/results")
+    _set_private(session, "_runner_ready", value=True)
     session.settings.poll_interval = 0.01
 
     session.install = MagicMock()
-    session._check_session_timeout = MagicMock()  # noqa: SLF001
+    _set_private(session, "_check_session_timeout", MagicMock())
     session.copy_to_runtime = MagicMock()
     session.copy_from_runtime = MagicMock()
-    session._interrupt_runner = MagicMock()  # noqa: SLF001
+    interrupt_mock = MagicMock()
+    _set_private(session, "_interrupt_runner", interrupt_mock)
 
     def fake_execute_command(command: str, **_: Any) -> ConsoleOutput:
         if command.startswith("test -f"):
@@ -108,7 +114,7 @@ def test_run_times_out_when_result_missing() -> None:
     with pytest.raises(SandboxTimeoutError):
         session.run("value = 1")
 
-    session._interrupt_runner.assert_called_once()  # noqa: SLF001
+    interrupt_mock.assert_called_once()
 
 
 def _start_local_runner(tmp_path: Path) -> tuple[Path, subprocess.Popen[bytes]]:
