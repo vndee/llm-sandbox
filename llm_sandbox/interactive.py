@@ -123,7 +123,12 @@ class InteractiveSandboxSession(SandboxDockerSession):
     # Lifecycle
     # ------------------------------------------------------------------ #
     def open(self) -> None:
-        """Open interactive session and prepare runtime assets."""
+        """Open interactive session and prepare runtime assets.
+
+        Raises:
+            ContainerError: If runtime dependencies cannot be installed or runner fails to start
+
+        """
         super().open()
         try:
             self._bootstrap_runtime()
@@ -140,7 +145,22 @@ class InteractiveSandboxSession(SandboxDockerSession):
     # Execution
     # ------------------------------------------------------------------ #
     def run(self, code: str, libraries: list[str] | None = None, timeout: float | None = None) -> ConsoleOutput:
-        """Execute code in the persistent interpreter context."""
+        """Execute code in the persistent interpreter context.
+
+        Args:
+            code: The Python code to execute
+            libraries: Optional list of libraries to install before execution
+            timeout: Maximum execution time in seconds
+
+        Returns:
+            ConsoleOutput containing stdout, stderr, and exit code
+
+        Raises:
+            NotOpenSessionError: If the session is not open
+            ContainerError: If the interactive runtime is not ready
+            SandboxTimeoutError: If execution exceeds timeout
+
+        """
         if not self.container or not self.is_open:
             raise NotOpenSessionError
 
