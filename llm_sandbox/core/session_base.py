@@ -26,6 +26,13 @@ from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
 PYTHON_VENV_DIR_NAME = ".sandbox-venv"
 PYTHON_PIP_CACHE_DIR_NAME = ".sandbox-pip-cache"
 
+# Backwards-compatible constants for existing tests and consumers.
+PYTHON_VENV_DIR = "/tmp/venv"
+PYTHON_PIP_CACHE_DIR = "/tmp/pip_cache"
+PYTHON_CREATE_VENV_COMMAND = f"python -m venv --system-site-packages {PYTHON_VENV_DIR}"
+PYTHON_CREATE_PIP_CACHE_COMMAND = f"mkdir -p {PYTHON_PIP_CACHE_DIR}"
+PYTHON_UPGRADE_PIP_COMMAND = f"{PYTHON_VENV_DIR}/bin/pip install --upgrade pip --cache-dir {PYTHON_PIP_CACHE_DIR}"
+
 GO_CREATE_MODULE_COMMAND = "go mod init sandbox"
 GO_TIDY_MODULE_COMMAND = "go mod tidy"
 

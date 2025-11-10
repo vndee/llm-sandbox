@@ -11,7 +11,7 @@ import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
@@ -279,7 +279,7 @@ class InteractiveSandboxSession(SandboxDockerSession):
         try:
             self.copy_from_runtime(remote_path, local_path)
             with Path(local_path).open("r", encoding="utf-8") as result_file:
-                return json.load(result_file)
+                return cast("dict[str, Any]", json.load(result_file))
         finally:
             Path(local_path).unlink(missing_ok=True)
 
