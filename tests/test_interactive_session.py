@@ -15,7 +15,12 @@ import pytest
 from llm_sandbox.const import SandboxBackend
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import LanguageNotSupportedError, SandboxTimeoutError, UnsupportedBackendError
+from llm_sandbox.exceptions import (
+    ContainerError,
+    LanguageNotSupportedError,
+    SandboxTimeoutError,
+    UnsupportedBackendError,
+)
 from llm_sandbox.interactive import (
     _INTERACTIVE_RUNNER_SCRIPT,
     InteractiveSandboxSession,
@@ -158,6 +163,54 @@ def _start_local_runner(tmp_path: Path) -> tuple[Path, subprocess.Popen[bytes]]:
         raise TimeoutError(message)
 
     return channel_dir, proc
+
+
+@patch("llm_sandbox.interactive.SandboxDockerSession.__init__", new=_stub_docker_session)
+@patch("llm_sandbox.interactive.SandboxDockerSession.open")
+@patch("llm_sandbox.interactive.SandboxDockerSession.close")
+def test_open_cleans_up_on_bootstrap_failure(mock_close: MagicMock, mock_open: MagicMock) -> None:
+    """open() should tear down the container if bootstrap fails."""
+    session = InteractiveSandboxSession()
+    mock_open.return_value = None
+    with (
+        patch.object(session, "_bootstrap_runtime", side_effect=ContainerError("boom")),
+        pytest.raises(ContainerError),
+    ):
+        session.open()
+    mock_close.assert_called_once()
+
+
+@patch("llm_sandbox.interactive.SandboxDockerSession.__init__", new=_stub_docker_session)
+def test_run_requires_ready_runner() -> None:
+    """run() should error when the interactive runner is not ready."""
+    session = InteractiveSandboxSession()
+    session.container = object()
+    session.is_open = True
+    _set_private(session, "_runner_ready", value=False)
+    session.install = MagicMock()
+    with pytest.raises(ContainerError):
+        session.run("print('hello')")
+
+
+@patch("llm_sandbox.interactive.SandboxDockerSession.__init__", new=_stub_docker_session)
+def test_ensure_runtime_dependencies_failure() -> None:
+    """_ensure_runtime_dependencies raises ContainerError when pip install fails."""
+    session = InteractiveSandboxSession()
+    session.execute_command = MagicMock(return_value=ConsoleOutput(exit_code=1, stderr="fail"))
+
+    method = InteractiveSandboxSession._ensure_runtime_dependencies  # noqa: SLF001
+    with pytest.raises(ContainerError):
+        method(session)
+
+
+@patch("llm_sandbox.interactive.SandboxDockerSession.__init__", new=_stub_docker_session)
+def test_wait_for_remote_file_timeout() -> None:
+    """_wait_for_remote_file returns False when the timeout expires."""
+    session = InteractiveSandboxSession()
+    session.settings.poll_interval = 0.01
+    session.execute_command = MagicMock(return_value=ConsoleOutput(exit_code=1))
+    wait_method = InteractiveSandboxSession._wait_for_remote_file  # noqa: SLF001
+    assert wait_method(session, "missing", timeout=0.02) is False
 
 
 def _send_runner_command(channel_dir: Path, code: str, timeout: float = 5.0) -> dict[str, Any]:
