@@ -81,13 +81,16 @@ print(f"Mean of y: {data['y'].mean():.2f}")
 
 ### Installing Libraries
 
-You can install libraries dynamically within the session:
+You can install libraries dynamically within the session using the `%pip` magic command:
 
 ```python
 from llm_sandbox import InteractiveSandboxSession
 
 with InteractiveSandboxSession(lang="python") as session:
-    # Install a library in the first run
+    # Install libraries in the first run
+    result = session.run("""
+%pip install matplotlib numpy
+""")
     result = session.run("""
 import matplotlib.pyplot as plt
 import numpy as np
@@ -98,7 +101,7 @@ y = np.sin(x)
 plt.plot(x, y)
 plt.title("Sine Wave")
 print("Plot created")
-""", libraries=["matplotlib", "numpy"])
+""")
 
     print(result.stdout)
 ```
@@ -176,6 +179,9 @@ Build complex analysis pipelines step-by-step:
 from llm_sandbox import InteractiveSandboxSession
 
 with InteractiveSandboxSession(lang="python") as session:
+    # Step 0: Install libraries with magic command
+    session.run("%pip install pandas numpy")
+
     # Step 1: Load and prepare data
     session.run("""
 import pandas as pd
@@ -187,7 +193,7 @@ data = pd.DataFrame({
     'value': np.random.randn(100).cumsum() + 100,
     'category': np.random.choice(['A', 'B', 'C'], 100)
 })
-""", libraries=["pandas", "numpy"])
+""")
 
     # Step 2: Clean data
     session.run("""
