@@ -33,6 +33,11 @@ def _set_private(obj: Any, name: str, value: Any) -> None:
     object.__setattr__(obj, name, value)
 
 
+def _call_private(obj: Any, name: str, *args: Any, **kwargs: Any) -> Any:
+    """Call private methods without referencing them directly."""
+    return getattr(obj, name)(*args, **kwargs)
+
+
 def _stub_docker_session(self: InteractiveSandboxSession, *args: Any, **kwargs: Any) -> None:
     """Stub for SandboxDockerSession.__init__ to avoid Docker dependency."""
     del args, kwargs
@@ -55,6 +60,22 @@ def test_interactive_session_requires_python_language() -> None:
     """Interactive session currently only supports Python."""
     with pytest.raises(LanguageNotSupportedError):
         InteractiveSandboxSession(lang="javascript")
+
+
+def test_interactive_settings_rejects_negative_history() -> None:
+    """InteractiveSettings rejects negative history_size values."""
+    from llm_sandbox.interactive import InteractiveSettings
+
+    with pytest.raises(ValueError, match="history_size must be non-negative"):
+        InteractiveSettings(history_size=-1)
+
+
+def test_interactive_settings_rejects_non_positive_poll_interval() -> None:
+    """InteractiveSettings rejects non-positive poll_interval values."""
+    from llm_sandbox.interactive import InteractiveSettings
+
+    with pytest.raises(ValueError, match="poll_interval must be positive"):
+        InteractiveSettings(poll_interval=0)
 
 
 @patch("llm_sandbox.interactive.SandboxDockerSession.__init__", new=_stub_docker_session)
