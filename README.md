@@ -220,9 +220,14 @@ with InteractiveSandboxSession(
     session.run("value = 21 * 2")
     result = session.run("print(f'Result: {value}')")
     print(result.stdout)  # -> Result: 42
+
+    # Use magic command to install libraries
+    session.run("%pip install pandas")
+    result = session.run("import pandas as pd; print(pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]}))")
+    print(result.stdout)
 ```
 
-Interactive sessions currently target the Docker backend and Python language. They spin up a long-running IPython kernel inside the sandbox, so each `run()` behaves like a notebook cell—state, imports, and magic commands stay alive until the context manager exits, without any extra networking or manual serialization.
+Interactive sessions support Docker, Podman, and Kubernetes backends and currently target Python language. They spin up a long-running IPython kernel inside the sandbox, so each `run()` behaves like a notebook cell—state, imports, and magic commands stay alive until the context manager exits, without any extra networking or manual serialization.
 
 ### Capturing Plots and Visualizations
 

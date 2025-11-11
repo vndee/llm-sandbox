@@ -3,10 +3,13 @@
 from typing import TYPE_CHECKING, Any
 
 from podman import PodmanClient
+from podman.errors.exceptions import ImageNotFound as PodmanImageNotFound
+from podman.errors.exceptions import NotFound as PodmanNotFound
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
+from llm_sandbox.exceptions import ContainerError, ImagePullError
 from llm_sandbox.security import SecurityPolicy
 
 if TYPE_CHECKING:
@@ -141,3 +144,159 @@ class SandboxPodmanSession(SandboxDockerSession):
                 stacklevel=2,
             )
             self.config.runtime_configs.setdefault("mounts", []).append(mounts)
+
+    def _get_or_pull_image(self) -> None:
+        """Get local image or pull from registry (Podman-specific implementation).
+
+        This method overrides the Docker implementation to handle Podman's
+        different exception types for image not found errors.
+
+        Raises:
+            ImagePullError: If the image cannot be pulled from the registry.
+
+        """
+        try:
+            self.docker_image = self.client.images.get(self.config.image)
+            self._log(f"Using local image {self.docker_image.tags[-1] if self.docker_image.tags else 'untagged'}")
+        except PodmanImageNotFound:
+            self._log(f"Image {self.config.image} not found locally. Pulling...")
+            try:
+                self.docker_image = self.client.images.pull(self.config.image)
+                self._log(
+                    f"Successfully pulled image {self.docker_image.tags[-1] if self.docker_image.tags else 'untagged'}"
+                )
+                self.is_create_template = True
+            except Exception as e:
+                raise ImagePullError(self.config.image or "", str(e)) from e
+
+    def _normalize_memory_limit(self, memory: str) -> str:
+        """Normalize memory limit format for Podman.
+
+        Podman's Python library is more strict about memory format than Docker.
+        This converts formats like '1GB' to '1024m' which Podman can parse.
+
+        If the input is already in Podman format (e.g., '1024m'), it returns it
+        unchanged for efficiency.
+
+        Args:
+            memory: Memory limit string (e.g., '1GB', '512m', '2g', '1024m').
+
+        Returns:
+            Normalized memory limit string in megabytes (e.g., '1024m').
+
+        """
+        import re
+
+        memory = memory.strip()
+
+        # Check if already in Podman format: digits followed by lowercase 'm'
+        # Podman expects format like '1024m', '512m', etc.
+        if re.match(r"^\d+m$", memory):
+            # Already in correct Podman format, return as-is
+            return memory
+
+        # Parse the memory string - handle both single and multi-character units
+        # Match pattern like: 1GB, 512m, 2g, 1024k, etc.
+        match = re.match(r"^(\d+)([bBkKmMgGtT][bB]?)$", memory)
+        if not match:
+            # If it doesn't match expected format, return as-is and let Podman handle the error
+            return memory
+
+        value, unit = match.groups()
+        value_int = int(value)
+        unit_lower = unit.lower()
+
+        # Convert to megabytes
+        # Handle both single char (k, m, g, t) and double char (kb, mb, gb, tb) units
+        multipliers = {
+            "b": 1 / (1024**2),  # bytes
+            "kb": 1 / 1024,  # kilobytes
+            "k": 1 / 1024,  # kilobytes (alternative)
+            "mb": 1,  # megabytes
+            "m": 1,  # megabytes (alternative)
+            "gb": 1024,  # gigabytes
+            "g": 1024,  # gigabytes (alternative)
+            "tb": 1024**2,  # terabytes
+            "t": 1024**2,  # terabytes (alternative)
+        }
+
+        if unit_lower not in multipliers:
+            # Unknown unit, return as-is
+            return memory
+
+        # Convert to megabytes and format as 'XXXm'
+        megabytes = int(value_int * multipliers[unit_lower])
+        # Ensure we have at least 1MB
+        megabytes = max(megabytes, 1)
+        return f"{megabytes}m"
+
+    def _normalize_runtime_configs_for_podman(self, runtime_configs: dict[str, Any]) -> dict[str, Any]:
+        """Normalize runtime configs for Podman compatibility.
+
+        Podman has different requirements than Docker for some parameters.
+        This method normalizes the config to ensure Podman compatibility.
+
+        Args:
+            runtime_configs: Runtime configuration dictionary.
+
+        Returns:
+            Normalized runtime configuration dictionary.
+
+        """
+        normalized = runtime_configs.copy()
+
+        # Normalize memory limit if present
+        if "mem_limit" in normalized and isinstance(normalized["mem_limit"], str):
+            normalized["mem_limit"] = self._normalize_memory_limit(normalized["mem_limit"])
+
+        # Podman uses 'memory' instead of 'mem_limit' in some contexts
+        # But based on the error, it seems to use 'mem_limit' in container creation
+        # So we keep 'mem_limit' but normalize its format
+
+        return normalized
+
+    def open(self) -> None:
+        """Open the Podman session with normalized runtime configs.
+
+        This method overrides the Docker implementation to normalize
+        runtime configurations for Podman compatibility before opening.
+
+        """
+        # Normalize runtime configs before opening
+        if self.config.runtime_configs:
+            self.config.runtime_configs = self._normalize_runtime_configs_for_podman(self.config.runtime_configs)
+
+        # Call parent's open method
+        super().open()
+
+    def _connect_to_existing_container(self, container_id: str) -> None:
+        """Connect to an existing Podman container.
+
+        This method overrides the Docker implementation to handle Podman's
+        different exception types for container not found errors.
+
+        Args:
+            container_id: The ID of the existing container to connect to.
+
+        Raises:
+            ContainerError: If the container cannot be found or accessed.
+
+        """
+        try:
+            self.container = self.client.containers.get(container_id)
+            self._log(f"Connected to existing container {container_id}")
+
+            # Verify container is running
+            if self.container.status != "running":
+                self._log(f"Container {container_id} is not running, attempting to start...")
+                self.container.start()
+                self._log(f"Started container {container_id}")
+
+        except PodmanNotFound as e:
+            msg = f"Container {container_id} not found"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
+        except Exception as e:
+            msg = f"Failed to connect to container {container_id}: {e}"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
