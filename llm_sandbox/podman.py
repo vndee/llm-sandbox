@@ -1,5 +1,5 @@
 # ruff: noqa: E501
-
+import re
 from typing import TYPE_CHECKING, Any
 
 from podman import PodmanClient
@@ -185,8 +185,6 @@ class SandboxPodmanSession(SandboxDockerSession):
             Normalized memory limit string in megabytes (e.g., '1024m').
 
         """
-        import re
-
         memory = memory.strip()
 
         # Check if already in Podman format: digits followed by lowercase 'm'
