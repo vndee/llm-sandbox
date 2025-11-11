@@ -75,6 +75,9 @@ show_error_codes = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests that require external services like Docker",
+]
 
 [tool.ruff]
 target-version = "py311"
