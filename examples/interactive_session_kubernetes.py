@@ -27,12 +27,12 @@ def main() -> None:
         # Example 1: Basic arithmetic
         print("\n[Example 1] Basic arithmetic")
         result = session.run("x = 10\nprint(f'x = {x}')")
-        print("Output: %s", result.stdout)
+        print(f"Output: {result.stdout}")
 
         # Example 2: State persists between runs
         print("\n[Example 2] State persists between runs")
         result = session.run("y = x + 5\nprint(f'y = {y}')")
-        print("Output: %s", result.stdout)
+        print(f"Output: {result.stdout}")
 
         # Example 3: Installing and using libraries
         result = session.run("%pip install pandas")
@@ -46,12 +46,12 @@ df = pd.DataFrame({
 print(df)
 """
         result = session.run(code)
-        print("Output: %s", result.stdout)
+        print(f"Output: {result.stdout}")
 
         # Example 4: Using previously imported libraries
         print("\n[Example 4] Using previously imported pandas")
         result = session.run("print(f'Average age: {df[\"Age\"].mean()}')")
-        print("Output: %s", result.stdout)
+        print(f"Output: {result.stdout}")
 
         # Example 5: Complex computation with state
         print("\n[Example 5] Complex computation with state")
@@ -67,14 +67,14 @@ fib_10 = fibonacci(10)
 print(f'Fibonacci(10) = {fib_10}')
 """
         result = session.run(code)
-        print("Output: %s", result.stdout)
+        print(f"Output: {result.stdout}")
 
         # Example 6: Use the stored result
         print("\n[Example 6] Use stored result")
         result = session.run("print(f'Stored value * 2 = {fib_10 * 2}')")
-        print("Output: %s", result.stdout)
+        print(f"Output: {result.stdout}")
 
-    print("\n%s", "=" * 60)
+    print("\n" + "=" * 60)
     print("Demo completed successfully!")
     print("=" * 60)
 
