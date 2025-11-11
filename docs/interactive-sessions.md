@@ -389,7 +389,6 @@ with InteractiveSandboxSession(lang="python") as session:
 **Use Standard SandboxSession when:**
 
 - Each code execution is independent
-- You need Kubernetes or Podman backend support
 - You want to execute non-Python code
 - You need a fresh, clean execution environment each time
 
