@@ -81,13 +81,11 @@ def test_backend(backend_name: str, backend_enum: SandboxBackend) -> dict[str, A
             import docker
 
             # Use Docker Desktop's actual socket path
-            client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+            client = docker.DockerClient.from_env()
         elif backend_name == "podman":
             from podman import PodmanClient
 
-            client = PodmanClient(
-                base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-            )
+            client = PodmanClient.from_env()
 
         with SandboxSession(
             backend=backend_enum, lang="python", verbose=True, keep_template=True, client=client

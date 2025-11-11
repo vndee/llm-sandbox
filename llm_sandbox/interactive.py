@@ -88,7 +88,10 @@ def _create_backend_session(
         case SandboxBackend.PODMAN:
             return SandboxPodmanSession(runtime_configs=runtime_configs, **kwargs)
         case SandboxBackend.KUBERNETES:
-            return SandboxKubernetesSession(**kwargs)
+            # Kubernetes backend doesn't support runtime_configs parameter
+            # Filter it out from kwargs if it's present to avoid TypeError
+            kubernetes_kwargs = {k: v for k, v in kwargs.items() if k != "runtime_configs"}
+            return SandboxKubernetesSession(**kubernetes_kwargs)
         case _:
             raise UnsupportedBackendError(backend=backend)
 
@@ -188,8 +191,14 @@ class InteractiveSandboxSession(BaseSession):
             ContainerError: If runtime dependencies cannot be installed or runner fails to start
 
         """
-        super().open()
+        # Open backend session first (this will start the session timer)
         self._backend_session.open()
+        # Sync session state from backend session without starting a duplicate timer
+        # The backend session manages the timer, so we don't call super().open()
+        self.is_open = True
+        # Sync session start time from backend session for timeout checking
+        # Access private attribute to sync timer state (backend session manages the actual timer)
+        self._session_start_time = getattr(self._backend_session, "_session_start_time", None)
         # Copy container reference from backend session
         self.container = self._backend_session.container
         self.container_api = self._backend_session.container_api
@@ -204,7 +213,9 @@ class InteractiveSandboxSession(BaseSession):
         self._stop_runner_process()
         if self._backend_session:
             self._backend_session.close()
-        super().close()
+        # Manually set is_open to False without calling super().close()
+        # The backend session manages the timer cleanup, so we don't need to stop a duplicate timer
+        self.is_open = False
 
     # ------------------------------------------------------------------ #
     # Execution

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def run_python_code() -> None:
     """Run Python code in the sandbox."""
-    client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+    client = docker.DockerClient.from_env()
 
     with SandboxSession(
         client=client,

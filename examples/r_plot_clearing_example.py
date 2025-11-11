@@ -16,7 +16,7 @@ import docker
 
 from llm_sandbox import ArtifactSandboxSession, SandboxBackend
 
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+client = docker.DockerClient.from_env()
 
 
 def main() -> None:

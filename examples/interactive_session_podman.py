@@ -17,9 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 logger = logging.getLogger(__name__)
 
-client = PodmanClient(
-    base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-)
+client = PodmanClient.from_env()
 
 
 def main() -> None:

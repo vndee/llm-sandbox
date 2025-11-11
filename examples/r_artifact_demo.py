@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Set up Docker client
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+client = docker.DockerClient.from_env()
 
 # R code that generates various types of plots
 r_code = """

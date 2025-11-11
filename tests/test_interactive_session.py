@@ -65,6 +65,55 @@ def test_interactive_session_requires_python_language() -> None:
         InteractiveSandboxSession(lang="javascript")
 
 
+def test_create_backend_session_filters_runtime_configs_for_kubernetes() -> None:
+    """_create_backend_session should filter out runtime_configs for Kubernetes backend."""
+    from llm_sandbox.interactive import _create_backend_session
+
+    # Patch SandboxKubernetesSession to verify it's not called with runtime_configs
+    with patch("llm_sandbox.interactive.SandboxKubernetesSession") as mock_k8s_class:
+        mock_k8s_session = MagicMock()
+        mock_k8s_session.config = SessionConfig()
+        mock_k8s_class.return_value = mock_k8s_session
+
+        # Simulate the case where runtime_configs might be in kwargs (e.g., if someone passes it incorrectly)
+        # We'll manually put it in kwargs to test the filtering
+        kwargs_with_runtime_configs: dict[str, Any] = {
+            "lang": "python",
+            "runtime_configs": {"mem_limit": "1GB"},  # This should be filtered out
+        }
+
+        # Call _create_backend_session with runtime_configs only in kwargs (not as separate param)
+        # This tests that the filtering works when runtime_configs is in kwargs
+        result = _create_backend_session(
+            backend=SandboxBackend.KUBERNETES,
+            **kwargs_with_runtime_configs,  # runtime_configs in here should be filtered out
+        )
+
+        # Verify SandboxKubernetesSession was called
+        mock_k8s_class.assert_called_once()
+
+        # Verify runtime_configs was NOT in the kwargs passed to SandboxKubernetesSession
+        call_kwargs = mock_k8s_class.call_args[1] if mock_k8s_class.call_args else {}
+        assert "runtime_configs" not in call_kwargs, "runtime_configs should be filtered out for Kubernetes"
+
+        # Verify other kwargs were passed through
+        assert call_kwargs.get("lang") == "python"
+        assert result == mock_k8s_session
+
+
+@patch("llm_sandbox.interactive._create_backend_session", new=_stub_backend_session)
+def test_interactive_session_kubernetes_with_runtime_configs() -> None:
+    """Interactive session with Kubernetes backend should handle runtime_configs gracefully."""
+    # This should not raise a TypeError even though Kubernetes doesn't support runtime_configs
+    session = InteractiveSandboxSession(
+        backend=SandboxBackend.KUBERNETES,
+        runtime_configs={"mem_limit": "1GB"},  # runtime_configs should be ignored for Kubernetes
+    )
+
+    # Verify the session was created successfully
+    assert session._backend_session is not None
+
+
 def test_interactive_settings_rejects_negative_history() -> None:
     """InteractiveSettings rejects negative history_size values."""
     from llm_sandbox.interactive import InteractiveSettings
@@ -423,9 +472,20 @@ def test_close_without_runner() -> None:
     session = InteractiveSandboxSession()
     session._backend_session.close = MagicMock()
     _set_private(session, "_runner_ready", value=False)
+    session.is_open = True
 
-    session.close()
-    session._backend_session.close.assert_called_once()
+    # Verify that _stop_session_timer is NOT called on InteractiveSandboxSession
+    # (backend session manages the timer, so we don't stop a timer that was never started)
+    with patch.object(session, "_stop_session_timer") as mock_stop_timer:
+        session.close()
+
+        # Verify _stop_session_timer was NOT called on InteractiveSandboxSession
+        # (backend session manages the timer cleanup)
+        mock_stop_timer.assert_not_called()
+        # Verify backend session.close() was called
+        session._backend_session.close.assert_called_once()
+        # Verify session state is set to closed
+        assert session.is_open is False
 
 
 @patch("llm_sandbox.interactive._create_backend_session", new=_stub_backend_session)
@@ -438,13 +498,26 @@ def test_open_sets_container_references() -> None:
     session._backend_session.container_api = mock_api
     session._backend_session.open = MagicMock()
     session._bootstrap_runtime = MagicMock()
+    # Set session_start_time on backend session to simulate timer initialization
+    mock_start_time = time.time()
+    session._backend_session._session_start_time = mock_start_time
 
-    session.open()
+    # Verify that _start_session_timer is NOT called on InteractiveSandboxSession
+    # (only the backend session should start a timer to avoid duplicates)
+    with patch.object(session, "_start_session_timer") as mock_start_timer:
+        session.open()
 
-    assert session.container == mock_container
-    assert session.container_api == mock_api
-    session._backend_session.open.assert_called_once()
-    session._bootstrap_runtime.assert_called_once()
+        # Verify _start_session_timer was NOT called on InteractiveSandboxSession
+        # (backend session manages the timer, so we don't start a duplicate)
+        mock_start_timer.assert_not_called()
+        # Verify backend session.open() was called
+        session._backend_session.open.assert_called_once()
+        # Verify session state is synced
+        assert session.is_open is True
+        assert session._session_start_time == mock_start_time
+        assert session.container == mock_container
+        assert session.container_api == mock_api
+        session._bootstrap_runtime.assert_called_once()
 
 
 @patch("llm_sandbox.interactive._create_backend_session", new=_stub_backend_session)

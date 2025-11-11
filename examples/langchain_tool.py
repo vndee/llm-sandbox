@@ -33,8 +33,8 @@ if __name__ == "__main__":
     prompt = hub.pull("hwchase17/openai-functions-agent")
     tools = [run_code]
 
-    agent = create_tool_calling_agent(llm, tools, prompt)  # type: ignore[arg-type]
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)  # type: ignore[arg-type]
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
     output = agent_executor.invoke({
         "input": "Write python code to calculate Pi number by Monte Carlo method then run it."
     })

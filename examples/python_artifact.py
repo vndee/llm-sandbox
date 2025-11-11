@@ -11,9 +11,7 @@ from llm_sandbox import ArtifactSandboxSession, SandboxBackend
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-podman_client = PodmanClient(
-    base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-)
+podman_client = PodmanClient.from_env()
 
 code = """
 import matplotlib.pyplot as plt

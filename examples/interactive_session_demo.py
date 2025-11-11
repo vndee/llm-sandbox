@@ -13,7 +13,7 @@ import docker
 from llm_sandbox import InteractiveSandboxSession, KernelType
 from llm_sandbox.interactive import InteractiveSettings
 
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+client = docker.DockerClient.from_env()
 
 
 def demo_basic_state_persistence() -> None:
