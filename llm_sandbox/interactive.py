@@ -14,9 +14,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
+from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import SandboxDockerSession
 from llm_sandbox.exceptions import ContainerError, LanguageNotSupportedError, NotOpenSessionError, SandboxTimeoutError
+from llm_sandbox.kubernetes import SandboxKubernetesSession
+from llm_sandbox.podman import SandboxPodmanSession
 
 from .const import StrEnum
 from .exceptions import UnsupportedBackendError
@@ -60,8 +63,50 @@ class InteractiveSettings:
             raise ValueError(msg)
 
 
-class InteractiveSandboxSession(SandboxDockerSession):
-    """Interactive sandbox session that preserves interpreter state across runs."""
+def _create_backend_session(
+    backend: SandboxBackend,
+    runtime_configs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> BaseSession:
+    """Create the appropriate backend session based on the backend type.
+
+    Args:
+        backend: The sandbox backend to use
+        runtime_configs: Runtime configurations for the backend
+        **kwargs: Additional keyword arguments to pass to the backend session
+
+    Returns:
+        BaseSession: An instance of the appropriate backend session
+
+    Raises:
+        UnsupportedBackendError: If the backend is not supported
+
+    """
+    match backend:
+        case SandboxBackend.DOCKER:
+            return SandboxDockerSession(runtime_configs=runtime_configs, **kwargs)
+        case SandboxBackend.PODMAN:
+            return SandboxPodmanSession(runtime_configs=runtime_configs, **kwargs)
+        case SandboxBackend.KUBERNETES:
+            # Kubernetes backend doesn't support runtime_configs parameter
+            # Filter it out from kwargs if it's present to avoid TypeError
+            kubernetes_kwargs = {k: v for k, v in kwargs.items() if k != "runtime_configs"}
+            return SandboxKubernetesSession(**kubernetes_kwargs)
+        case _:
+            raise UnsupportedBackendError(backend=backend)
+
+
+class InteractiveSandboxSession(BaseSession):
+    """Interactive sandbox session that preserves interpreter state across runs.
+
+    This class provides a persistent Python execution environment using an IPython kernel
+    that maintains state across multiple code executions. It supports Docker, Podman, and
+    Kubernetes backends, allowing you to choose the backend that best fits your infrastructure.
+
+    Unlike standard SandboxSession which creates a fresh execution context for each run(),
+    InteractiveSandboxSession maintains a persistent interpreter, making it ideal for
+    notebook-style workflows, AI agent interactions, and multi-step data analysis.
+    """
 
     def __init__(
         self,
@@ -75,10 +120,23 @@ class InteractiveSandboxSession(SandboxDockerSession):
         runtime_configs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize the interactive session."""
-        if backend != SandboxBackend.DOCKER:
-            raise UnsupportedBackendError(backend=backend)
+        """Initialize the interactive session.
 
+        Args:
+            backend: The sandbox backend to use (docker, podman, or kubernetes)
+            lang: Programming language (currently only Python is supported for interactive sessions)
+            kernel_type: Kernel backend used for execution (default: ipython)
+            max_memory: Optional memory limit
+            history_size: Number of cached execution entries retained in the kernel
+            timeout: Default per-cell timeout in seconds
+            runtime_configs: Backend-specific runtime configurations
+            **kwargs: Additional keyword arguments to pass to the backend session
+
+        Raises:
+            LanguageNotSupportedError: If language other than Python is specified
+            UnsupportedBackendError: If the backend is not supported
+
+        """
         lang_value = str(lang)
         if lang_value.lower() != SupportedLanguage.PYTHON:
             raise LanguageNotSupportedError(lang_value)
@@ -91,15 +149,24 @@ class InteractiveSandboxSession(SandboxDockerSession):
         if timeout is not None and "execution_timeout" not in kwargs:
             kwargs["execution_timeout"] = timeout
 
+        kwargs.setdefault("lang", SupportedLanguage.PYTHON)
+
+        # Create the backend session using composition
+        self._backend_session = _create_backend_session(
+            backend=backend,
+            runtime_configs=runtime_configs,
+            **kwargs,
+        )
+
+        # Initialize BaseSession with the same config as backend session
+        super().__init__(config=self._backend_session.config)
+
         self.settings = InteractiveSettings(
             kernel_type=kernel_enum,
             max_memory=max_memory,
             history_size=history_size,
             timeout=timeout,
         )
-
-        kwargs.setdefault("lang", SupportedLanguage.PYTHON)
-        super().__init__(runtime_configs=runtime_configs, **kwargs)
 
         workdir = self.config.workdir.rstrip("/")
         self._channel_dir = f"{workdir}/.interactive"
@@ -110,9 +177,9 @@ class InteractiveSandboxSession(SandboxDockerSession):
         self._pid_file = f"{self._channel_dir}/runner.pid"
         self._log_file = f"{self._channel_dir}/runner.log"
         self._runner_ready = False
-        self._python_exec_path = self.python_executable_path
-        self._pip_exec_path = self.pip_executable_path
-        self._pip_cache_dir = self.pip_cache_dir_path
+        self._python_exec_path = self._backend_session.python_executable_path
+        self._pip_exec_path = self._backend_session.pip_executable_path
+        self._pip_cache_dir = self._backend_session.pip_cache_dir_path
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -124,17 +191,31 @@ class InteractiveSandboxSession(SandboxDockerSession):
             ContainerError: If runtime dependencies cannot be installed or runner fails to start
 
         """
-        super().open()
+        # Open backend session first (this will start the session timer)
+        self._backend_session.open()
+        # Sync session state from backend session without starting a duplicate timer
+        # The backend session manages the timer, so we don't call super().open()
+        self.is_open = True
+        # Sync session start time from backend session for timeout checking
+        # Access private attribute to sync timer state (backend session manages the actual timer)
+        self._session_start_time = getattr(self._backend_session, "_session_start_time", None)
+        # Copy container reference from backend session
+        self.container = self._backend_session.container
+        self.container_api = self._backend_session.container_api
         try:
             self._bootstrap_runtime()
         except Exception:
-            super().close()
+            self.close()
             raise
 
     def close(self) -> None:
         """Close the interactive session."""
         self._stop_runner_process()
-        super().close()
+        if self._backend_session:
+            self._backend_session.close()
+        # Manually set is_open to False without calling super().close()
+        # The backend session manages the timer cleanup, so we don't need to stop a duplicate timer
+        self.is_open = False
 
     # ------------------------------------------------------------------ #
     # Execution
@@ -259,19 +340,25 @@ class InteractiveSandboxSession(SandboxDockerSession):
             return
 
         with suppress(Exception):
-            self.execute_command(
+            # Wrap command in /bin/sh -c to ensure shell execution (required for Podman)
+            inner_command = (
                 f"if [ -f {self._pid_file} ]; then "
                 f"kill $(cat {self._pid_file}) >/dev/null 2>&1 || true; "
                 f"rm -f {self._pid_file}; "
                 "fi"
             )
+            stop_command = f"/bin/sh -c {shlex.quote(inner_command)}"
+            self.execute_command(stop_command)
         self._runner_ready = False
 
     def _interrupt_runner(self) -> None:
         with suppress(Exception):
-            self.execute_command(
+            # Wrap command in /bin/sh -c to ensure shell execution (required for Podman)
+            inner_command = (
                 f"if [ -f {self._pid_file} ]; then kill -SIGINT $(cat {self._pid_file}) >/dev/null 2>&1 || true; fi"
             )
+            interrupt_command = f"/bin/sh -c {shlex.quote(inner_command)}"
+            self.execute_command(interrupt_command)
 
     # ------------------------------------------------------------------ #
     # Remote file helpers
@@ -310,6 +397,120 @@ class InteractiveSandboxSession(SandboxDockerSession):
                 return False
 
             time.sleep(self.settings.poll_interval or RESULT_POLL_INTERVAL)
+
+    # ------------------------------------------------------------------ #
+    # Delegation methods to backend session
+    # ------------------------------------------------------------------ #
+    def execute_command(self, command: str, workdir: str | None = None) -> ConsoleOutput:
+        """Execute a command in the backend container.
+
+        Args:
+            command: The command to execute
+            workdir: Optional working directory
+
+        Returns:
+            ConsoleOutput: The command output
+
+        """
+        return self._backend_session.execute_command(command, workdir=workdir)
+
+    def execute_commands(
+        self, commands: list[str | tuple[str, str | None]], workdir: str | None = None
+    ) -> ConsoleOutput:
+        """Execute multiple commands in the backend container.
+
+        Args:
+            commands: List of commands to execute
+            workdir: Optional working directory
+
+        Returns:
+            ConsoleOutput: The output of the last command
+
+        """
+        return self._backend_session.execute_commands(commands, workdir=workdir)
+
+    def copy_to_runtime(self, src: str, dest: str) -> None:
+        """Copy a file to the backend container.
+
+        Args:
+            src: Source path on the host
+            dest: Destination path in the container
+
+        """
+        return self._backend_session.copy_to_runtime(src, dest)
+
+    def copy_from_runtime(self, src: str, dest: str) -> None:
+        """Copy a file from the backend container.
+
+        Args:
+            src: Source path in the container
+            dest: Destination path on the host
+
+        """
+        return self._backend_session.copy_from_runtime(src, dest)
+
+    def _handle_timeout(self) -> None:
+        """Handle timeout cleanup."""
+        if self._backend_session:
+            self._backend_session._handle_timeout()  # noqa: SLF001
+
+    def _connect_to_existing_container(self, container_id: str) -> None:
+        """Connect to an existing container.
+
+        Args:
+            container_id: The ID of the existing container
+
+        """
+        if self._backend_session:
+            self._backend_session._connect_to_existing_container(container_id)  # noqa: SLF001
+
+    def _ensure_directory_exists(self, path: str) -> None:
+        """Ensure a directory exists in the container.
+
+        Args:
+            path: The directory path to create
+
+        """
+        if self._backend_session:
+            self._backend_session._ensure_directory_exists(path)  # noqa: SLF001
+
+    def _ensure_ownership(self, paths: list[str]) -> None:
+        """Ensure ownership of paths in the container.
+
+        Args:
+            paths: List of paths to ensure ownership of
+
+        """
+        if self._backend_session:
+            self._backend_session._ensure_ownership(paths)  # noqa: SLF001
+
+    def _process_non_stream_output(self, output: Any) -> tuple[str, str]:
+        """Process non-streaming output.
+
+        Args:
+            output: The output to process
+
+        Returns:
+            Tuple of (stdout, stderr)
+
+        """
+        if self._backend_session:
+            return self._backend_session._process_non_stream_output(output)  # noqa: SLF001
+        return "", ""
+
+    def _process_stream_output(self, output: Any) -> tuple[str, str]:
+        """Process streaming output.
+
+        Args:
+            output: The output to process
+
+        Returns:
+            Tuple of (stdout, stderr)
+
+        """
+        if self._backend_session:
+            return self._backend_session._process_stream_output(output)  # noqa: SLF001
+        return "", ""
 
 
 _INTERACTIVE_RUNNER_SCRIPT = textwrap.dedent(

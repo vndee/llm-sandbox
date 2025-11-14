@@ -230,9 +230,7 @@ def test_podman_root_user() -> None:
     logger.info("=== Testing Podman Root User (requires podman) ===")
     from podman import PodmanClient
 
-    client = PodmanClient(
-        base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-    )
+    client = PodmanClient.from_env()
     try:
         with SandboxSession(backend=SandboxBackend.PODMAN, lang="python", client=client) as session:
             result = session.run("import os; print(f'Podman UID: {os.getuid()}, GID: {os.getgid()}')")
@@ -259,9 +257,7 @@ def test_podman_custom_user() -> None:
     logger.info("=== Testing Podman Custom User ===")
     from podman import PodmanClient
 
-    client = PodmanClient(
-        base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-    )
+    client = PodmanClient.from_env()
     try:
         with SandboxSession(
             backend=SandboxBackend.PODMAN,

@@ -127,8 +127,6 @@ with InteractiveSandboxSession(lang="python") as session:
 ```
 
 **Limitations**:
-
-- Docker backend only (Kubernetes and Podman not yet supported)
 - Python language only
 - IPython kernel only
 

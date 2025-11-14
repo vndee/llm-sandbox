@@ -49,6 +49,32 @@ with InteractiveSandboxSession(
     pass
 ```
 
+### Backend Support
+
+Interactive sessions support multiple containerization backends:
+
+```python
+from llm_sandbox import InteractiveSandboxSession
+from llm_sandbox.const import SandboxBackend
+
+# Docker (default)
+with InteractiveSandboxSession(backend=SandboxBackend.DOCKER) as session:
+    session.run("print('Using Docker')")
+
+# Podman
+with InteractiveSandboxSession(backend=SandboxBackend.PODMAN) as session:
+    session.run("print('Using Podman')")
+
+# Kubernetes
+with InteractiveSandboxSession(
+    backend=SandboxBackend.KUBERNETES,
+    kube_namespace="default"
+) as session:
+    session.run("print('Using Kubernetes')")
+```
+
+All backends provide the same API and functionality. Choose the backend that best fits your infrastructure needs.
+
 ### Running Code Cells
 
 Each call to `run()` behaves like a notebook cell:
@@ -363,7 +389,6 @@ with InteractiveSandboxSession(lang="python") as session:
 **Use Standard SandboxSession when:**
 
 - Each code execution is independent
-- You need Kubernetes or Podman backend support
 - You want to execute non-Python code
 - You need a fresh, clean execution environment each time
 
@@ -405,12 +430,6 @@ with InteractiveSandboxSession(lang="python") as session:
 ```
 
 ## Current Limitations
-
-### Backend Support
-
-- **Docker only**: Currently, interactive sessions only support the Docker backend
-- **Kubernetes**: Not yet supported
-- **Podman**: Not yet supported
 
 ### Language Support
 

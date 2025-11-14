@@ -29,7 +29,7 @@ def create_and_setup_container() -> str:
         str: Container ID
 
     """
-    client = DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+    client = DockerClient.from_env()
     logger.info("🚀 Creating a container with custom setup...")
 
     # Create a new container with custom environment
@@ -87,7 +87,7 @@ def demo_connect_to_existing_docker_container() -> None:
     logger.info("%s", "=" * 60)
 
     try:
-        client = DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+        client = DockerClient.from_env()
         # Connect to existing container - no environment setup needed
         with SandboxSession(client=client, container_id=container_id, lang="python", verbose=True) as sandbox:
             logger.info("✅ Connected to existing container successfully!")
@@ -209,9 +209,7 @@ def demo_connect_to_existing_podman_container() -> None:
     try:
         from podman import PodmanClient
 
-        client = PodmanClient(
-            base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-        )
+        client = PodmanClient.from_env()
 
         # First create a container (simulating existing container)
         logger.info("📦 Creating a demo Podman container...")

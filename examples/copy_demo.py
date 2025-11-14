@@ -120,13 +120,11 @@ def run_demo(backend_name: str = "docker") -> None:
         import docker
 
         # Use Docker Desktop's actual socket path
-        client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+        client = docker.DockerClient.from_env()
     elif backend_name == "podman":
         from podman import PodmanClient
 
-        client = PodmanClient(
-            base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-        )
+        client = PodmanClient.from_env()
 
     backend_enum = backend_map[backend_name]
 
