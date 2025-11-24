@@ -31,6 +31,7 @@ def _check_dependency(backend: SandboxBackend) -> None:
     if backend == SandboxBackend.PODMAN and not find_spec("podman"):
         msg = "Podman backend requires 'podman' package. Install it with: pip install llm-sandbox[podman]"
         raise MissingDependencyError(msg)
+    # Note: Hyperlight has no Python package dependency, only requires Rust toolchain
 
 
 def create_session(
@@ -50,6 +51,7 @@ def create_session(
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
+            - SandboxBackend.HYPERLIGHT
         *args: Additional positional arguments passed to the session constructor
         **kwargs: Additional keyword arguments passed to the session constructor.
                 Common options include:
@@ -220,6 +222,10 @@ def create_session(
             from .micromamba import MicromambaSession
 
             return MicromambaSession(*args, **kwargs)
+        case SandboxBackend.HYPERLIGHT:
+            from .hyperlight import SandboxHyperlightSession
+
+            return SandboxHyperlightSession(*args, **kwargs)
         case _:
             raise UnsupportedBackendError(backend=backend)
 

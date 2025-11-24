@@ -70,6 +70,19 @@ class TestBackendSelection:
         assert session == mock_session_instance
         mock_micromamba_session.assert_called_once_with(lang="python", environment="data_science")
 
+    @patch("llm_sandbox.session.find_spec")
+    @patch("llm_sandbox.hyperlight.SandboxHyperlightSession")
+    def test_create_hyperlight_session(self, mock_hyperlight_session: MagicMock, mock_find_spec: MagicMock) -> None:
+        """Test creating Hyperlight session."""
+        mock_find_spec.return_value = MagicMock()
+        mock_session_instance = MagicMock()
+        mock_hyperlight_session.return_value = mock_session_instance
+
+        session = create_session(backend=SandboxBackend.HYPERLIGHT, lang="python", guest_binary_path="/tmp/guest")
+
+        assert session == mock_session_instance
+        mock_hyperlight_session.assert_called_once_with(lang="python", guest_binary_path="/tmp/guest")
+
     def test_create_session_unsupported_backend(self) -> None:
         """Test creating session with unsupported backend."""
         with pytest.raises(UnsupportedBackendError):
@@ -121,6 +134,7 @@ class TestBackendCommonInterface:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.HYPERLIGHT,
         ]
 
         required_methods = [
@@ -150,6 +164,8 @@ class TestBackendCommonInterface:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.HYPERLIGHT:
+                patch_path = "llm_sandbox.hyperlight.SandboxHyperlightSession"
 
             with patch(patch_path, return_value=mock_session_instance):
                 session = create_session(backend=backend)
@@ -175,6 +191,7 @@ class TestBackendCommonInterface:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.HYPERLIGHT,
         ]
 
         for backend in backends_to_test:
@@ -188,6 +205,8 @@ class TestBackendCommonInterface:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.HYPERLIGHT:
+                patch_path = "llm_sandbox.hyperlight.SandboxHyperlightSession"
 
             with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                 _ = create_session(backend=backend, **common_params)
@@ -314,6 +333,7 @@ class TestBackendConsistency:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.HYPERLIGHT,
         ]
 
         for backend in backends:
@@ -327,6 +347,8 @@ class TestBackendConsistency:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.HYPERLIGHT:
+                patch_path = "llm_sandbox.hyperlight.SandboxHyperlightSession"
 
             with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                 _ = create_session(backend=backend, lang=SupportedLanguage.PYTHON)
@@ -347,6 +369,7 @@ class TestBackendConsistency:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.HYPERLIGHT,
         ]
 
         for backend in backends:
@@ -360,6 +383,8 @@ class TestBackendConsistency:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.HYPERLIGHT:
+                patch_path = "llm_sandbox.hyperlight.SandboxHyperlightSession"
 
             with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                 _ = create_session(backend=backend, security_policy=security_policy)
@@ -379,6 +404,7 @@ class TestBackendConsistency:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.HYPERLIGHT,
         ]
 
         for verbose_setting in [True, False]:
@@ -393,6 +419,8 @@ class TestBackendConsistency:
                     patch_path = "llm_sandbox.podman.SandboxPodmanSession"
                 elif backend == SandboxBackend.MICROMAMBA:
                     patch_path = "llm_sandbox.micromamba.MicromambaSession"
+                elif backend == SandboxBackend.HYPERLIGHT:
+                    patch_path = "llm_sandbox.hyperlight.SandboxHyperlightSession"
 
                 with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                     _ = create_session(backend=backend, verbose=verbose_setting)
