@@ -335,7 +335,7 @@ from llm_sandbox import SandboxSession
 from llm_sandbox.pool import PoolExhaustedError
 
 try:
-    with SandboxSession(lang="python", pool_manager=pool) as session:
+    with SandboxSession(lang="python", pool=pool) as session:
         result = session.run("print('Hello')")
 except PoolExhaustedError as e:
     print(f"Pool exhausted: {e}")

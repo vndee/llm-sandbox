@@ -330,7 +330,7 @@ def demo_mixed_artifacts(backend: SandboxBackend) -> None:
         pool_manager.close()
 
 
-def demo_performance_comparison(backend: SandboxBackend, num_tasks: int = 10) -> None:
+def demo_performance_comparison(backend: SandboxBackend, num_tasks: int = 10) -> None:  # noqa: PLR0912, PLR0915
     """Compare artifact extraction performance with and without pooling.
 
     Args:
