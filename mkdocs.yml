@@ -69,6 +69,7 @@ nav:
       - Security: security.md
       - Container Backends: backends.md
       - Supported Languages: languages.md
+      - Interactive Sessions: interactive-sessions.md
       - LLM Integrations: integrations.md
       - MCP Integration: mcp-integration.md
       - Existing Container Support: existing-container-support.md

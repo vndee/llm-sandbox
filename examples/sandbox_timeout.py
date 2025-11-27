@@ -207,7 +207,7 @@ def test_backend_timeouts(backend_name: str, backend_enum: SandboxBackend) -> di
             try:
                 import docker
 
-                client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+                client = docker.DockerClient.from_env()
             except ImportError:
                 logger.warning("Docker client not available")
                 results["tests_failed"] += 1
@@ -217,9 +217,7 @@ def test_backend_timeouts(backend_name: str, backend_enum: SandboxBackend) -> di
             try:
                 from podman import PodmanClient
 
-                client = PodmanClient(
-                    base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
-                )
+                client = PodmanClient.from_env()
             except ImportError:
                 logger.warning("Podman client not available")
                 results["tests_failed"] += 1
@@ -324,7 +322,7 @@ def example_timeout_error_handling() -> None:
 
     import docker
 
-    client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+    client = docker.DockerClient.from_env()
 
     # This code has variable execution time
     variable_code = """

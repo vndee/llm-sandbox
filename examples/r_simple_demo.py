@@ -7,7 +7,7 @@ from llm_sandbox import SandboxSession
 logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+client = docker.DockerClient.from_env()
 
 
 # Simple R example without plotting

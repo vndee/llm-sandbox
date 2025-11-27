@@ -2,6 +2,8 @@
 
 """Tests for Podman backend implementation."""
 
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -9,9 +11,26 @@ from pydantic_core import ValidationError
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError
-from llm_sandbox.podman import SandboxPodmanSession
+from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ImagePullError, NotOpenSessionError
+from llm_sandbox.podman import PodmanImageNotFound, PodmanNotFound, SandboxPodmanSession
 from llm_sandbox.security import SecurityPolicy
+
+
+@pytest.fixture
+def podman_session_factory() -> Callable[..., SandboxPodmanSession]:
+    """Create SandboxPodmanSession instances with mocked dependencies."""
+
+    def _factory(**kwargs: Any) -> SandboxPodmanSession:
+        client = cast("PodmanClient", kwargs.pop("client", MagicMock()))
+        with patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler") as mock_handler:
+            mock_handler.return_value = MagicMock()
+            return SandboxPodmanSession(client=client, **kwargs)
+
+    return _factory
+
+
+if TYPE_CHECKING:
+    from podman import PodmanClient
 
 
 class TestSandboxPodmanSessionInit:
@@ -268,6 +287,178 @@ class TestSandboxPodmanSessionFileOperations:
             pytest.raises(FileNotFoundError),
         ):
             session.copy_from_runtime("/container/missing.txt", "/host/file.txt")
+
+
+class TestPodmanRuntimeNormalization:
+    """Tests for Podman-specific runtime normalization helpers."""
+
+    def test_normalize_memory_limit_preserves_podman_format(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """Existing Podman memory format should be returned unchanged."""
+        session = podman_session_factory()
+        assert session._normalize_memory_limit("256m") == "256m"
+
+    @pytest.mark.parametrize(
+        ("limit", "expected"),
+        [
+            ("1GB", "1024m"),
+            ("2g", "2048m"),
+            ("1024k", "1m"),
+            ("2048kb", "2m"),
+        ],
+    )
+    def test_normalize_memory_limit_converts_units(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+        limit: str,
+        expected: str,
+    ) -> None:
+        """Memory limits using Docker-style units should be converted to Podman format."""
+        session = podman_session_factory()
+        assert session._normalize_memory_limit(limit) == expected
+
+    def test_normalize_memory_limit_returns_original_for_unknown_unit(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """Unknown units should be returned verbatim for Podman to handle."""
+        session = podman_session_factory()
+        assert session._normalize_memory_limit("5XB") == "5XB"
+
+    def test_normalize_runtime_configs_for_podman_returns_copy(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """Runtime config normalization should return a new dictionary with converted memory limits."""
+        session = podman_session_factory()
+        runtime_configs = {"mem_limit": "3GB", "user": "1000:1000"}
+        normalized = session._normalize_runtime_configs_for_podman(runtime_configs)
+
+        assert normalized is not runtime_configs
+        assert normalized["mem_limit"] == "3072m"
+        assert runtime_configs["mem_limit"] == "3GB"
+
+    def test_open_normalizes_runtime_configs_before_super_open(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """open() should normalize runtime configs before delegating to Docker implementation."""
+        session = podman_session_factory(runtime_configs={"mem_limit": "4GB"}, image="my-image:latest")
+
+        with (
+            patch.object(
+                SandboxPodmanSession,
+                "_normalize_runtime_configs_for_podman",
+                wraps=session._normalize_runtime_configs_for_podman,
+            ) as mock_normalize,
+            patch("llm_sandbox.podman.SandboxDockerSession.open", autospec=True) as mock_super_open,
+        ):
+            session.open()
+
+        mock_normalize.assert_called_once()
+        mock_super_open.assert_called_once_with(session)
+        assert session.config.runtime_configs["mem_limit"] == "4096m"
+
+
+class TestPodmanImageManagement:
+    """Tests for Podman image retrieval and pulling."""
+
+    def test_get_or_pull_image_uses_local_image(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """_get_or_pull_image should use a local image when it exists."""
+        image = MagicMock(tags=["repo:tag"])
+        client = MagicMock()
+        client.images.get.return_value = image
+        session = podman_session_factory(client=client, image="repo:tag")
+
+        session._get_or_pull_image()
+
+        client.images.get.assert_called_once_with("repo:tag")
+        client.images.pull.assert_not_called()
+        assert session.docker_image is image
+        assert session.is_create_template is False
+
+    def test_get_or_pull_image_pulls_when_missing(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """_get_or_pull_image should pull the image when it's not present locally."""
+        image = MagicMock(tags=["repo:tag"])
+        client = MagicMock()
+        client.images.get.side_effect = PodmanImageNotFound("missing")
+        client.images.pull.return_value = image
+        session = podman_session_factory(client=client, image="repo:tag")
+
+        session._get_or_pull_image()
+
+        client.images.pull.assert_called_once_with("repo:tag")
+        assert session.docker_image is image
+        assert session.is_create_template is True
+
+    def test_get_or_pull_image_raises_image_pull_error(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """_get_or_pull_image should raise ImagePullError when pull fails."""
+        client = MagicMock()
+        client.images.get.side_effect = PodmanImageNotFound("missing")
+        client.images.pull.side_effect = RuntimeError("boom")
+        session = podman_session_factory(client=client, image="repo:tag")
+
+        with pytest.raises(ImagePullError) as exc:
+            session._get_or_pull_image()
+
+        client.images.pull.assert_called_once_with("repo:tag")
+        assert "repo:tag" in str(exc.value)
+
+
+class TestPodmanExistingContainerConnection:
+    """Tests for connecting to existing Podman containers."""
+
+    def test_connect_to_existing_container_starts_when_stopped(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """Connecting to an existing stopped container should start it."""
+        container = MagicMock()
+        container.status = "exited"
+        client = MagicMock()
+        client.containers.get.return_value = container
+        session = podman_session_factory(client=client)
+
+        session._connect_to_existing_container("abc123")
+
+        client.containers.get.assert_called_once_with("abc123")
+        container.start.assert_called_once()
+        assert session.container is container
+
+    def test_connect_to_existing_container_handles_not_found(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """Connecting to a missing container should raise ContainerError."""
+        client = MagicMock()
+        client.containers.get.side_effect = PodmanNotFound("missing")
+        session = podman_session_factory(client=client)
+
+        with pytest.raises(ContainerError, match="Container abc123 not found"):
+            session._connect_to_existing_container("abc123")
+
+    def test_connect_to_existing_container_wraps_generic_errors(
+        self,
+        podman_session_factory: Callable[..., SandboxPodmanSession],
+    ) -> None:
+        """Unexpected errors should be wrapped in ContainerError."""
+        client = MagicMock()
+        client.containers.get.side_effect = RuntimeError("boom")
+        session = podman_session_factory(client=client)
+
+        with pytest.raises(ContainerError, match="Failed to connect to container abc123"):
+            session._connect_to_existing_container("abc123")
 
 
 class TestSandboxPodmanSessionCommands:

@@ -23,11 +23,15 @@ from llm_sandbox.exceptions import (
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
 
+PYTHON_VENV_DIR_NAME = ".sandbox-venv"
+PYTHON_PIP_CACHE_DIR_NAME = ".sandbox-pip-cache"
+
+# Backwards-compatible constants for existing tests and consumers.
 PYTHON_VENV_DIR = "/tmp/venv"
 PYTHON_PIP_CACHE_DIR = "/tmp/pip_cache"
-PYTHON_CREATE_VENV_COMMAND = "python -m venv --system-site-packages /tmp/venv"
-PYTHON_CREATE_PIP_CACHE_COMMAND = "mkdir -p /tmp/pip_cache"
-PYTHON_UPGRADE_PIP_COMMAND = "/tmp/venv/bin/pip install --upgrade pip --cache-dir /tmp/pip_cache"
+PYTHON_CREATE_VENV_COMMAND = f"python -m venv --system-site-packages {PYTHON_VENV_DIR}"
+PYTHON_CREATE_PIP_CACHE_COMMAND = f"mkdir -p {PYTHON_PIP_CACHE_DIR}"
+PYTHON_UPGRADE_PIP_COMMAND = f"{PYTHON_VENV_DIR}/bin/pip install --upgrade pip --cache-dir {PYTHON_PIP_CACHE_DIR}"
 
 GO_CREATE_MODULE_COMMAND = "go mod init sandbox"
 GO_TIDY_MODULE_COMMAND = "go mod tidy"
@@ -73,6 +77,10 @@ class BaseSession(
         self.using_existing_container = config.is_using_existing_container()
 
         self.container_api: ContainerAPI
+
+        workdir_path = Path(self.config.workdir)
+        self._python_env_dir = (workdir_path / PYTHON_VENV_DIR_NAME).as_posix()
+        self._python_pip_cache_dir = (workdir_path / PYTHON_PIP_CACHE_DIR_NAME).as_posix()
 
     def _log(self, message: str, level: str = "info") -> None:
         """Log message if verbose."""
@@ -315,6 +323,21 @@ class BaseSession(
 
         return output
 
+    @property
+    def python_executable_path(self) -> str:
+        """Return path to the session's Python executable inside the sandbox."""
+        return f"{self._python_env_dir}/bin/python"
+
+    @property
+    def pip_executable_path(self) -> str:
+        """Return path to the session's pip executable inside the sandbox."""
+        return f"{self._python_env_dir}/bin/pip"
+
+    @property
+    def pip_cache_dir_path(self) -> str:
+        """Return path to the pip cache directory inside the sandbox."""
+        return self._python_pip_cache_dir
+
     def environment_setup(self) -> None:
         r"""Set up the language-specific environment within the sandbox.
 
@@ -365,18 +388,21 @@ class BaseSession(
 
         match self.language_handler.name:
             case SupportedLanguage.PYTHON:
+                venv_dir = self._python_env_dir
+                pip_cache_dir = self._python_pip_cache_dir
+                pip_bin = self.pip_executable_path
                 # Create venv and cache directory first
                 self.execute_commands([
-                    (PYTHON_CREATE_VENV_COMMAND, None),
-                    (PYTHON_CREATE_PIP_CACHE_COMMAND, None),
+                    (f"python -m venv --system-site-packages {venv_dir}", None),
+                    (f"mkdir -p {pip_cache_dir}", None),
                 ])
 
-                self._ensure_ownership([PYTHON_VENV_DIR, PYTHON_PIP_CACHE_DIR])
+                self._ensure_ownership([venv_dir, pip_cache_dir])
 
                 # Now upgrade pip with proper ownership and cache
                 self.execute_commands([
                     (
-                        PYTHON_UPGRADE_PIP_COMMAND,
+                        f"{pip_bin} install --upgrade pip --cache-dir {pip_cache_dir}",
                         None,
                     ),
                 ])

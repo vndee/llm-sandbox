@@ -12,6 +12,16 @@ from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
 from .pool.base import ContainerPoolManager
 from .pool.session import PooledSandboxSession
+from .interactive import InteractiveSandboxSession
+
+__all__ = [
+    "ArtifactSandboxSession",
+    "ContainerPoolManager",
+    "PooledSandboxSession",
+    "InteractiveSandboxSession",
+    "SandboxSession",
+    "create_session",
+]
 
 
 def _check_dependency(backend: SandboxBackend) -> None:

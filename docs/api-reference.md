@@ -85,6 +85,103 @@ with ArtifactSandboxSession(lang="r", enable_plotting=True) as session:
     print(len(result2.plots))  # Output: 1 (automatically cleared)
 ```
 
+### InteractiveSandboxSession
+
+::: llm_sandbox.InteractiveSandboxSession
+
+The `InteractiveSandboxSession` class provides a persistent Python execution environment where state is maintained across multiple `run()` calls. This is ideal for notebook-style workflows, AI agent interactions, and multi-step data analysis.
+
+**Key Features**:
+
+1. **State Persistence**: Variables, functions, and imports persist across runs
+2. **IPython Support**: Full IPython kernel with magic commands
+3. **Configurable Execution**: Customizable timeout, memory limits, and history size
+4. **File-based Communication**: Uses a command/result queue system for reliability
+
+**Usage Example**:
+
+```python
+from llm_sandbox import InteractiveSandboxSession
+
+with InteractiveSandboxSession(lang="python") as session:
+    # Define a variable
+    session.run("x = 42")
+
+    # Use the variable in next execution
+    result = session.run("print(f'The answer is {x}')")
+    print(result.stdout)  # Output: The answer is 42
+```
+
+**IPython Magic Commands**:
+
+```python
+with InteractiveSandboxSession(lang="python") as session:
+    # List variables
+    result = session.run("%who")
+
+    # Execute shell commands
+    result = session.run("!ls -la")
+
+    # Time code execution
+    result = session.run("%%timeit\nsum(range(1000))")
+```
+
+**Limitations**:
+- Python language only
+- IPython kernel only
+
+For detailed usage examples, see the [Interactive Sessions Guide](interactive-sessions.md).
+
+---
+
+### InteractiveSettings
+
+::: llm_sandbox.interactive.InteractiveSettings
+
+Configuration class for interactive session behavior.
+
+**Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `kernel_type` | `KernelType` | `IPYTHON` | Type of kernel to use |
+| `max_memory` | `str` | `"1GB"` | Memory limit for the session |
+| `history_size` | `int` | `1000` | Number of execution results to cache |
+| `timeout` | `int` | `300` | Per-cell timeout in seconds |
+| `poll_interval` | `float` | `0.1` | Polling interval for results (seconds) |
+
+**Usage Example**:
+
+```python
+from llm_sandbox import InteractiveSandboxSession, InteractiveSettings, KernelType
+
+settings = InteractiveSettings(
+    kernel_type=KernelType.IPYTHON,
+    max_memory="2GB",
+    history_size=500,
+    timeout=600,
+    poll_interval=0.1
+)
+
+with InteractiveSandboxSession(
+    lang="python",
+    interactive_settings=settings
+) as session:
+    result = session.run("print('Hello with custom settings!')")
+```
+
+---
+
+### KernelType
+
+::: llm_sandbox.interactive.KernelType
+
+Enumeration of supported kernel types for interactive sessions.
+
+**Values**:
+
+- `IPYTHON`: IPython kernel (currently the only supported option)
+
 ---
 
 ## Data Classes
