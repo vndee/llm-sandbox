@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from docker.models.images import Image
 
 DOCKER_CONFLICT_ERROR_CODES = {404, 409}
+EXPECTED_DEMUX_OUTPUT_LENGTH = 2  # Docker exec_run with demux=True returns (stdout, stderr) tuple
 
 
 class DockerContainerAPI:
@@ -203,13 +204,17 @@ class SandboxDockerSession(BaseSession):
         stdout_output = ""
         stderr_output = ""
 
-        if output:
+        # Docker exec_run with demux=True returns (stdout_bytes, stderr_bytes)
+        # where either can be None or bytes. Handle edge cases gracefully.
+        if output and isinstance(output, tuple) and len(output) == EXPECTED_DEMUX_OUTPUT_LENGTH:
             stdout_data, stderr_data = output
             if stdout_data:
                 stdout_output = stdout_data.decode("utf-8")
             if stderr_data:
                 stderr_output = stderr_data.decode("utf-8")
 
+        # If output is not a 2-tuple (e.g., empty tuple, single value, None, etc.), treat as no output
+        # This handles edge cases where Docker might return unexpected formats
         return stdout_output, stderr_output
 
     def _process_stream_output(self, output: Any) -> tuple[str, str]:

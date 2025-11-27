@@ -41,11 +41,14 @@ class BaseSession(
 ):
     """Base session implementation with common functionality."""
 
-    def __init__(self, config: SessionConfig, **kwargs: Any) -> None:  # noqa: ARG002
+    def __init__(self, config: SessionConfig, **kwargs: Any) -> None:
         """Initialize base session."""
         self.config = config
         self.verbose = config.verbose
         self.logger = logging.getLogger(__name__)
+
+        # Store libraries from kwargs for pre-installation during environment setup
+        self._initial_libraries: list[str] | None = kwargs.pop("libraries", None)
 
         # Configure logging if verbose is enabled
         if self.verbose and not self.logger.handlers:
@@ -333,11 +336,27 @@ class BaseSession(
         # Skip environment setup when using existing container
         if self.using_existing_container:
             self._log("Skipping environment setup for existing container", "info")
+            # Note: Libraries cannot be automatically installed in existing containers
+            # User must ensure libraries are already installed or install them manually
+            if self._initial_libraries:
+                self._log(
+                    f"Warning: Libraries {self._initial_libraries} were requested but cannot be installed "
+                    "in an existing container. Libraries must be pre-installed or installed manually.",
+                    "warning",
+                )
             return
 
         # Skip environment setup if explicitly requested
         if self.config.skip_environment_setup:
             self._log("Skipping environment setup (skip_environment_setup=True)", "info")
+            # Note: Libraries cannot be installed when skip_environment_setup is True
+            # as library installation requires environment setup (venv, pip, etc.)
+            if self._initial_libraries:
+                self._log(
+                    f"Warning: Libraries {self._initial_libraries} were requested but cannot be installed "
+                    "because skip_environment_setup=True. Libraries must be pre-installed in the container image.",
+                    "warning",
+                )
             return
 
         self.execute_commands([
@@ -366,6 +385,12 @@ class BaseSession(
                     (GO_CREATE_MODULE_COMMAND, self.config.workdir),
                     (GO_TIDY_MODULE_COMMAND, self.config.workdir),
                 ])
+
+        # Install libraries if provided during initialization (e.g., from pool manager)
+        # This happens after environment setup is complete
+        if self._initial_libraries:
+            self._log(f"Installing pre-configured libraries: {self._initial_libraries}", "info")
+            self.install(self._initial_libraries)
 
     def run(self, code: str, libraries: list | None = None, timeout: float | None = None) -> ConsoleOutput:
         r"""Run the provided code within the Docker sandbox session.

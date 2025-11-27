@@ -7,6 +7,7 @@ This example demonstrates the core functionality of the container pool manager:
 - Acquiring and releasing containers
 - Automatic container reuse
 - Pool statistics monitoring
+- Library pre-installation (libraries are automatically installed during container creation)
 """
 
 import logging
@@ -19,7 +20,9 @@ from llm_sandbox.pool import ContainerPoolManager, PoolConfig, create_pool_manag
 
 logging.basicConfig(level=logging.INFO)
 
-client = podman.PodmanClient.from_env()
+client = podman.PodmanClient(
+    base_url="unix:///var/folders/lh/rjbzw60n1fv7xr9kffn7gr840000gn/T/podman/podman-machine-default-api.sock"
+)
 
 
 def _print_demo_header() -> None:
@@ -71,6 +74,8 @@ def _example_multiple_executions(pool_manager: ContainerPoolManager) -> None:
 def _example_preinstalled_libraries() -> None:
     print("\n3. Pre-installed libraries in pool:")
     print("-" * 40)
+    print("  Libraries are automatically installed during container creation!")
+    print("  No need to install them manually - they're ready to use immediately.")
 
     pool_config = PoolConfig(
         max_pool_size=3,
@@ -78,23 +83,39 @@ def _example_preinstalled_libraries() -> None:
         enable_prewarming=True,
     )
 
+    # Use libraries that are typically not pre-installed in base images
     pool = create_pool_manager(
         backend=SandboxBackend.PODMAN,
         config=pool_config,
         lang=SupportedLanguage.PYTHON,
         client=client,
-        libraries=["numpy", "pandas"],
+        libraries=["requests", "beautifulsoup4"],  # Pre-installed in all containers
     )
 
+    print("\n  Using first container from pool:")
     with SandboxSession(
         pool=pool,
         lang=SupportedLanguage.PYTHON,
         verbose=False,
         backend=SandboxBackend.PODMAN,
     ) as session:
-        result = session.run("import numpy; print(numpy.__version__)")
+        # Libraries are already installed - no need to pass them to run()
+        result = session.run("import requests; print(f'Requests version: {requests.__version__}')")
         print(f"  {result.stdout.strip()}")
-        result = session.run("import pandas; print(pandas.__version__)")
+        result = session.run("import bs4; print(f'BeautifulSoup4 version: {bs4.__version__}')")
+        print(f"  {result.stdout.strip()}")
+
+    print("\n  Using second container (libraries also pre-installed):")
+    with SandboxSession(
+        pool=pool,
+        lang=SupportedLanguage.PYTHON,
+        verbose=False,
+        backend=SandboxBackend.PODMAN,
+    ) as session:
+        # All containers in the pool have libraries pre-installed
+        result = session.run(
+            "import requests; r = requests.get('https://httpbin.org/json'); print(f'HTTP Status: {r.status_code}')"
+        )
         print(f"  {result.stdout.strip()}")
 
     pool.close()
@@ -156,17 +177,17 @@ def _example_shared_pool_manager() -> None:
             min_pool_size=3,
         ),
         lang=SupportedLanguage.PYTHON,
-        libraries=["numpy", "pandas"],
+        libraries=["requests", "beautifulsoup4"],
         client=client,
     )
 
     try:
         with SandboxSession(lang="python", pool=pool, backend=SandboxBackend.PODMAN) as session1:
-            result1 = session1.run("import pandas; print(pandas.__version__)")
+            result1 = session1.run("import requests; print(f'Requests: {requests.__version__}')")
             _ = result1
 
         with SandboxSession(lang="python", pool=pool, backend=SandboxBackend.PODMAN) as session2:
-            result2 = session2.run("import numpy; print(numpy.__version__)")
+            result2 = session2.run("import bs4; print(f'BeautifulSoup4: {bs4.__version__}')")
             _ = result2
     finally:
         pool.close()

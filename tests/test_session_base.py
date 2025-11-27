@@ -453,6 +453,70 @@ class TestBaseSessionEnvironmentSetup:
             # Should be called for Go setup
             assert mock_execute_commands.call_count >= 1
 
+    @patch.object(MockBaseSession, "install")
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_environment_setup_installs_initial_libraries(
+        self, mock_execute_commands: Mock, mock_install: Mock
+    ) -> None:
+        """Test that libraries passed during initialization are installed during environment_setup."""
+        with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
+            mock_handler = MockLanguageHandler(name=SupportedLanguage.PYTHON)
+            mock_create_handler.return_value = mock_handler
+
+            config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox")
+            # Pass libraries during initialization (as would happen from pool manager)
+            session = MockBaseSession(config, libraries=["numpy", "pandas"])
+
+            # Verify libraries are stored
+            assert session._initial_libraries == ["numpy", "pandas"]
+
+            # Call environment_setup
+            session.environment_setup()
+
+            # Verify install was called with the libraries
+            mock_install.assert_called_once_with(["numpy", "pandas"])
+
+    @patch.object(MockBaseSession, "install")
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_environment_setup_no_libraries_when_none_provided(
+        self, mock_execute_commands: Mock, mock_install: Mock
+    ) -> None:
+        """Test that install is not called when no libraries are provided."""
+        with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
+            mock_handler = MockLanguageHandler(name=SupportedLanguage.PYTHON)
+            mock_create_handler.return_value = mock_handler
+
+            config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox")
+            session = MockBaseSession(config)  # No libraries parameter
+
+            # Verify no libraries stored
+            assert session._initial_libraries is None
+
+            # Call environment_setup
+            session.environment_setup()
+
+            # Verify install was not called
+            mock_install.assert_not_called()
+
+    @patch.object(MockBaseSession, "install")
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_environment_setup_skips_libraries_when_skip_setup_true(
+        self, mock_execute_commands: Mock, mock_install: Mock
+    ) -> None:
+        """Test that libraries are not installed when skip_environment_setup is True."""
+        with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
+            mock_handler = MockLanguageHandler(name=SupportedLanguage.PYTHON)
+            mock_create_handler.return_value = mock_handler
+
+            config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox", skip_environment_setup=True)
+            session = MockBaseSession(config, libraries=["numpy"])
+
+            # Call environment_setup
+            session.environment_setup()
+
+            # Verify install was not called (environment setup was skipped)
+            mock_install.assert_not_called()
+
 
 class TestBaseSessionSkipEnvironmentSetup:
     """Test BaseSession skip_environment_setup functionality."""

@@ -1,8 +1,5 @@
 """Tests for Kubernetes utility functions."""
 
-import logging
-import threading
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
