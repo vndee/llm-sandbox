@@ -9,7 +9,7 @@ from llm_sandbox.pool.config import PoolConfig
 
 
 def create_pool_manager(
-    client: Any,
+    client: Any | None = None,
     backend: SandboxBackend = SandboxBackend.DOCKER,
     config: PoolConfig | None = None,
     lang: SupportedLanguage = SupportedLanguage.PYTHON,
@@ -18,7 +18,7 @@ def create_pool_manager(
     """Create a container pool manager for the specified backend.
 
     Args:
-        client: Client to use for container creation
+        client: Client to use for container creation (optional)
         backend: Container backend to use (docker, kubernetes, podman)
         config: Pool configuration (uses defaults if None)
         lang: Programming language for containers

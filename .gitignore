@@ -17,6 +17,7 @@ plots/
 .env.development.local
 .env.test.local
 .env.production.local
+pool_artifact_output/
 
 # C extensions
 *.so

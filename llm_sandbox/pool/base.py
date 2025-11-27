@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from types import TracebackType
-from typing import Any
+from typing import Any, cast
 
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.pool.config import ExhaustionStrategy, PoolConfig
@@ -30,7 +30,7 @@ def resolve_default_image(lang: SupportedLanguage, image: str | None, dockerfile
         return image
     if dockerfile:
         return None
-    return DefaultImage.__dict__[lang.upper()]
+    return cast("str", getattr(DefaultImage, lang.upper()))
 
 
 class ContainerState(str, Enum):
@@ -163,6 +163,7 @@ class ContainerPoolManager(ABC):
             finally:
                 pool.release(container)
         ```
+
     """
 
     def __init__(
@@ -256,7 +257,18 @@ class ContainerPoolManager(ABC):
                 self.logger.debug("Acquired container %s from pool", container.container_id)
                 return container
 
-            # No idle containers available - handle based on strategy
+            # No idle containers - check if we can scale up the pool
+            if len(self._pool) < self.config.max_pool_size:
+                self.logger.info(
+                    "Pool exhausted but under max_pool_size (%d/%d), creating new container",
+                    len(self._pool),
+                    self.config.max_pool_size,
+                )
+                container = self._create_container()
+                container.mark_busy()
+                return container
+
+            # Pool is at max capacity - handle based on exhaustion strategy
             return self._handle_exhaustion()
 
     def release(self, container: PooledContainer) -> None:
@@ -394,16 +406,31 @@ class ContainerPoolManager(ABC):
         timeout = self.config.acquisition_timeout
         self.logger.debug("Waiting for container (timeout=%s)", timeout)
 
-        # Wait for notification
-        if self._condition.wait(timeout=timeout):
-            # Got notified, try to get container again
-            container = self._get_idle_container()
-            if container:
-                container.mark_busy()
-                return container
+        # Calculate deadline for timeout
+        deadline = time.time() + timeout if timeout else None
 
-        # Timeout or spurious wakeup without available container
-        raise PoolExhaustedError(self.config.max_pool_size, timeout)
+        # Keep waiting until we get a container or timeout
+        while True:
+            # Calculate remaining timeout
+            if deadline:
+                remaining_timeout = deadline - time.time()
+                if remaining_timeout <= 0:
+                    # Timeout expired
+                    raise PoolExhaustedError(self.config.max_pool_size, timeout)
+            else:
+                remaining_timeout = None
+
+            # Wait for notification
+            if self._condition.wait(timeout=remaining_timeout):
+                # Got notified, try to get container again
+                container = self._get_idle_container()
+                if container:
+                    container.mark_busy()
+                    return container
+                # Container was taken by another thread, loop and wait again
+            else:
+                # Timeout expired
+                raise PoolExhaustedError(self.config.max_pool_size, timeout)
 
     def _create_temporary_container(self) -> PooledContainer:
         """Create a temporary container outside the pool (internal, must hold lock).
@@ -441,9 +468,6 @@ class ContainerPoolManager(ABC):
 
         Raises:
             Exception: If container creation or initialization fails
-
-        """
-            A new pooled container ready for use
 
         """
         # Use backend-specific session creation logic
@@ -522,13 +546,10 @@ class ContainerPoolManager(ABC):
         with self._lock:
             if self._closed:
                 return
-            
+
             # Copy idle containers for checking
-            containers_to_check = [
-                container for container in self._pool 
-                if container.state == ContainerState.IDLE
-            ]
-        
+            containers_to_check = [container for container in self._pool if container.state == ContainerState.IDLE]
+
         # Perform health checks without holding lock
         unhealthy = []
         for container in containers_to_check:
@@ -546,14 +567,14 @@ class ContainerPoolManager(ABC):
             if not self._health_check_impl(container.container):
                 self.logger.warning("Container %s failed health check", container.container_id)
                 unhealthy.append(container)
-        
+
         # Remove unhealthy containers (with lock)
         if unhealthy:
             with self._lock:
                 for container in unhealthy:
                     container.mark_unhealthy()
                     self._destroy_container(container)
-                
+
                 # Ensure minimum pool size
                 self._ensure_min_pool_size()
 

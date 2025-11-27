@@ -14,12 +14,12 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import docker
+import podman
 
 from llm_sandbox import SandboxBackend, SandboxSession, SupportedLanguage
 from llm_sandbox.pool import ContainerPoolManager, ExhaustionStrategy, PoolConfig, create_pool_manager
 
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+client = podman.PodmanClient.from_env()
 
 
 def run_code_in_session(task_id: int, code: str, pool_manager: ContainerPoolManager | None = None) -> dict:
@@ -41,6 +41,7 @@ def run_code_in_session(task_id: int, code: str, pool_manager: ContainerPoolMana
             lang="python",
             verbose=False,
             client=client,
+            backend=SandboxBackend.PODMAN,
         ) as session:
             result = session.run(code)
     else:
@@ -48,6 +49,7 @@ def run_code_in_session(task_id: int, code: str, pool_manager: ContainerPoolMana
             lang="python",
             pool=pool_manager,
             verbose=False,
+            backend=SandboxBackend.PODMAN,
         ) as session:
             result = session.run(code)
 
@@ -76,7 +78,7 @@ def demo_concurrent_execution() -> None:
 
     pool = create_pool_manager(
         client=client,
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=pool_config,
         lang=SupportedLanguage.PYTHON,
     )
@@ -144,7 +146,7 @@ def demo_performance_comparison() -> None:
     print("\n  With pooling (reuses containers):")
     pool_manager = create_pool_manager(
         client=client,
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(max_pool_size=3, min_pool_size=2, enable_prewarming=True),
         lang=SupportedLanguage.PYTHON,
     )
@@ -192,7 +194,7 @@ def demo_exhaustion_strategies() -> None:
 
     pool_manager = create_pool_manager(
         client=client,
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=pool_config,
         lang=SupportedLanguage.PYTHON,
     )
@@ -233,7 +235,7 @@ def demo_exhaustion_strategies() -> None:
 
     pool_manager_fail_fast = create_pool_manager(
         client=client,
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=pool_config_fail_fast,
         lang=SupportedLanguage.PYTHON,
     )
@@ -275,7 +277,7 @@ def demo_shared_pool() -> None:
     # Using fewer max_workers than pool size to avoid contention
     pool_manager = create_pool_manager(
         client=client,
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
             max_pool_size=5,  # Slightly larger than max_workers
             min_pool_size=2,

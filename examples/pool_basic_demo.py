@@ -10,15 +10,16 @@ This example demonstrates the core functionality of the container pool manager:
 """
 
 import logging
+import textwrap
 
-import docker
+import podman
 
 from llm_sandbox import SandboxBackend, SandboxSession, SupportedLanguage
 from llm_sandbox.pool import ContainerPoolManager, PoolConfig, create_pool_manager
 
 logging.basicConfig(level=logging.INFO)
 
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+client = podman.PodmanClient.from_env()
 
 
 def _print_demo_header() -> None:
@@ -40,11 +41,14 @@ def _example_simple_pooled_session(pool_manager: ContainerPoolManager) -> None:
     with SandboxSession(
         lang="python",
         pool=pool_manager,
+        backend=SandboxBackend.PODMAN,
     ) as session:
-        code = """
-print("Hello from pooled container!")
-print(f"2 + 2 = {2 + 2}")
-"""
+        code = textwrap.dedent(
+            """
+            print("Hello from pooled container!")
+            print(f"2 + 2 = {2 + 2}")
+            """
+        )
         result = session.run(code)
         print(f"Output: {result.stdout.strip()}")
 
@@ -56,7 +60,7 @@ def _example_multiple_executions(pool_manager: ContainerPoolManager) -> None:
     print("-" * 40)
 
     for i in range(3):
-        with SandboxSession(lang="python", pool=pool_manager) as session:
+        with SandboxSession(lang="python", pool=pool_manager, backend=SandboxBackend.PODMAN) as session:
             code = f'print("Execution #{i + 1}")'
             result = session.run(code)
             print(f"  {result.stdout.strip()}")
@@ -75,7 +79,7 @@ def _example_preinstalled_libraries() -> None:
     )
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=pool_config,
         lang=SupportedLanguage.PYTHON,
         client=client,
@@ -86,6 +90,7 @@ def _example_preinstalled_libraries() -> None:
         pool=pool,
         lang=SupportedLanguage.PYTHON,
         verbose=False,
+        backend=SandboxBackend.PODMAN,
     ) as session:
         result = session.run("import numpy; print(numpy.__version__)")
         print(f"  {result.stdout.strip()}")
@@ -102,7 +107,7 @@ def _example_pool_statistics() -> None:
     from llm_sandbox.pool import create_pool_manager
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
             max_pool_size=4,
             min_pool_size=2,
@@ -145,7 +150,7 @@ def _example_shared_pool_manager() -> None:
     from llm_sandbox.pool import create_pool_manager
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
             max_pool_size=10,
             min_pool_size=3,
@@ -156,11 +161,11 @@ def _example_shared_pool_manager() -> None:
     )
 
     try:
-        with SandboxSession(lang="python", pool=pool) as session1:
+        with SandboxSession(lang="python", pool=pool, backend=SandboxBackend.PODMAN) as session1:
             result1 = session1.run("import pandas; print(pandas.__version__)")
             _ = result1
 
-        with SandboxSession(lang="python", pool=pool) as session2:
+        with SandboxSession(lang="python", pool=pool, backend=SandboxBackend.PODMAN) as session2:
             result2 = session2.run("import numpy; print(numpy.__version__)")
             _ = result2
     finally:
@@ -178,7 +183,7 @@ def main() -> None:
     )
 
     pool_manager = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=pool_config,
         lang=SupportedLanguage.PYTHON,
         client=client,

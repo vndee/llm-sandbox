@@ -14,13 +14,13 @@ import threading
 import time
 from datetime import UTC, datetime
 
-import docker
+import podman
 
 from llm_sandbox import SandboxSession, SupportedLanguage
 from llm_sandbox.const import SandboxBackend
 from llm_sandbox.pool import ContainerPoolManager, PoolConfig, create_pool_manager
 
-client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
+client = podman.PodmanClient.from_env()
 
 
 def print_pool_stats(pool: ContainerPoolManager, title: str = "Pool Statistics") -> None:
@@ -52,7 +52,7 @@ def demo_real_time_monitoring() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
             max_pool_size=3,
             min_pool_size=2,
@@ -101,7 +101,7 @@ def demo_health_checking() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
             max_pool_size=3,
             min_pool_size=2,
@@ -126,7 +126,7 @@ def demo_health_checking() -> None:
 
         # Use a container to ensure it stays healthy
         print("\n  Using a container...")
-        with SandboxSession(lang=SupportedLanguage.PYTHON, pool_manager=pool) as session:
+        with SandboxSession(lang=SupportedLanguage.PYTHON, pool=pool) as session:
             result = session.run('print("Health check test")')
             print(f"    Output: {result.stdout.strip()}")
 
@@ -143,10 +143,11 @@ def demo_idle_timeout() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
             max_pool_size=4,
-            min_pool_size=1,
+            min_pool_size=3,
+            enable_prewarming=True,
             idle_timeout=8.0,  # 8 second idle timeout
             health_check_interval=2.0,
         ),
@@ -196,7 +197,7 @@ def demo_container_lifecycle() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
             max_pool_size=3,
             min_pool_size=1,
@@ -257,10 +258,11 @@ def demo_concurrent_monitoring() -> None:
     print("=" * 60)
 
     pool = create_pool_manager(
-        backend=SandboxBackend.DOCKER,
+        backend=SandboxBackend.PODMAN,
         config=PoolConfig(
-            max_pool_size=3,
-            min_pool_size=1,
+            max_pool_size=5,
+            min_pool_size=3,
+            enable_prewarming=True,
         ),
         lang=SupportedLanguage.PYTHON,
         client=client,
@@ -292,7 +294,7 @@ def demo_concurrent_monitoring() -> None:
         # Simulate concurrent workload
         def worker(worker_id: int) -> None:
             for i in range(2):
-                with SandboxSession(lang=SupportedLanguage.PYTHON, pool_manager=pool) as session:
+                with SandboxSession(lang=SupportedLanguage.PYTHON, pool=pool) as session:
                     time.sleep(0.3)
                     session.run(f'print("Worker {worker_id}, iteration {i}")')
 

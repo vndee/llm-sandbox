@@ -15,8 +15,10 @@ from llm_sandbox.pool.base import ContainerPoolManager, ContainerState, PooledCo
 from llm_sandbox.pool.config import ExhaustionStrategy, PoolConfig
 from llm_sandbox.pool.exceptions import PoolClosedError, PoolExhaustedError, PoolHealthCheckError
 from llm_sandbox.pool.factory import create_pool_manager
+from llm_sandbox.pool.session import ArtifactPooledSandboxSession, PooledSandboxSession
 
 __all__ = [
+    "ArtifactPooledSandboxSession",
     "ContainerPoolManager",
     "ContainerState",
     "ExhaustionStrategy",
@@ -25,5 +27,6 @@ __all__ = [
     "PoolExhaustedError",
     "PoolHealthCheckError",
     "PooledContainer",
+    "PooledSandboxSession",
     "create_pool_manager",
 ]

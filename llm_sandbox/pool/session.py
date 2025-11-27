@@ -5,7 +5,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SandboxBackend
-from llm_sandbox.data import ConsoleOutput
+from llm_sandbox.data import ConsoleOutput, ExecutionResult
 from llm_sandbox.pool.base import ContainerPoolManager, PooledContainer
 from llm_sandbox.security import SecurityPolicy
 
@@ -511,7 +511,7 @@ class ArtifactPooledSandboxSession:
         libraries: list | None = None,
         timeout: float | None = None,
         clear_plots: bool = False,
-    ) -> ConsoleOutput:
+    ) -> ExecutionResult:
         """Run code and extract artifacts.
 
         Args:

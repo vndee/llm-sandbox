@@ -7,6 +7,7 @@ from kubernetes.client import CoreV1Api
 from kubernetes.client.exceptions import ApiException
 
 from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.k8s_utils import retry_k8s_api_call
 from llm_sandbox.pool.base import ContainerPoolManager
 from llm_sandbox.pool.config import PoolConfig
 
@@ -91,15 +92,20 @@ class KubernetesPoolManager(ContainerPoolManager):
         """Destroy a Kubernetes pod.
 
         Args:
-            container: Pod object to destroy
+            container: Pod object or pod name string to destroy
 
         """
         try:
-            pod_name = container.metadata.name
-            self.client.delete_namespaced_pod(
+            # Handle both pod name strings and pod objects
+            pod_name = container if isinstance(container, str) else container.metadata.name
+
+            # Use retry logic with thread-safe API calls
+            retry_k8s_api_call(
+                self.client.delete_namespaced_pod,
                 name=pod_name,
                 namespace=self.namespace,
                 body=k8s_client.V1DeleteOptions(),
+                logger=self.logger,
             )
         except ApiException as e:
             if e.status != NOT_FOUND_ERROR_CODE:  # Ignore not found errors
@@ -111,31 +117,37 @@ class KubernetesPoolManager(ContainerPoolManager):
         """Get Kubernetes pod name.
 
         Args:
-            container: Pod object
+            container: Pod object or pod name string
 
         Returns:
             Pod name
 
         """
+        # Handle both pod name strings (from session.container) and pod objects
+        if isinstance(container, str):
+            return container
         return str(container.metadata.name)
 
     def _health_check_impl(self, container: Any) -> bool:
         """Perform health check on Kubernetes pod.
 
         Args:
-            container: Pod to check
+            container: Pod object or pod name string to check
 
         Returns:
             True if healthy, False otherwise
 
         """
         try:
-            pod_name = container.metadata.name
+            # Handle both pod name strings and pod objects
+            pod_name = container if isinstance(container, str) else container.metadata.name
 
-            # Get current pod status
-            pod = self.client.read_namespaced_pod(
+            # Get current pod status with retry logic
+            pod = retry_k8s_api_call(
+                self.client.read_namespaced_pod,
                 name=pod_name,
                 namespace=self.namespace,
+                logger=self.logger,
             )
 
             # Check if pod is running
@@ -148,8 +160,6 @@ class KubernetesPoolManager(ContainerPoolManager):
                     if not status.ready:
                         return False
 
-            return True
-
         except ApiException as e:
             if e.status == NOT_FOUND_ERROR_CODE:
                 return False
@@ -158,3 +168,5 @@ class KubernetesPoolManager(ContainerPoolManager):
         except Exception:
             self.logger.exception("Health check error")
             return False
+        else:
+            return True

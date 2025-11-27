@@ -36,14 +36,6 @@ The container pooling feature uses a **composition-based architecture** that cle
 4. All operations (`run()`, `execute_command()`, `copy_to_runtime()`, etc.) are delegated to the backend session
 5. When done, the container is returned to the pool for reuse (not destroyed)
 
-!!! tip "Clean Architecture Benefits"
-    This composition-based design means:
-
-    - **No code duplication** - All backend-specific logic remains in backend sessions
-    - **Automatic feature support** - New features added to backend sessions work immediately with pooling
-    - **Easy maintenance** - Changes only need to be made in one place
-    - **Full compatibility** - Pooled sessions support all parameters (`stream`, `verbose`, etc.) that regular sessions support
-
 ### What is Container Pooling?
 
 Container pooling maintains a pool of ready-to-use containers that can be quickly assigned to execute code and then returned to the pool for reuse. Instead of creating a new container for each execution (which involves image pulling, container startup, and environment setup), pooling allows you to:
@@ -58,16 +50,16 @@ Container pooling maintains a pool of ready-to-use containers that can be quickl
 
 | Feature | Benefit |
 |---------|---------|
-| **� Faster Execution** | Eliminate container creation overhead (3-5 seconds per execution) |
-| **=% Pre-warmed Environments** | Dependencies pre-installed, no wait time |
-| **= Thread-Safe** | Safely handle concurrent requests |
-| **{ Resource Efficient** | Automatic container recycling and health management |
-| **=� Observable** | Real-time statistics and monitoring |
-| **<� Flexible** | Configurable pool size, timeouts, and behaviors |
+| **Faster Execution** | Eliminate container creation overhead (3-5 seconds per execution) |
+| **Pre-warmed Environments** | Dependencies pre-installed, no wait time |
+| **Thread-Safe** | Safely handle concurrent requests |
+| **Resource Efficient** | Automatic container recycling and health management |
+| **Observable** | Real-time statistics and monitoring |
+| **Flexible** | Configurable pool size, timeouts, and behaviors |
 
 ### When to Use Container Pooling
 
-** Recommended for:**
+**Recommended for:**
 
 - High-frequency code execution (multiple executions per minute)
 - Concurrent request handling (web applications, APIs)
@@ -75,7 +67,7 @@ Container pooling maintains a pool of ready-to-use containers that can be quickl
 - Batch processing with repeated executions
 - Applications with predictable resource requirements
 
-**L Not necessary for:**
+**Not necessary for:**
 
 - One-off script execution
 - Extremely low-frequency usage (once per hour or less)
