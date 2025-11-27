@@ -657,13 +657,15 @@ class TestPooledSessionBackendCreation:
         mock_pool = MagicMock()
         mock_pool.__class__.__name__ = "DockerPoolManager"
 
-        with patch("llm_sandbox.pool.session.PooledSandboxSession.open") as mock_open:
-            with patch("llm_sandbox.pool.session.PooledSandboxSession.close") as mock_close:
-                with ArtifactPooledSandboxSession(pool_manager=mock_pool):
-                    pass
+        with (
+            patch("llm_sandbox.pool.session.PooledSandboxSession.open") as mock_open,
+            patch("llm_sandbox.pool.session.PooledSandboxSession.close") as mock_close,
+        ):
+            with ArtifactPooledSandboxSession(pool_manager=mock_pool):
+                pass
 
-                mock_open.assert_called_once()
-                mock_close.assert_called_once()
+            mock_open.assert_called_once()
+            mock_close.assert_called_once()
 
     def test_artifact_session_clear_plots_disabled(self) -> None:
         """Test clear_plots does nothing when disabled."""

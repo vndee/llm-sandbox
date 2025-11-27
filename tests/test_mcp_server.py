@@ -330,7 +330,7 @@ class TestExecuteCode:
         result = execute_code("import matplotlib.pyplot as plt; plt.plot([1,2,3]); plt.show()", "python")
 
         # Verify
-        assert len(result) == 2  # noqa: PLR2004
+        assert len(result) == 2
 
         # First result should be the image
         assert isinstance(result[0], ImageContent)

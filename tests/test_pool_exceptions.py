@@ -73,7 +73,7 @@ class TestPoolClosedError:
     def test_can_be_raised(self) -> None:
         """Test exception can be raised and caught."""
         with pytest.raises(PoolClosedError) as exc_info:
-            raise PoolClosedError()
+            raise PoolClosedError
 
         assert "Container pool has been closed" in str(exc_info.value)
 
@@ -164,7 +164,7 @@ class TestExceptionIntegration:
             raise PoolExhaustedError(pool_size=5)
 
         def raise_closed() -> None:
-            raise PoolClosedError()
+            raise PoolClosedError
 
         def raise_health_check() -> None:
             raise PoolHealthCheckError(container_id="test", reason="failed")

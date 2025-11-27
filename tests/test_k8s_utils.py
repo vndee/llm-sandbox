@@ -41,9 +41,8 @@ class TestRetryK8sApiCall:
         ws_error = ApiException(status=0, reason="Handshake status 404 Not Found")
         mock_func = MagicMock(side_effect=ws_error)
 
-        with patch("time.sleep"):
-            with pytest.raises(ApiException) as exc:
-                retry_k8s_api_call(mock_func, max_retries=3)
+        with patch("time.sleep"), pytest.raises(ApiException) as exc:
+            retry_k8s_api_call(mock_func, max_retries=3)
 
         assert exc.value == ws_error
         assert mock_func.call_count == 3
@@ -54,9 +53,8 @@ class TestRetryK8sApiCall:
         api_error = ApiException(status=404, reason="Not Found")
         mock_func = MagicMock(side_effect=api_error)
 
-        with patch("time.sleep") as mock_sleep:
-            with pytest.raises(ApiException) as exc:
-                retry_k8s_api_call(mock_func)
+        with patch("time.sleep") as mock_sleep, pytest.raises(ApiException) as exc:
+            retry_k8s_api_call(mock_func)
 
         assert exc.value == api_error
         assert mock_func.call_count == 1
@@ -67,9 +65,8 @@ class TestRetryK8sApiCall:
         error = ValueError("Generic error")
         mock_func = MagicMock(side_effect=error)
 
-        with patch("time.sleep") as mock_sleep:
-            with pytest.raises(ValueError) as exc:
-                retry_k8s_api_call(mock_func)
+        with patch("time.sleep") as mock_sleep, pytest.raises(ValueError, match="Generic error") as exc:
+            retry_k8s_api_call(mock_func)
 
         assert exc.value == error
         assert mock_func.call_count == 1
