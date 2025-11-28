@@ -96,10 +96,6 @@ def retry_k8s_api_call(
             # For other API exceptions, don't retry
             raise
 
-        except Exception:
-            # For non-API exceptions, don't retry
-            raise
-
     # All retries failed
     if last_exception:
         raise last_exception

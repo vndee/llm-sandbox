@@ -57,3 +57,16 @@ class PoolHealthCheckError(Exception):
         super().__init__(f"Health check failed for container {container_id}: {reason}")
         self.container_id = container_id
         self.reason = reason
+
+
+class SessionNotOpenError(RuntimeError):
+    """Raised when session operations are attempted before the session is opened.
+
+    This exception is raised when methods like run(), execute_command(),
+    copy_to_runtime(), or copy_from_runtime() are called before open()
+    or outside of a context manager.
+    """
+
+    def __init__(self) -> None:
+        """Initialize SessionNotOpenError."""
+        super().__init__("Session not open - call open() first or use context manager")

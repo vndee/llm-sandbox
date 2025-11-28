@@ -12,6 +12,8 @@ from llm_sandbox.security import SecurityPolicy
 if TYPE_CHECKING:
     from llm_sandbox.core.session_base import BaseSession
 
+from llm_sandbox.pool.exceptions import SessionNotOpenError
+
 
 class DuplicateClientError(ValueError):
     """Error raised when a client is specified both in the pool manager and in the session."""
@@ -305,8 +307,7 @@ class PooledSandboxSession:
 
         """
         if not self._backend_session:
-            msg = "Session not open - call open() first or use context manager"
-            raise RuntimeError(msg)
+            raise SessionNotOpenError
 
         return self._backend_session.run(code, libraries=libraries, timeout=timeout)
 
@@ -325,8 +326,7 @@ class PooledSandboxSession:
 
         """
         if not self._backend_session:
-            msg = "Session not open - call open() first or use context manager"
-            raise RuntimeError(msg)
+            raise SessionNotOpenError
 
         return self._backend_session.execute_command(command, workdir=workdir)
 
@@ -342,8 +342,7 @@ class PooledSandboxSession:
 
         """
         if not self._backend_session:
-            msg = "Session not open - call open() first or use context manager"
-            raise RuntimeError(msg)
+            raise SessionNotOpenError
 
         self._backend_session.copy_to_runtime(src, dest)
 
@@ -359,8 +358,7 @@ class PooledSandboxSession:
 
         """
         if not self._backend_session:
-            msg = "Session not open - call open() first or use context manager"
-            raise RuntimeError(msg)
+            raise SessionNotOpenError
 
         self._backend_session.copy_from_runtime(src, dest)
 
@@ -390,8 +388,7 @@ class PooledSandboxSession:
 
         """
         if self._backend_session is None:
-            msg = "Session not open - call open() first or use context manager"
-            raise RuntimeError(msg)
+            raise SessionNotOpenError
         return self._backend_session
 
     def __getattr__(self, name: str) -> Any:
@@ -401,8 +398,8 @@ class PooledSandboxSession:
         of the underlying backend session.
         """
         if self._backend_session is None:
-            msg = f"Cannot access '{name}' - session not open"
-            raise AttributeError(msg)
+            raise SessionNotOpenError
+
         return getattr(self._backend_session, name)
 
 

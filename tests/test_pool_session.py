@@ -7,6 +7,7 @@ import pytest
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.pool.config import PoolConfig
+from llm_sandbox.pool.exceptions import SessionNotOpenError
 from llm_sandbox.pool.session import ArtifactPooledSandboxSession, DuplicateClientError, PooledSandboxSession
 
 
@@ -446,7 +447,7 @@ class TestPooledSessionAttributeDelegation:
         try:
             session = PooledSandboxSession(pool_manager=pool)
 
-            with pytest.raises(AttributeError, match="Cannot access.*session not open"):
+            with pytest.raises(SessionNotOpenError):
                 _ = session.unknown_attribute
         finally:
             pool.close()
@@ -594,26 +595,26 @@ class TestPooledSessionBackendCreation:
             session._create_backend_session("id")
 
     def test_methods_raise_if_not_open(self) -> None:
-        """Test methods raise RuntimeError if session is not open."""
+        """Test methods raise SessionNotOpenError if session is not open."""
         session = PooledSandboxSession.__new__(PooledSandboxSession)
         session._backend_session = None
 
-        with pytest.raises(RuntimeError, match="Session not open"):
+        with pytest.raises(SessionNotOpenError):
             session.run("code")
 
-        with pytest.raises(RuntimeError, match="Session not open"):
+        with pytest.raises(SessionNotOpenError):
             session.execute_command("cmd")
 
-        with pytest.raises(RuntimeError, match="Session not open"):
+        with pytest.raises(SessionNotOpenError):
             session.copy_to_runtime("src", "dest")
 
-        with pytest.raises(RuntimeError, match="Session not open"):
+        with pytest.raises(SessionNotOpenError):
             session.copy_from_runtime("src", "dest")
 
-        with pytest.raises(RuntimeError, match="Session not open"):
+        with pytest.raises(SessionNotOpenError):
             _ = session.backend_session
 
-        with pytest.raises(AttributeError, match="session not open"):
+        with pytest.raises(SessionNotOpenError):
             _ = session.some_attribute
 
     @patch("kubernetes.config.load_kube_config")
