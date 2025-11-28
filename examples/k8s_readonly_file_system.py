@@ -107,7 +107,6 @@ def demonstrate_fix() -> bool:
 
 def demonstrate_alternative_workdir() -> bool:
     """Alternative solution: Use a different workdir that's writable."""
-    logger.info("\n" + "=" * 70)
     logger.info("Alternative solution: Configure workdir to writable location")
     logger.info("=" * 70)
 
@@ -195,7 +194,6 @@ if __name__ == "__main__":
     # Alternative solution
     success2 = demonstrate_alternative_workdir()
 
-    logger.info("\n" + "=" * 70)
     if success1 and success2:
         logger.info("Both solutions work!")
         logger.info("\nKey takeaways:")
