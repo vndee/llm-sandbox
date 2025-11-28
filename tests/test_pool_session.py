@@ -579,7 +579,7 @@ class TestPooledSessionBackendCreation:
         session = PooledSandboxSession.__new__(PooledSandboxSession)
         session._backend_session = None
         session._pooled_container = None
-        session._pool_manager = None
+        session._pool_manager = None  # type: ignore[assignment]
 
         # Should not raise
         session.close()
@@ -616,9 +616,12 @@ class TestPooledSessionBackendCreation:
         with pytest.raises(AttributeError, match="session not open"):
             _ = session.some_attribute
 
+    @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.pool.kubernetes_pool.CoreV1Api")
     @patch("llm_sandbox.kubernetes.SandboxKubernetesSession")
-    def test_kubernetes_duplicate_client_error(self, mock_k8s_session: MagicMock, mock_core_api: MagicMock) -> None:
+    def test_kubernetes_duplicate_client_error(
+        self, mock_k8s_session: MagicMock, mock_core_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
         """Test DuplicateClientError for Kubernetes backend."""
         from llm_sandbox.pool.base import PooledContainer
         from llm_sandbox.pool.kubernetes_pool import KubernetesPoolManager
