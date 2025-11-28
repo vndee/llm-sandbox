@@ -111,4 +111,4 @@ def create_pool_manager(
             return PodmanPoolManager(client=client, config=config, lang=lang, **kwargs)
 
         case _:
-            raise UnsupportedBackendError(backend=backend)
+            raise UnsupportedBackendError(backend)

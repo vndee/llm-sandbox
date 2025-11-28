@@ -38,11 +38,11 @@ class TestCreatePoolManager:
         assert pool.__class__.__name__ == "KubernetesPoolManager"
         mock_load_config.assert_called_once()
 
-    @patch("llm_sandbox.pool.podman_pool.PodmanClient")
+    @patch("llm_sandbox.pool.podman_pool.PodmanClient.from_env")
     def test_create_podman_pool_manager(self, mock_podman_client: MagicMock) -> None:
         """Test creating Podman pool manager."""
         mock_client = MagicMock()
-        mock_podman_client.return_value = mock_client
+        mock_podman_client.from_env.return_value = mock_client
 
         pool = create_pool_manager(backend=SandboxBackend.PODMAN)
 

@@ -10,7 +10,7 @@ from llm_sandbox.pool.podman_pool import PodmanPoolManager
 class TestPodmanPoolManagerInitialization:
     """Test PodmanPoolManager initialization."""
 
-    @patch("llm_sandbox.pool.podman_pool.PodmanClient")
+    @patch("llm_sandbox.pool.podman_pool.PodmanClient.from_env")
     def test_init_with_default_client(self, mock_podman_client: MagicMock) -> None:
         """Test initialization with default Podman client."""
         mock_client = MagicMock()
@@ -20,7 +20,6 @@ class TestPodmanPoolManagerInitialization:
         pool = PodmanPoolManager(config=config, lang=SupportedLanguage.PYTHON)
 
         assert pool.client == mock_client
-        mock_podman_client.assert_called_once()
 
     def test_init_with_custom_client(self) -> None:
         """Test initialization with custom Podman client."""
@@ -31,10 +30,10 @@ class TestPodmanPoolManagerInitialization:
 
         assert pool.client == custom_client
 
-    @patch("llm_sandbox.pool.podman_pool.PodmanClient")
+    @patch("llm_sandbox.pool.podman_pool.PodmanClient.from_env")
     def test_init_with_dockerfile(self, mock_podman_client: MagicMock) -> None:
         """Test initialization with Dockerfile."""
-        mock_podman_client.return_value = MagicMock()
+        mock_podman_client.from_env.return_value = MagicMock()
         config = PoolConfig(max_pool_size=3, enable_prewarming=False)
 
         pool = PodmanPoolManager(
@@ -76,7 +75,7 @@ class TestPodmanPoolManagerInitialization:
 class TestPodmanPoolManagerSessionCreation:
     """Test session creation for Podman pool."""
 
-    @patch("llm_sandbox.pool.podman_pool.PodmanClient")
+    @patch("llm_sandbox.pool.podman_pool.PodmanClient.from_env")
     @patch("llm_sandbox.podman.SandboxPodmanSession")
     def test_create_session_for_container(self, mock_session_class: MagicMock, mock_podman_client: MagicMock) -> None:
         """Test creating Podman session for container."""

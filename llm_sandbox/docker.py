@@ -206,7 +206,9 @@ class SandboxDockerSession(BaseSession):
 
         # Docker exec_run with demux=True returns (stdout_bytes, stderr_bytes)
         # where either can be None or bytes. Handle edge cases gracefully.
-        if output and isinstance(output, tuple) and len(output) == EXPECTED_DEMUX_OUTPUT_LENGTH:
+        if isinstance(output, tuple) and len(output) == EXPECTED_DEMUX_OUTPUT_LENGTH:
+            # Docker's demux contract promises exactly two streams; enforcement avoids unpack errors
+            # when the Engine misbehaves (e.g., returning None or truncated tuples).
             stdout_data, stderr_data = output
             if stdout_data:
                 stdout_output = stdout_data.decode("utf-8")

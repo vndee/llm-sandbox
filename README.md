@@ -632,12 +632,64 @@ print(f"Busy containers: {stats['state_counts']['busy']}")
 pool.close()
 ```
 
+### Artifact Extraction with Pooling
+
+For capturing plots and visualizations with container pooling, you can use either approach:
+
+```python
+from llm_sandbox import ArtifactSandboxSession
+from llm_sandbox.pool import create_pool_manager, PoolConfig
+import base64
+from pathlib import Path
+
+# Create pool with pre-installed visualization libraries
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(max_pool_size=5, min_pool_size=2),
+    lang="python",
+    libraries=["matplotlib", "numpy"],
+)
+
+try:
+    # Option 1: Use pool parameter (recommended for API consistency)
+    with ArtifactSandboxSession(pool=pool, enable_plotting=True) as session:
+        result = session.run("""
+import matplotlib.pyplot as plt
+import numpy as np
+
+x = np.linspace(0, 10, 100)
+y = np.sin(x)
+plt.plot(x, y)
+plt.title('Pooled Execution - Sine Wave')
+plt.show()
+        """)
+
+        # Save generated plots
+        for i, plot in enumerate(result.plots):
+            Path(f"plot_{i}.{plot.format.value}").write_bytes(
+                base64.b64decode(plot.content_base64)
+            )
+
+        print(f"Generated {len(result.plots)} plots using pooled container")
+
+    # Option 2: Use ArtifactPooledSandboxSession (explicit class)
+    # Both approaches work identically
+    from llm_sandbox.pool import ArtifactPooledSandboxSession
+
+    with ArtifactPooledSandboxSession(pool_manager=pool, enable_plotting=True) as session:
+        result = session.run("print('Same functionality, different API')")
+
+finally:
+    pool.close()
+```
+
 ### Examples
 
 See the `examples/` directory for complete demonstrations:
 - [pool_basic_demo.py](examples/pool_basic_demo.py) - Basic pool usage and configuration
 - [pool_concurrent_demo.py](examples/pool_concurrent_demo.py) - Concurrent execution patterns
 - [pool_monitoring_demo.py](examples/pool_monitoring_demo.py) - Health monitoring and lifecycle management
+- [pool_artifact_demo.py](examples/pool_artifact_demo.py) - Artifact extraction with pooling (plots, CSV, mixed artifacts)
 
 ## 🤖 LLM Framework Integration
 

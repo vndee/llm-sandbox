@@ -840,25 +840,28 @@ For high-performance applications, container pooling dramatically improves execu
 
 ```python
 from llm_sandbox import SandboxSession
-from llm_sandbox.pool import PoolConfig
+from llm_sandbox.pool import create_pool_manager, PoolConfig
 
-# Configure pool parameters
-pool_config = PoolConfig(
-    max_pool_size=10,                      # Maximum containers
-    min_pool_size=3,                       # Minimum warm containers
-    idle_timeout=300.0,                    # Recycle idle containers
-    enable_prewarming=True,                # Create containers on startup
+# Configure pool parameters and create pool manager
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(
+        max_pool_size=10,                  # Maximum containers
+        min_pool_size=3,                   # Minimum warm containers
+        idle_timeout=300.0,                # Recycle idle containers
+        enable_prewarming=True,            # Create containers on startup
+    ),
+    lang="python",
+    libraries=["numpy", "pandas"],         # Pre-install in all pooled containers
 )
 
-# Use pooled session
-# Libraries are installed during container initialization
-with SandboxSession(
-    lang="python",
-    use_pool=True,
-    pool_config=pool_config,
-    libraries=["numpy", "pandas"],  # Pre-install in all pooled containers
-) as session:
-    result = session.run("import pandas as pd; print(pd.__version__)")
+try:
+    # Use pooled session
+    # Libraries are installed during container initialization
+    with SandboxSession(lang="python", pool=pool) as session:
+        result = session.run("import pandas as pd; print(pd.__version__)")
+finally:
+    pool.close()
 ```
 
 ### Pool Manager Configuration
@@ -897,7 +900,7 @@ pool = create_pool_manager(
 
 # Use the shared pool
 try:
-    with SandboxSession(lang="python", pool_manager=pool) as session:
+    with SandboxSession(lang="python", pool=pool) as session:
         result = session.run("print('Hello from pool!')")
 finally:
     pool.close()

@@ -13,6 +13,8 @@ from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.pool.config import ExhaustionStrategy, PoolConfig
 from llm_sandbox.pool.exceptions import PoolClosedError, PoolExhaustedError
 
+PREWARMING_CHECK_INTERVAL = 10
+
 
 def resolve_default_image(lang: SupportedLanguage, image: str | None, dockerfile: str | None = None) -> str | None:
     """Resolve default image for a language if not explicitly provided.
@@ -442,7 +444,6 @@ class ContainerPoolManager(ABC):
         self.logger.info("Creating temporary container outside pool")
         container = self._create_container()
         container.mark_busy()
-        # Note: Temporary containers are not added to the pool
         return container
 
     def _ensure_min_pool_size(self) -> None:
@@ -470,7 +471,6 @@ class ContainerPoolManager(ABC):
             Exception: If container creation or initialization fails
 
         """
-        # Use backend-specific session creation logic
         session = self._create_session_for_container()
 
         try:
@@ -595,7 +595,7 @@ class ContainerPoolManager(ABC):
             except Exception:
                 self.logger.exception("Error in pre-warming loop")
 
-            self._shutdown_event.wait(timeout=10)  # Check every 10 seconds
+            self._shutdown_event.wait(timeout=PREWARMING_CHECK_INTERVAL)
 
         self.logger.info("Pre-warming loop stopped")
 

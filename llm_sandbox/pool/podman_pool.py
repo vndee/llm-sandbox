@@ -41,7 +41,7 @@ class PodmanPoolManager(DockerPoolManager):
         """
         # Initialize Podman client if not provided
         if client is None:
-            client = PodmanClient()
+            client = PodmanClient.from_env()
 
         self.dockerfile = dockerfile
         self.runtime_configs = runtime_configs or {}

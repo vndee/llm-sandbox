@@ -456,7 +456,7 @@ def with_pool(num_executions: int):
     try:
         start = time.time()
         for i in range(num_executions):
-            with SandboxSession(lang="python", pool_manager=pool) as session:
+            with SandboxSession(lang="python", pool=pool) as session:
                 session.run(f'print("Execution {i}")')
         return time.time() - start
     finally:
@@ -493,7 +493,7 @@ pool = create_pool_manager(
 
 def execute_code(task_id: int, code: str):
     """Execute code using shared pool"""
-    with SandboxSession(lang="python", pool_manager=pool) as session:
+    with SandboxSession(lang="python", pool=pool) as session:
         result = session.run(code)
         return {
             "task_id": task_id,

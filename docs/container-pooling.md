@@ -24,7 +24,10 @@ The container pooling feature uses a **composition-based architecture** that cle
 :   Responsible for acquiring pooled containers and executing code.
 
     - `PooledSandboxSession` - Acquires a container from the pool, creates a backend session connected to it via `container_id`, and delegates all operations to the backend session
-    - `ArtifactPooledSandboxSession` - Adds artifact extraction capabilities on top of pooled sessions
+    - `ArtifactSandboxSession(pool=...)` - Standard artifact session with optional `pool` parameter for API consistency with `SandboxSession`
+    - `ArtifactPooledSandboxSession` - Dedicated class for pooled artifact extraction, provides the same functionality as using the pool parameter
+
+    Both `ArtifactSandboxSession(pool=pool)` and `ArtifactPooledSandboxSession(pool_manager=pool)` work identically - choose based on your preference for API consistency.
 
     Pooled sessions leverage existing backend session implementations (e.g., `SandboxDockerSession`) by connecting to pre-created containers, eliminating code duplication.
 
@@ -142,6 +145,93 @@ finally:
     # Clean up pool when done
     pool.close()
 ```
+
+### Artifact Extraction with Pooling
+
+For capturing plots and visualizations with pooling, you have two equivalent approaches:
+
+#### Option 1: Using `pool` parameter (Recommended for API Consistency)
+
+```python
+from llm_sandbox import ArtifactSandboxSession
+from llm_sandbox.pool import create_pool_manager, PoolConfig
+import base64
+from pathlib import Path
+
+# Create pool manager
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(max_pool_size=5, min_pool_size=2),
+    lang="python",
+    libraries=["matplotlib", "numpy"],
+)
+
+try:
+    # Use pool parameter for consistency with SandboxSession API
+    with ArtifactSandboxSession(pool=pool, enable_plotting=True) as session:
+        result = session.run("""
+import matplotlib.pyplot as plt
+import numpy as np
+
+x = np.linspace(0, 10, 100)
+y = np.sin(x)
+plt.plot(x, y)
+plt.title('Sine Wave')
+plt.show()
+        """)
+
+        # Save plots
+        for i, plot in enumerate(result.plots):
+            Path(f"plot_{i}.{plot.format.value}").write_bytes(
+                base64.b64decode(plot.content_base64)
+            )
+finally:
+    pool.close()
+```
+
+#### Option 2: Using `ArtifactPooledSandboxSession`
+
+```python
+from llm_sandbox.pool import ArtifactPooledSandboxSession, create_pool_manager, PoolConfig
+import base64
+from pathlib import Path
+
+# Create pool manager
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(max_pool_size=5, min_pool_size=2),
+    lang="python",
+    libraries=["matplotlib", "numpy"],
+)
+
+try:
+    # Use dedicated pooled artifact session class
+    with ArtifactPooledSandboxSession(
+        pool_manager=pool,
+        enable_plotting=True,
+    ) as session:
+        result = session.run("""
+import matplotlib.pyplot as plt
+import numpy as np
+
+x = np.linspace(0, 10, 100)
+y = np.sin(x)
+plt.plot(x, y)
+plt.title('Sine Wave')
+plt.show()
+        """)
+
+        # Save plots
+        for i, plot in enumerate(result.plots):
+            Path(f"plot_{i}.{plot.format.value}").write_bytes(
+                base64.b64decode(plot.content_base64)
+            )
+finally:
+    pool.close()
+```
+
+!!! note "Both Approaches Are Equivalent"
+    Both methods provide identical functionality. Use `ArtifactSandboxSession(pool=...)` for API consistency with `SandboxSession`, or `ArtifactPooledSandboxSession(pool_manager=...)` if you prefer explicit class names.
 
 ## Configuration
 

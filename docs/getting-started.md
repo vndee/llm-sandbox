@@ -495,26 +495,29 @@ For high-performance applications that execute code frequently, container poolin
 
 ```python
 from llm_sandbox import SandboxSession
-from llm_sandbox.pool import PoolConfig
+from llm_sandbox.pool import create_pool_manager, PoolConfig
 
-# Configure the pool
-pool_config = PoolConfig(
-    max_pool_size=10,          # Maximum 10 containers
-    min_pool_size=3,           # Keep at least 3 warm
-    enable_prewarming=True,    # Create containers on startup
+# Configure the pool and create pool manager
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(
+        max_pool_size=10,          # Maximum 10 containers
+        min_pool_size=3,           # Keep at least 3 warm
+        enable_prewarming=True,    # Create containers on startup
+    ),
+    lang="python",
+    libraries=["numpy", "pandas"],  # Pre-install in all pooled containers
 )
 
-# Use pooled session - containers are reused automatically
-# Libraries are installed during container initialization
-with SandboxSession(
-    lang="python",
-    use_pool=True,
-    pool_config=pool_config,
-    libraries=["numpy", "pandas"],  # Pre-install in all pooled containers
-) as session:
-    result = session.run("import pandas as pd; print(pd.__version__)")
-    print(result.stdout)
-    # Container automatically returned to pool on exit
+try:
+    # Use pooled session - containers are reused automatically
+    # Libraries are installed during container initialization
+    with SandboxSession(lang="python", pool=pool) as session:
+        result = session.run("import pandas as pd; print(pd.__version__)")
+        print(result.stdout)
+        # Container automatically returned to pool on exit
+finally:
+    pool.close()
 ```
 
 ### Shared Pool for Multiple Sessions
@@ -535,7 +538,7 @@ pool = create_pool_manager(
 try:
     # Execute multiple sessions using the same pool
     for i in range(10):
-        with SandboxSession(lang="python", pool_manager=pool) as session:
+        with SandboxSession(lang="python", pool=pool) as session:
             result = session.run(f'print("Execution {i}")')
             print(result.stdout.strip())
 finally:
@@ -565,7 +568,7 @@ pool = create_pool_manager(
 
 start = time.time()
 for i in range(5):
-    with SandboxSession(lang="python", pool_manager=pool) as session:
+    with SandboxSession(lang="python", pool=pool) as session:
         session.run("print('test')")
 pool_time = time.time() - start
 pool.close()

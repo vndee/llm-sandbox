@@ -23,12 +23,12 @@ from pathlib import Path
 import docker
 import podman
 
-from llm_sandbox import SandboxBackend, SupportedLanguage
-from llm_sandbox.pool import ArtifactPooledSandboxSession, ExhaustionStrategy, PoolConfig, create_pool_manager
+from llm_sandbox import ArtifactSandboxSession, SandboxBackend, SupportedLanguage
+from llm_sandbox.pool import ExhaustionStrategy, PoolConfig, create_pool_manager
 
 # Output directory for artifacts (for manual inspection)
 OUTPUT_DIR = Path("pool_artifact_output")
-docker_client = docker.DockerClient.from_env()
+docker_client = docker.DockerClient(base_url="unix:///Users/vndee/.docker/run/docker.sock")
 podman_client = podman.PodmanClient.from_env()
 
 
@@ -99,10 +99,8 @@ def demo_matplotlib_plots(backend: SandboxBackend, num_plots: int = 5) -> None:
 
             code = plot_code.format(multiplier=i, plot_num=i)
 
-            with ArtifactPooledSandboxSession(
-                pool_manager=pool_manager,
-                enable_plotting=True,
-                verbose=False,
+            with ArtifactSandboxSession(
+                pool=pool_manager,
             ) as session:
                 result = session.run(code)
 
@@ -189,8 +187,8 @@ def demo_csv_generation(backend: SandboxBackend, num_datasets: int = 3) -> None:
         for i in range(1, num_datasets + 1):
             code = csv_code.format(seed=i * 42, num=i)
 
-            with ArtifactPooledSandboxSession(
-                pool_manager=pool_manager,
+            with ArtifactSandboxSession(
+                pool=pool_manager,
                 enable_plotting=False,
                 verbose=False,
             ) as session:
@@ -295,8 +293,8 @@ def demo_mixed_artifacts(backend: SandboxBackend) -> None:
         output_dir = OUTPUT_DIR / "mixed" / backend.value
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        with ArtifactPooledSandboxSession(
-            pool_manager=pool_manager,
+        with ArtifactSandboxSession(
+            pool=pool_manager,
             enable_plotting=True,
             verbose=False,
         ) as session:
@@ -413,8 +411,8 @@ def demo_performance_comparison(backend: SandboxBackend, num_tasks: int = 10) ->
         for i in range(1, num_tasks + 1):
             task_start = time.time()
             try:
-                with ArtifactPooledSandboxSession(
-                    pool_manager=pool_manager,
+                with ArtifactSandboxSession(
+                    pool=pool_manager,
                     enable_plotting=True,
                     verbose=False,
                 ) as session:
