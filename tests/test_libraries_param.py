@@ -63,7 +63,7 @@ class TestPoolManagerLibrariesParameter:
         )
 
         # Create session and verify libraries are passed
-        session = pool._create_session_for_container()
+        pool._create_session_for_container()
         call_kwargs = mock_session_class.call_args[1]
         assert call_kwargs["libraries"] == ["numpy", "pandas"]
 

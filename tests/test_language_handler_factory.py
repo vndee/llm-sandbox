@@ -132,7 +132,7 @@ class TestLanguageHandlerFactory:
             def inject_plot_detection_code(self, code: str) -> str:
                 return code
 
-            def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:  # noqa: ARG002
+            def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:
                 return []
 
             def get_import_patterns(self, module: str) -> str:
@@ -223,7 +223,7 @@ class TestLanguageHandlerFactory:
             def inject_plot_detection_code(self, code: str) -> str:
                 return code
 
-            def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:  # noqa: ARG002
+            def extract_plots(self, container: "ContainerProtocol", output_dir: str) -> list[PlotOutput]:
                 return []
 
             def get_import_patterns(self, module: str) -> str:
