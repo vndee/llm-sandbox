@@ -11,10 +11,14 @@ from .core.session_base import BaseSession
 from .data import ExecutionResult
 from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
 from .interactive import InteractiveSandboxSession
+from .pool.base import ContainerPoolManager
+from .pool.session import ArtifactPooledSandboxSession, PooledSandboxSession
 
 __all__ = [
     "ArtifactSandboxSession",
+    "ContainerPoolManager",
     "InteractiveSandboxSession",
+    "PooledSandboxSession",
     "SandboxSession",
     "create_session",
 ]
@@ -35,9 +39,10 @@ def _check_dependency(backend: SandboxBackend) -> None:
 
 def create_session(
     backend: SandboxBackend = SandboxBackend.DOCKER,
+    pool: ContainerPoolManager | None = None,
     *args: Any,
     **kwargs: Any,
-) -> BaseSession:
+) -> BaseSession | PooledSandboxSession:
     r"""Create a new sandbox session for executing code in an isolated environment.
 
     This function creates a sandbox session that supports multiple programming languages
@@ -50,6 +55,9 @@ def create_session(
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
+        pool (ContainerPoolManager | None): Pool manager to use for container pooling.
+            If provided, containers are acquired from the pool instead of being created new.
+            Create a pool manager using `create_pool_manager()` from llm_sandbox.pool.
         *args: Additional positional arguments passed to the session constructor
         **kwargs: Additional keyword arguments passed to the session constructor.
                 Common options include:
@@ -67,10 +75,35 @@ def create_session(
         UnsupportedBackendError: If the chosen backend is not supported
 
     Examples:
+        Using container pooling for improved performance:
+        ```python
+        from llm_sandbox import SandboxSession, SupportedLanguage, SandboxBackend
+        from llm_sandbox.pool import create_pool_manager, PoolConfig
+
+        # Create a pool manager
+        pool = create_pool_manager(
+            backend=SandboxBackend.DOCKER,
+            config=PoolConfig(max_pool_size=10, min_pool_size=3),
+            lang=SupportedLanguage.PYTHON,
+        )
+
+        # Use pooled session
+        with SandboxSession(pool=pool, lang=SupportedLanguage.PYTHON) as session:
+            result = session.run("print('Hello from pool!')")
+            print(result.stdout)
+
+        # Multiple sessions can share the same pool
+        with SandboxSession(pool=pool, lang=SupportedLanguage.PYTHON) as session2:
+            result2 = session2.run("print('Session 2')")
+
+        # Clean up pool when done
+        pool.close()
+        ```
+
         Connect to existing Docker container:
         ```python
         # Assumes you have a running container with ID 'abc123...'
-        with SandboxSession(container_id='abc123def456', lang="python") as session:
+        with SandboxSession(container_id='abc123def456', lang=SupportedLanguage.PYTHON) as session:
             result = session.run("print('Hello from existing container!')")
             print(result.stdout)
 
@@ -91,7 +124,7 @@ def create_session(
         with SandboxSession(
             backend=SandboxBackend.KUBERNETES,
             container_id='my-pod-abc123',  # pod name
-            lang="python"
+            lang=SupportedLanguage.PYTHON
         ) as session:
             result = session.run("print('Hello from existing pod!')")
         ```
@@ -105,14 +138,14 @@ def create_session(
             backend=SandboxBackend.PODMAN,
             client=client,
             container_id='podman-container-id',
-            lang="python"
+            lang=SupportedLanguage.PYTHON
         ) as session:
             result = session.run("print('Hello from existing Podman container!')")
         ```
 
         Python session with package installation:
         ```python
-        with SandboxSession(lang="python", keep_template=True, verbose=True) as session:
+        with SandboxSession(lang=SupportedLanguage.PYTHON, keep_template=True, verbose=True) as session:
             # Basic code execution
             result = session.run("print('Hello, World!')")
             print(result.stdout)  # Output: Hello, World!
@@ -133,7 +166,7 @@ def create_session(
 
         Java session:
         ```python
-        with SandboxSession(lang="java", keep_template=True, verbose=True) as session:
+        with SandboxSession(lang=SupportedLanguage.JAVA, keep_template=True, verbose=True) as session:
             result = session.run(\"\"\"
                 public class Main {
                     public static void main(String[] args) {
@@ -145,7 +178,7 @@ def create_session(
 
         JavaScript session with npm packages:
         ```python
-        with SandboxSession(lang="javascript", keep_template=True, verbose=True) as session:
+        with SandboxSession(lang=SupportedLanguage.JAVASCRIPT, keep_template=True, verbose=True) as session:
             # Basic code execution
             result = session.run("console.log('Hello, World!')")
 
@@ -159,7 +192,7 @@ def create_session(
 
         C++ session:
         ```python
-        with SandboxSession(lang="cpp", keep_template=True, verbose=True) as session:
+        with SandboxSession(lang=SupportedLanguage.CPP, keep_template=True, verbose=True) as session:
             result = session.run(\"\"\"
                 #include <iostream>
                 #include <vector>
@@ -178,7 +211,7 @@ def create_session(
 
         Go session with external packages:
         ```python
-        with SandboxSession(lang="go", keep_template=True, verbose=True) as session:
+        with SandboxSession(lang=SupportedLanguage.GO, keep_template=True, verbose=True) as session:
             result = session.run(\"\"\"
                 package main
                 import (
@@ -199,7 +232,16 @@ def create_session(
         ```
 
     """
-    # Check if required dependency is installed
+    # Use pooled session if pool manager is provided
+    if pool is not None:
+        from llm_sandbox.pool.session import PooledSandboxSession
+
+        return PooledSandboxSession(
+            pool_manager=pool,
+            **kwargs,
+        )
+
+    # Check if required dependency is installed for non-pooled sessions
     _check_dependency(backend)
 
     # Create the appropriate session based on backend
@@ -234,6 +276,7 @@ class ArtifactSandboxSession:
         dockerfile: str | None = None,
         lang: str = SupportedLanguage.PYTHON,
         *,
+        pool: "ContainerPoolManager | None" = None,
         keep_template: bool = False,
         commit_container: bool = False,
         verbose: bool = False,
@@ -255,6 +298,8 @@ class ArtifactSandboxSession:
             image (str): Container image to use (e.g., "vndee/sandbox-python-311-bullseye")
             dockerfile (str, optional): Path to Dockerfile
             lang (str): Programming language (e.g., "python")
+            pool (ContainerPoolManager, optional): Pool manager for container pooling. When provided,
+                the session will use pooled containers for better performance
             keep_template (bool, optional): Whether to keep the container template
             commit_container (bool, optional): Whether to commit container changes
             verbose (bool, optional): Enable verbose logging
@@ -272,14 +317,14 @@ class ArtifactSandboxSession:
         Examples:
             Connect to existing container for artifact generation:
             ```python
-            from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+            from llm_sandbox import ArtifactSandboxSession, SandboxBackend, SupportedLanguage
             from pathlib import Path
             import base64
 
             # Connect to existing container
             with ArtifactSandboxSession(
                 container_id='existing-container-id',
-                lang="python",
+                lang=SupportedLanguage.PYTHON,
                 verbose=True,
                 backend=SandboxBackend.DOCKER
             ) as session:
@@ -319,7 +364,7 @@ class ArtifactSandboxSession:
 
             # Run code that generates plots
             with ArtifactSandboxSession(
-                lang="python",
+                lang=SupportedLanguage.PYTHON,
                 verbose=True,
                 image="ghcr.io/vndee/sandbox-python-311-bullseye",
                 backend=SandboxBackend.DOCKER
@@ -357,7 +402,7 @@ class ArtifactSandboxSession:
 
             with ArtifactSandboxSession(
                 client=podman_client,  # Podman specific
-                lang="python",
+                lang=SupportedLanguage.PYTHON,
                 verbose=True,
                 image="ghcr.io/vndee/sandbox-python-311-bullseye",
                 backend=SandboxBackend.PODMAN
@@ -368,7 +413,7 @@ class ArtifactSandboxSession:
             Using Kubernetes backend:
             ```python
             with ArtifactSandboxSession(
-                lang="python",
+                lang=SupportedLanguage.PYTHON,
                 verbose=True,
                 image="ghcr.io/vndee/sandbox-python-311-bullseye",
                 backend=SandboxBackend.KUBERNETES
@@ -376,28 +421,87 @@ class ArtifactSandboxSession:
                 result = session.run(code)
             ```
 
-        """
-        # Create the base session
-        self._session: BaseSession = create_session(
-            backend=backend,
-            image=image,
-            dockerfile=dockerfile,
-            lang=lang,
-            keep_template=keep_template,
-            commit_container=commit_container,
-            verbose=verbose,
-            runtime_configs=runtime_configs,
-            workdir=workdir,
-            security_policy=security_policy,
-            container_id=container_id,
-            **kwargs,
-        )
+            Using container pooling for better performance:
+            ```python
+            from llm_sandbox import ArtifactSandboxSession
+            from llm_sandbox.pool import create_pool_manager, PoolConfig
+            import base64
+            from pathlib import Path
 
-        self.enable_plotting = enable_plotting
+            # Create pool manager
+            pool = create_pool_manager(
+                backend="docker",
+                config=PoolConfig(max_pool_size=5, min_pool_size=2),
+                lang="python",
+                libraries=["matplotlib", "numpy"],
+            )
+
+            try:
+                # Use pool parameter for pooled execution
+                with ArtifactSandboxSession(pool=pool, enable_plotting=True) as session:
+                    result = session.run('''
+                    import matplotlib.pyplot as plt
+                    import numpy as np
+
+                    x = np.linspace(0, 10, 100)
+                    y = np.sin(x)
+                    plt.plot(x, y)
+                    plt.title('Pooled Container Plot')
+                    plt.show()
+                    ''')
+
+                    # Save plots
+                    for i, plot in enumerate(result.plots):
+                        Path(f"plot_{i}.{plot.format.value}").write_bytes(
+                            base64.b64decode(plot.content_base64)
+                        )
+            finally:
+                pool.close()
+            ```
+
+        """
+        # Initialize attributes with proper types
+        self._pooled_impl: ArtifactPooledSandboxSession | None
+        self._session: BaseSession | PooledSandboxSession | None
+
+        # If pool is provided, delegate to ArtifactPooledSandboxSession
+        if pool is not None:
+            self._pooled_impl = ArtifactPooledSandboxSession(
+                pool_manager=pool,
+                verbose=verbose,
+                workdir=workdir or "/sandbox",
+                enable_plotting=enable_plotting,
+                security_policy=security_policy,
+                **kwargs,
+            )
+            self.enable_plotting = enable_plotting
+            # Don't create _session when using pooled implementation
+            self._session = None
+        else:
+            # Create the base session (non-pooled)
+            self._pooled_impl = None
+            self._session = create_session(
+                backend=backend,
+                image=image,
+                dockerfile=dockerfile,
+                lang=lang,
+                keep_template=keep_template,
+                commit_container=commit_container,
+                verbose=verbose,
+                runtime_configs=runtime_configs,
+                workdir=workdir,
+                security_policy=security_policy,
+                container_id=container_id,
+                **kwargs,
+            )
+            self.enable_plotting = enable_plotting
 
     def __enter__(self) -> "ArtifactSandboxSession":
         """Enter the context manager."""
-        self._session.__enter__()
+        if self._pooled_impl is not None:
+            self._pooled_impl.__enter__()
+        else:
+            self._session.__enter__()  # type: ignore[union-attr]
         return self
 
     def __exit__(
@@ -407,10 +511,15 @@ class ArtifactSandboxSession:
         exc_tb: TracebackType | None,
     ) -> None:
         """Exit the context manager."""
-        return self._session.__exit__(exc_type, exc_val, exc_tb)
+        if self._pooled_impl is not None:
+            self._pooled_impl.__exit__(exc_type, exc_val, exc_tb)
+        else:
+            self._session.__exit__(exc_type, exc_val, exc_tb)  # type: ignore[union-attr]
 
     def __getattr__(self, name: str) -> Any:
         """Delegate any other attributes/methods to the underlying session."""
+        if self._pooled_impl is not None:
+            return getattr(self._pooled_impl, name)
         return getattr(self._session, name)
 
     def run(
@@ -454,7 +563,7 @@ class ArtifactSandboxSession:
             Basic plotting example:
             ```python
             with ArtifactSandboxSession(
-                lang="python",
+                lang=SupportedLanguage.PYTHON,
                 verbose=True,
                 image="ghcr.io/vndee/sandbox-python-311-bullseye"
             ) as session:
@@ -474,6 +583,8 @@ class ArtifactSandboxSession:
 
             Multiple plot types and libraries:
             ```python
+            from llm_sandbox import SupportedLanguage
+
             code = '''
             import matplotlib.pyplot as plt
             import seaborn as sns
@@ -512,6 +623,8 @@ class ArtifactSandboxSession:
 
             Installing additional libraries:
             ```python
+            from llm_sandbox import SupportedLanguage
+
             code = '''
             import torch
             import torch.nn as nn
@@ -524,7 +637,9 @@ class ArtifactSandboxSession:
 
             Clearing plots between runs:
             ```python
-            with ArtifactSandboxSession(lang="python") as session:
+            from llm_sandbox import SupportedLanguage
+
+            with ArtifactSandboxSession(lang=SupportedLanguage.PYTHON) as session:
                 # First run with plots
                 plot_code = '''
                 import matplotlib.pyplot as plt
@@ -545,9 +660,19 @@ class ArtifactSandboxSession:
             ```
 
         """
+        # Delegate to pooled implementation if using pool
+        if self._pooled_impl is not None:
+            return self._pooled_impl.run(
+                code=code,
+                libraries=libraries,
+                timeout=timeout,
+                clear_plots=clear_plots,
+            )
+
+        # Non-pooled implementation
         # Check if plotting is enabled and language supports it
-        if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:
-            raise LanguageNotSupportPlotError(self._session.language_handler.name)
+        if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:  # type: ignore[union-attr]
+            raise LanguageNotSupportPlotError(self._session.language_handler.name)  # type: ignore[union-attr]
 
         # Clear plots if requested
         if clear_plots and self.enable_plotting:
@@ -557,11 +682,11 @@ class ArtifactSandboxSession:
         if timeout is not None:
             effective_timeout = timeout
         else:
-            config_timeout = self._session.config.get_execution_timeout()
+            config_timeout = self._session.config.get_execution_timeout()  # type: ignore[union-attr]
             effective_timeout = config_timeout if config_timeout is not None else 60
 
         # Delegate to language handler for language-specific artifact extraction
-        result, plots = self._session.language_handler.run_with_artifacts(
+        result, plots = self._session.language_handler.run_with_artifacts(  # type: ignore[union-attr]
             container=self._session,  # type: ignore[arg-type]
             code=code,
             libraries=libraries,
@@ -582,8 +707,13 @@ class ArtifactSandboxSession:
         if not self.enable_plotting:
             return
 
+        # Delegate to pooled implementation if using pool
+        if self._pooled_impl is not None:
+            self._pooled_impl._clear_plots_in_container()  # noqa: SLF001
+            return
+
         # Use shell commands to create directory, clear plots, and reset counter
-        self._session.execute_command(
+        self._session.execute_command(  # type: ignore[union-attr]
             'sh -c "mkdir -p /tmp/sandbox_plots && rm -rf /tmp/sandbox_plots/* && echo 0 > /tmp/sandbox_plots/.counter"'
         )
 
@@ -598,6 +728,11 @@ class ArtifactSandboxSession:
 
         """
         if not self.enable_plotting:
+            return
+
+        # Delegate to pooled implementation if using pool
+        if self._pooled_impl is not None:
+            self._pooled_impl.clear_plots()
             return
 
         self._clear_plots_in_container()

@@ -17,6 +17,7 @@ from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import CommandEmptyError, ContainerError, NotOpenSessionError
+from llm_sandbox.k8s_utils import retry_k8s_api_call
 from llm_sandbox.security import SecurityPolicy
 
 SH_SHELL = "/bin/sh"
@@ -32,20 +33,34 @@ class KubernetesContainerAPI:
         """Initialize Kubernetes container API."""
         self.client = client
         self.namespace = namespace
+        self.logger = logging.getLogger(__name__)
 
     def create_container(self, config: Any) -> Any:
         """Create Kubernetes pod."""
         pod_manifest = config["pod_manifest"]
-        self.client.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)
+
+        # Create pod with retry logic for thread-safety
+        retry_k8s_api_call(
+            self.client.create_namespaced_pod,
+            namespace=self.namespace,
+            body=pod_manifest,
+            logger=self.logger,
+        )
 
         # Wait for pod to be running
         pod_name = pod_manifest["metadata"]["name"]
         start_time = time.time()
         while True:
-            pod = self.client.read_namespaced_pod(name=pod_name, namespace=self.namespace)
+            # Read pod status with retry logic
+            pod = retry_k8s_api_call(
+                self.client.read_namespaced_pod,
+                name=pod_name,
+                namespace=self.namespace,
+                logger=self.logger,
+            )
             if pod.status.phase == "Running":
                 break
-            time.sleep(1)
+            time.sleep(KUBERNETES_POD_STATUS_POLL_INTERVAL)
             if time.time() - start_time > POD_STARTUP_TIMEOUT:
                 msg = f"Pod {pod_name} did not start within {POD_STARTUP_TIMEOUT} seconds"
                 raise TimeoutError(msg)
@@ -58,16 +73,17 @@ class KubernetesContainerAPI:
     def stop_container(self, container: Any) -> None:
         """Stop Kubernetes pod."""
         try:
-            self.client.delete_namespaced_pod(
+            # Delete pod with retry logic for thread-safety
+            retry_k8s_api_call(
+                self.client.delete_namespaced_pod,
                 name=container,
                 namespace=self.namespace,
                 body=k8s_client.V1DeleteOptions(),
+                logger=self.logger,
             )
         except Exception as e:  # noqa: BLE001
             # Pod might already be deleted, log but don't raise
-            import logging
-
-            logging.getLogger(__name__).debug("Failed to delete pod %s: %s", container, e)
+            self.logger.debug("Failed to delete pod %s: %s", container, e)
 
     def execute_command(self, container: Any, command: str, **kwargs: Any) -> tuple[int, Any]:
         """Execute command in Kubernetes pod."""
@@ -445,13 +461,21 @@ class SandboxKubernetesSession(BaseSession):
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
+            pod = retry_k8s_api_call(
+                self.client.read_namespaced_pod,
+                name=pod_id,
+                namespace=self.kube_namespace,
+            )
             if pod.status.phase == "Running":
                 return
             time.sleep(KUBERNETES_POD_STATUS_POLL_INTERVAL)
 
         # If we get here, pod didn't start in time
-        pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
+        pod = retry_k8s_api_call(
+            self.client.read_namespaced_pod,
+            name=pod_id,
+            namespace=self.kube_namespace,
+        )
         msg = f"Pod {pod_id} is not running (status: {pod.status.phase})"
         raise ContainerError(msg)
 
@@ -487,7 +511,11 @@ class SandboxKubernetesSession(BaseSession):
         """
         try:
             # Verify pod exists and get its status
-            pod = self.client.read_namespaced_pod(name=pod_id, namespace=self.kube_namespace)
+            pod = retry_k8s_api_call(
+                self.client.read_namespaced_pod,
+                name=pod_id,
+                namespace=self.kube_namespace,
+            )
             self._log(f"Connected to existing pod {pod_id}")
 
             # Validate pod is running or can be made running

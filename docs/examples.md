@@ -424,6 +424,122 @@ print(f"Success rate: {stats['success_rate']:.2%}")
 
 ## Performance Optimization
 
+### Container Pooling for High Performance
+
+Container pooling can provide up to **10x performance improvement** for applications with frequent code execution:
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import create_pool_manager, PoolConfig
+import time
+
+# Benchmark without pooling
+def without_pool(num_executions: int):
+    start = time.time()
+    for i in range(num_executions):
+        with SandboxSession(lang="python") as session:
+            session.run(f'print("Execution {i}")')
+    return time.time() - start
+
+# Benchmark with pooling
+def with_pool(num_executions: int):
+    pool = create_pool_manager(
+        backend="docker",
+        config=PoolConfig(
+            max_pool_size=5,
+            min_pool_size=3,
+        ),
+        lang="python",
+        libraries=["numpy"],  # Pre-install common libraries
+    )
+
+    try:
+        start = time.time()
+        for i in range(num_executions):
+            with SandboxSession(lang="python", pool=pool) as session:
+                session.run(f'print("Execution {i}")')
+        return time.time() - start
+    finally:
+        pool.close()
+
+# Run benchmark
+num_executions = 10
+no_pool_time = without_pool(num_executions)
+pool_time = with_pool(num_executions)
+
+print(f"Without pool: {no_pool_time:.2f}s")
+print(f"With pool: {pool_time:.2f}s")
+print(f"Speedup: {no_pool_time/pool_time:.2f}x faster")
+```
+
+### Concurrent Execution with Pool
+
+Handle concurrent requests efficiently using a shared pool:
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.pool import create_pool_manager, PoolConfig
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Create shared pool
+pool = create_pool_manager(
+    backend="docker",
+    config=PoolConfig(
+        max_pool_size=5,
+        min_pool_size=2,
+    ),
+    lang="python",
+)
+
+def execute_code(task_id: int, code: str):
+    """Execute code using shared pool"""
+    with SandboxSession(lang="python", pool=pool) as session:
+        result = session.run(code)
+        return {
+            "task_id": task_id,
+            "output": result.stdout.strip(),
+            "success": result.exit_code == 0,
+        }
+
+try:
+    # Prepare tasks
+    tasks = [
+        (i, f'import time; time.sleep(0.1); print("Task {i} done")')
+        for i in range(20)
+    ]
+
+    # Execute concurrently (20 tasks using only 5 containers)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(execute_code, task_id, code)
+            for task_id, code in tasks
+        ]
+
+        results = [future.result() for future in as_completed(futures)]
+
+    print(f"Completed {len(results)} tasks")
+    successful = sum(1 for r in results if r['success'])
+    print(f"Success rate: {successful}/{len(results)}")
+
+finally:
+    pool.close()
+```
+
+For complete examples, see:
+
+- [pool_basic_demo.py](https://github.com/vndee/llm-sandbox/blob/main/examples/pool_basic_demo.py) - Basic pool usage
+- [pool_concurrent_demo.py](https://github.com/vndee/llm-sandbox/blob/main/examples/pool_concurrent_demo.py) - Concurrent patterns
+- [pool_monitoring_demo.py](https://github.com/vndee/llm-sandbox/blob/main/examples/pool_monitoring_demo.py) - Health monitoring
+
+!!! info "Learn More"
+    See the comprehensive [Container Pooling Guide](container-pooling.md) for:
+
+    - Advanced configuration options
+    - Pool exhaustion strategies
+    - Health management and monitoring
+    - Backend-specific optimizations
+    - Best practices and troubleshooting
+
 ### Parallel AI Code Processing
 
 ```python
