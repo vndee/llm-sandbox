@@ -45,20 +45,20 @@ class CppHandler(AbstractLanguageHandler):
         # Fall back to /tmp for backwards compatibility
         return [f"g++ -std=c++17 -o /tmp/a.out {code_file}", "/tmp/a.out"]
 
-    def get_library_installation_command(self, library: str, session: Any = None) -> str:
+    def get_library_installation_command(self, library: str, runtime_context: RuntimeContext | None = None) -> str:
         """Get the library installation command for the C++ handler.
 
         Args:
             library: Name of the library to install
-            session: Optional session instance for accessing dynamic paths
+            runtime_context: Optional runtime context containing dynamic paths
 
         Returns:
             Command string to install the library
 
         """
-        if session and hasattr(session, "config") and hasattr(session.config, "workdir"):
-            # Use dynamic workdir from session
-            workdir = session.config.workdir
+        if runtime_context and runtime_context.workdir:
+            # Use dynamic workdir from runtime context
+            workdir = runtime_context.workdir
             return f"apt-get install {library} -o Dir::Cache={workdir}/apt-cache"
 
         # Fall back to /tmp for backwards compatibility
