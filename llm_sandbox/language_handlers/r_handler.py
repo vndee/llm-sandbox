@@ -4,6 +4,7 @@ import re
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportPlotError, PackageManagerError
 from llm_sandbox.language_handlers.artifact_detection import R_PLOT_DETECTION_CODE
+from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
 from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
 
@@ -82,7 +83,7 @@ class RHandler(AbstractLanguageHandler):
         """
         return r"#.*$"
 
-    def get_library_installation_command(self, library: str) -> str:
+    def get_library_installation_command(self, library: str, runtime_context: RuntimeContext | None = None) -> str:  # noqa: ARG002
         """Get command to install R library."""
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)

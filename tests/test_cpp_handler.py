@@ -189,11 +189,12 @@ class TestCppHandler:
         """Test getting execution commands."""
         handler = CppHandler()
 
+        # Test without session (backwards compatible mode)
         commands = handler.get_execution_commands("main.cpp")
 
         assert len(commands) == 2
-        assert commands[0] == "g++ -o a.out main.cpp"
-        assert commands[1] == "./a.out"
+        assert commands[0] == "g++ -std=c++17 -o /tmp/a.out main.cpp"
+        assert commands[1] == "/tmp/a.out"
 
     def test_get_library_installation_command(self) -> None:
         """Test getting library installation command."""

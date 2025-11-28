@@ -21,6 +21,7 @@ from llm_sandbox.exceptions import (
     SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
+from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
 
 PYTHON_VENV_DIR_NAME = ".sandbox-venv"
@@ -276,8 +277,19 @@ class BaseSession(
                     msg = f"Library {library} is not allowed to be installed"
                     raise SecurityViolationError(msg)
 
+        # Create runtime context for language handler
+        runtime_context = RuntimeContext(
+            workdir=self.config.workdir,
+            python_executable_path=(self.python_executable_path if self.language_handler.name == "python" else None),
+            pip_executable_path=(self.pip_executable_path if self.language_handler.name == "python" else None),
+            pip_cache_dir=(self.pip_cache_dir_path if self.language_handler.name == "python" else None),
+        )
+
         library_installation_commands: list[str | tuple[str, str | None]] = [
-            (self.language_handler.get_library_installation_command(library), self.config.workdir)
+            (
+                self.language_handler.get_library_installation_command(library, runtime_context=runtime_context),
+                self.config.workdir,
+            )
             for library in libraries
         ]
         self.execute_commands(library_installation_commands)
@@ -469,7 +481,19 @@ class BaseSession(
                 code_dest_path_posix = code_dest_file.as_posix()
                 self.copy_to_runtime(temp_file_path, code_dest_path_posix)
 
-                commands = self.language_handler.get_execution_commands(code_dest_path_posix)
+                # Create runtime context for execution
+                runtime_context = RuntimeContext(
+                    workdir=self.config.workdir,
+                    python_executable_path=(
+                        self.python_executable_path if self.language_handler.name == "python" else None
+                    ),
+                    pip_executable_path=(self.pip_executable_path if self.language_handler.name == "python" else None),
+                    pip_cache_dir=(self.pip_cache_dir_path if self.language_handler.name == "python" else None),
+                )
+
+                commands = self.language_handler.get_execution_commands(
+                    code_dest_path_posix, runtime_context=runtime_context
+                )
                 return self.execute_commands(
                     cast("list[str | tuple[str, str | None]]", commands),
                     workdir=self.config.workdir,

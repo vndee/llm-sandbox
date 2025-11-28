@@ -13,7 +13,7 @@ client = docker.DockerClient.from_env()
 
 def run_python_code() -> None:
     """Run Python code in the sandbox."""
-    with SandboxSession(lang="python", keep_template=True, verbose=True) as session:
+    with SandboxSession(lang="python", keep_template=True, verbose=True, client=client) as session:
         output = session.run("print('Hello, World!')")
         logger.info(output)
 
@@ -29,7 +29,7 @@ def run_python_code() -> None:
 
 def run_java_code() -> None:
     """Run Java code in the sandbox."""
-    with SandboxSession(lang="java", keep_template=True, verbose=True) as session:
+    with SandboxSession(lang="java", keep_template=True, verbose=True, client=client) as session:
         output = session.run(
             """
             public class Main {
@@ -44,7 +44,7 @@ def run_java_code() -> None:
 
 def run_javascript_code() -> None:
     """Run JavaScript code in the sandbox."""
-    with SandboxSession(lang="javascript", keep_template=True, verbose=True) as session:
+    with SandboxSession(lang="javascript", keep_template=True, verbose=True, client=client) as session:
         output = session.run("console.log('Hello, World!')")
         logger.info(output)
 
@@ -61,7 +61,7 @@ def run_javascript_code() -> None:
 
 def run_cpp_code() -> None:
     """Run C++ code in the sandbox."""
-    with SandboxSession(lang="cpp", keep_template=True, verbose=True) as session:
+    with SandboxSession(lang="cpp", keep_template=True, verbose=True, client=client) as session:
         output = session.run(
             """
             #include <iostream>
@@ -112,7 +112,7 @@ def run_cpp_code() -> None:
 
 def run_go_code() -> None:
     """Run Go code in the sandbox."""
-    with SandboxSession(lang="go", keep_template=True, verbose=True) as session:
+    with SandboxSession(lang="go", keep_template=True, verbose=True, client=client) as session:
         output = session.run(
             """
             package main

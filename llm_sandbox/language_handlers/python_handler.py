@@ -5,6 +5,7 @@ from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportPlotError
 from llm_sandbox.language_handlers.artifact_detection import PYTHON_PLOT_DETECTION_CODE
 from llm_sandbox.language_handlers.base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
+from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
 
 class PythonHandler(AbstractLanguageHandler):
@@ -30,6 +31,42 @@ class PythonHandler(AbstractLanguageHandler):
             ),
         )
         self.logger = logger or logging.getLogger(__name__)
+
+    def get_execution_commands(self, code_file: str, runtime_context: RuntimeContext | None = None) -> list[str]:
+        """Get execution commands with runtime context paths.
+
+        Args:
+            code_file: Path to the Python file to execute
+            runtime_context: Optional runtime context containing dynamic paths
+
+        Returns:
+            List of commands to execute the Python file
+
+        """
+        if runtime_context and runtime_context.python_executable_path:
+            return [f"{runtime_context.python_executable_path} {code_file}"]
+
+        # Fall back to static config for backwards compatibility
+        return super().get_execution_commands(code_file)
+
+    def get_library_installation_command(self, library: str, runtime_context: RuntimeContext | None = None) -> str:
+        """Get library installation command with runtime context paths.
+
+        Args:
+            library: Name of the library to install
+            runtime_context: Optional runtime context containing dynamic paths
+
+        Returns:
+            Command string to install the library
+
+        """
+        if runtime_context and runtime_context.pip_executable_path and runtime_context.pip_cache_dir:
+            return (
+                f"{runtime_context.pip_executable_path} install {library} --cache-dir {runtime_context.pip_cache_dir}"
+            )
+
+        # Fall back to static config for backwards compatibility
+        return super().get_library_installation_command(library)
 
     def inject_plot_detection_code(self, code: str) -> str:
         """Inject comprehensive plot detection for Python."""

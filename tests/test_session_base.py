@@ -20,6 +20,7 @@ from llm_sandbox.exceptions import (
     SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
+from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 
@@ -37,11 +38,11 @@ class MockLanguageHandler:
         """Check if library installation is supported."""
         return self._supports_installation
 
-    def get_library_installation_command(self, library: str) -> str:
+    def get_library_installation_command(self, library: str, runtime_context: RuntimeContext | None = None) -> str:
         """Get library installation command."""
         return f"pip install {library}"
 
-    def get_execution_commands(self, filename: str) -> list[str]:
+    def get_execution_commands(self, filename: str, runtime_context: RuntimeContext | None = None) -> list[str]:
         """Get execution commands."""
         return [f"python {filename}"]
 

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
+from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
 from .base import AbstractLanguageHandler, LanguageConfig
 
@@ -26,12 +27,41 @@ class CppHandler(AbstractLanguageHandler):
             plot_detection=None,
         )
 
-    def get_execution_commands(self, code_file: str) -> list[str]:
-        """Get the execution commands for the C++ handler."""
-        return [f"g++ -o a.out {code_file}", "./a.out"]
+    def get_execution_commands(self, code_file: str, runtime_context: RuntimeContext | None = None) -> list[str]:
+        """Get the execution commands for the C++ handler.
 
-    def get_library_installation_command(self, library: str) -> str:
-        """Get the library installation command for the C++ handler."""
+        Args:
+            code_file: Path to the C++ file to compile
+            runtime_context: Optional runtime context containing dynamic paths
+
+        Returns:
+            List of commands to compile and execute the C++ file
+
+        """
+        if runtime_context and runtime_context.workdir:
+            output_path = f"{runtime_context.workdir}/a.out"
+            return [f"g++ -std=c++17 -o {output_path} {code_file}", output_path]
+
+        # Fall back to /tmp for backwards compatibility
+        return [f"g++ -std=c++17 -o /tmp/a.out {code_file}", "/tmp/a.out"]
+
+    def get_library_installation_command(self, library: str, runtime_context: RuntimeContext | None = None) -> str:
+        """Get the library installation command for the C++ handler.
+
+        Args:
+            library: Name of the library to install
+            runtime_context: Optional runtime context containing dynamic paths
+
+        Returns:
+            Command string to install the library
+
+        """
+        if runtime_context and runtime_context.workdir:
+            # Use dynamic workdir from runtime context
+            workdir = runtime_context.workdir
+            return f"apt-get install {library} -o Dir::Cache={workdir}/apt-cache"
+
+        # Fall back to /tmp for backwards compatibility
         return f"apt-get install {library}"
 
     def run_with_artifacts(
