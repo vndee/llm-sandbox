@@ -83,7 +83,7 @@ class RHandler(AbstractLanguageHandler):
         """
         return r"#.*$"
 
-    def get_library_installation_command(self, library: str, _: RuntimeContext | None = None) -> str:
+    def get_library_installation_command(self, library: str, runtime_context: RuntimeContext | None = None) -> str:  # noqa: ARG002
         """Get command to install R library."""
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)
