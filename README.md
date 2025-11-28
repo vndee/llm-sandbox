@@ -559,7 +559,7 @@ finally:
 ### Pool Configuration Options
 
 ```python
-from llm_sandbox.pool import PoolConfig, ExhaustionStrategy
+from llm_sandbox.pool import PoolConfig, ExhaustionStrategy, create_pool_manager
 
 config = PoolConfig(
     # Pool size limits
@@ -580,7 +580,13 @@ config = PoolConfig(
 
     # Pre-warming
     enable_prewarming=True,                # Pre-warm containers
-    prewarm_libraries=["requests", "numpy"], # Pre-install libraries
+)
+
+pool = create_pool_manager(
+    backend="docker",
+    config=config,
+    lang="python",
+    libraries=["requests", "numpy"],       # Pre-install libraries
 )
 ```
 

@@ -686,7 +686,7 @@ def monitor_pool(interval: int = 10):
         # Alert if pool is nearly exhausted
         busy_ratio = stats['state_counts'].get('busy', 0) / stats['total_size']
         if busy_ratio > 0.8:
-            print(f"�  Warning: Pool is {busy_ratio*100:.0f}% utilized")
+            print(f"[WARNING] Pool is {busy_ratio*100:.0f}% utilized")
 
         time.sleep(interval)
 

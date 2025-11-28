@@ -324,6 +324,9 @@ class ContainerPoolManager(ABC):
             # Signal shutdown to background threads
             self._shutdown_event.set()
 
+            # Wake any threads waiting for containers so they can observe closure
+            self._condition.notify_all()
+
             # Destroy all containers
             for container in self._pool[:]:  # Copy list to avoid modification during iteration
                 self._destroy_container(container)
@@ -403,6 +406,7 @@ class ContainerPoolManager(ABC):
 
         Raises:
             PoolExhaustedError: If timeout is exceeded
+            PoolClosedError: If the pool is closed while waiting
 
         """
         timeout = self.config.acquisition_timeout
@@ -413,6 +417,10 @@ class ContainerPoolManager(ABC):
 
         # Keep waiting until we get a container or timeout
         while True:
+            # Check if pool has been closed
+            if self._closed:
+                raise PoolClosedError
+
             # Calculate remaining timeout
             if deadline:
                 remaining_timeout = deadline - time.time()
@@ -571,11 +579,15 @@ class ContainerPoolManager(ABC):
         # Remove unhealthy containers (with lock)
         if unhealthy:
             with self._lock:
+                # Pool is shutting down; don't recreate containers
+                if self._closed:
+                    return
+
                 for container in unhealthy:
                     container.mark_unhealthy()
                     self._destroy_container(container)
 
-                # Ensure minimum pool size
+                # Ensure minimum pool size only while pool is active
                 self._ensure_min_pool_size()
 
     def _prewarming_loop(self) -> None:
@@ -584,7 +596,8 @@ class ContainerPoolManager(ABC):
 
         # Initial warm-up
         with self._lock:
-            self._ensure_min_pool_size()
+            if not self._closed:
+                self._ensure_min_pool_size()
 
         # Periodic check to maintain minimum
         while not self._shutdown_event.is_set():
