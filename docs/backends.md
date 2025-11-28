@@ -432,8 +432,7 @@ RuntimeError: Failed to create directory /sandbox: mkdir: cannot create director
 FileNotFoundError: [Errno 2] No usable temporary directory found in ['/tmp', '/var/tmp', '/usr/tmp', '/']
 ```
 
-For complete examples, see:
-- [`examples/k8s_readonly_file_system.py`](../examples/k8s_readonly_file_system.py) - Shows the correct solution
+For a complete working example, see [`examples/k8s_readonly_file_system.py`](https://github.com/vndee/llm-sandbox/blob/main/examples/k8s_readonly_file_system.py) in the repository.
 
 ### Advanced Kubernetes Features
 
