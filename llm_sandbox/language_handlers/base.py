@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from llm_sandbox.data import FileType, PlotOutput
+from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
 if TYPE_CHECKING:
 
@@ -76,14 +77,40 @@ class AbstractLanguageHandler(ABC):
         self.config: LanguageConfig
         self.logger: logging.Logger = logger or logging.getLogger(__name__)
 
-    def get_execution_commands(self, code_file: str) -> list[str]:
-        """Get commands to execute code file."""
+    def get_execution_commands(
+        self,
+        code_file: str,
+        runtime_context: RuntimeContext | None = None,  # noqa: ARG002
+    ) -> list[str]:
+        """Get commands to execute code file.
+
+        Args:
+            code_file: Path to the code file to execute
+            runtime_context: Optional runtime context containing dynamic paths
+
+        Returns:
+            List of commands to execute the code file
+
+        """
         if not self.config.execution_commands:
             raise CommandFailedError(self.config.name, 1, "No execution commands found")
         return [command.format(file=code_file) for command in self.config.execution_commands]
 
-    def get_library_installation_command(self, library: str) -> str:
-        """Get command to install library."""
+    def get_library_installation_command(
+        self,
+        library: str,
+        runtime_context: RuntimeContext | None = None,  # noqa: ARG002
+    ) -> str:
+        """Get command to install library.
+
+        Args:
+            library: Name of the library to install
+            runtime_context: Optional runtime context containing dynamic paths
+
+        Returns:
+            Command string to install the library
+
+        """
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)
         return f"{self.config.package_manager} {library}"

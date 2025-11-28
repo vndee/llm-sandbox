@@ -279,7 +279,7 @@ with SandboxSession(
 ### Custom Pod Manifests
 
 ```python
-# Basic pod customization
+# Basic pod customization with secure read-only root filesystem
 with SandboxSession(
     backend=SandboxBackend.KUBERNETES,
     lang="python",
@@ -316,17 +316,124 @@ with SandboxSession(
                     "runAsUser": 1000,
                     "readOnlyRootFilesystem": True,
                     "allowPrivilegeEscalation": False
-                }
+                },
+                # IMPORTANT: When using readOnlyRootFilesystem, you MUST mount
+                # writable volumes for /sandbox (workdir) and /tmp (required by pip)
+                "volumeMounts": [
+                    {
+                        "name": "sandbox-writable",
+                        "mountPath": "/sandbox"
+                    },
+                    {
+                        "name": "tmp-writable",
+                        "mountPath": "/tmp"
+                    }
+                ]
             }],
             "securityContext": {
                 "runAsNonRoot": True,
-                "fsGroup": 2000
-            }
+                "fsGroup": 2000  # Ensures volumes are writable by runAsUser
+            },
+            # Define emptyDir volumes for writable directories
+            "volumes": [
+                {
+                    "name": "sandbox-writable",
+                    "emptyDir": {}
+                },
+                {
+                    "name": "tmp-writable",
+                    "emptyDir": {}
+                }
+            ]
         }
     }
 ) as session:
     pass
 ```
+
+#### Read-Only Root Filesystem Requirements
+
+**⚠️ Important:** When using `readOnlyRootFilesystem: True` (a security best practice), you **MUST** provide writable volumes for:
+
+1. **`/sandbox`** (or your custom `workdir`) - Required for code execution and file operations
+2. **`/tmp`** - Required by pip and other Python tools for temporary files
+
+**Why this is needed:**
+- Read-only root filesystems prevent containers from writing to any directory on the root filesystem
+- This is a security best practice that prevents malicious code from modifying system files
+- However, llm-sandbox needs writable directories to:
+  - Create virtual environments in `/sandbox/.sandbox-venv`
+  - Store pip cache in `/sandbox/.sandbox-pip-cache`
+  - Allow pip to create temporary build directories in `/tmp`
+  - Execute and store user code files
+
+**Minimal working example:**
+
+```python
+pod_manifest = {
+    "spec": {
+        "containers": [{
+            "name": "sandbox",
+            "image": "python:3.11-slim",
+            "securityContext": {
+                "readOnlyRootFilesystem": True,
+                "runAsNonRoot": True,
+                "runAsUser": 1000
+            },
+            "volumeMounts": [
+                {"name": "sandbox-writable", "mountPath": "/sandbox"},
+                {"name": "tmp-writable", "mountPath": "/tmp"}
+            ]
+        }],
+        "securityContext": {
+            "fsGroup": 2000  # Critical: makes volumes writable by user 1000
+        },
+        "volumes": [
+            {"name": "sandbox-writable", "emptyDir": {}},
+            {"name": "tmp-writable", "emptyDir": {}}
+        ]
+    }
+}
+```
+
+**Alternative: Custom workdir**
+
+If you prefer a different working directory, configure both the `workdir` parameter and mount a volume there:
+
+```python
+with SandboxSession(
+    backend=SandboxBackend.KUBERNETES,
+    workdir="/workspace",  # Custom working directory
+    pod_manifest={
+        "spec": {
+            "containers": [{
+                "volumeMounts": [
+                    {"name": "workspace", "mountPath": "/workspace"},
+                    {"name": "tmp", "mountPath": "/tmp"}
+                ]
+            }],
+            "volumes": [
+                {"name": "workspace", "emptyDir": {}},
+                {"name": "tmp", "emptyDir": {}}
+            ]
+        }
+    }
+) as session:
+    pass
+```
+
+**Common errors without proper volumes:**
+
+```
+RuntimeError: Failed to create directory /sandbox: mkdir: cannot create directory '/sandbox': Read-only file system
+```
+
+```
+FileNotFoundError: [Errno 2] No usable temporary directory found in ['/tmp', '/var/tmp', '/usr/tmp', '/']
+```
+
+For complete examples, see:
+- [`examples/k8s_readonly_file_system.py`](../examples/k8s_readonly_file_system.py) - Shows the correct solution
 
 ### Advanced Kubernetes Features
 
@@ -448,14 +555,30 @@ pod_manifest = {
    }
    ```
 
-2. **Security Context**
+2. **Security Context with Read-Only Root Filesystem**
    ```python
    # Run as non-root with restricted permissions
+   # IMPORTANT: When using readOnlyRootFilesystem, you MUST also provide
+   # writable volumes for /sandbox and /tmp (see example above)
+   "containers": [{
+       "securityContext": {
+           "runAsNonRoot": True,
+           "runAsUser": 1000,
+           "readOnlyRootFilesystem": True,
+           "allowPrivilegeEscalation": False
+       },
+       "volumeMounts": [
+           {"name": "sandbox-writable", "mountPath": "/sandbox"},
+           {"name": "tmp-writable", "mountPath": "/tmp"}
+       ]
+   }],
    "securityContext": {
-       "runAsNonRoot": True,
-       "runAsUser": 1000,
-       "readOnlyRootFilesystem": True
-   }
+       "fsGroup": 2000  # Ensures volumes are writable
+   },
+   "volumes": [
+       {"name": "sandbox-writable", "emptyDir": {}},
+       {"name": "tmp-writable", "emptyDir": {}}
+   ]
    ```
 
 3. **Namespace Isolation**
