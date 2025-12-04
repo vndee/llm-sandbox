@@ -482,13 +482,18 @@ class BaseSession(
                 self.copy_to_runtime(temp_file_path, code_dest_path_posix)
 
                 # Create runtime context for execution
+                # When skip_environment_setup is True or using existing container,
+                # don't pass venv paths - let the handler use system Python
+                use_venv_paths = (
+                    self.language_handler.name == "python"
+                    and not self.config.skip_environment_setup
+                    and not self.using_existing_container
+                )
                 runtime_context = RuntimeContext(
                     workdir=self.config.workdir,
-                    python_executable_path=(
-                        self.python_executable_path if self.language_handler.name == "python" else None
-                    ),
-                    pip_executable_path=(self.pip_executable_path if self.language_handler.name == "python" else None),
-                    pip_cache_dir=(self.pip_cache_dir_path if self.language_handler.name == "python" else None),
+                    python_executable_path=(self.python_executable_path if use_venv_paths else None),
+                    pip_executable_path=(self.pip_executable_path if use_venv_paths else None),
+                    pip_cache_dir=(self.pip_cache_dir_path if use_venv_paths else None),
                 )
 
                 commands = self.language_handler.get_execution_commands(

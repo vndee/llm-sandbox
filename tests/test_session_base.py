@@ -43,7 +43,17 @@ class MockLanguageHandler:
         return f"pip install {library}"
 
     def get_execution_commands(self, filename: str, runtime_context: RuntimeContext | None = None) -> list[str]:
-        """Get execution commands."""
+        """Get execution commands.
+
+        If a runtime_context with a python_executable_path is provided, use that
+        executable. This mirrors the behaviour of the real PythonHandler and
+        allows tests to detect when a virtualenv python path is (incorrectly)
+        injected while skip_environment_setup=True.
+        """
+        if runtime_context and runtime_context.python_executable_path:
+            return [f"{runtime_context.python_executable_path} {filename}"]
+
+        # Fall back to system Python for backwards compatibility
         return [f"python {filename}"]
 
     def filter_comments(self, code: str) -> str:
@@ -651,6 +661,44 @@ class TestBaseSessionSkipEnvironmentSetup:
         config = SessionConfig(lang=SupportedLanguage.PYTHON, skip_environment_setup=False)
 
         assert config.skip_environment_setup is False
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch.object(MockBaseSession, "install")
+    @patch.object(MockBaseSession, "copy_to_runtime")
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_run_uses_system_python_when_skip_environment_setup(
+        self, mock_execute_commands: Mock, mock_copy_to_runtime: Mock, mock_install: Mock, mock_tempfile: MagicMock
+    ) -> None:
+        """Test that run() uses system Python when skip_environment_setup=True."""
+        with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
+            mock_handler = MockLanguageHandler(name=SupportedLanguage.PYTHON)
+            mock_create_handler.return_value = mock_handler
+
+            config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox", skip_environment_setup=True)
+            session = MockBaseSession(config)
+            session.container = Mock()
+            session.is_open = True
+
+            # Mock temporary file
+            mock_file = Mock()
+            mock_file.name = "/tmp/code.py"
+            mock_file.write = Mock()
+            mock_file.seek = Mock()
+            mock_tempfile.return_value.__enter__.return_value = mock_file
+
+            mock_execute_commands.return_value = ConsoleOutput(exit_code=0, stdout="success")
+
+            # Call run() method
+            session.run("print('hello')")
+
+            # Verify that execute_commands was called
+            mock_execute_commands.assert_called()
+
+            # Verify that the command uses system python, not venv python
+            call_args = mock_execute_commands.call_args
+            commands = call_args[0][0]
+            assert any("python " in cmd if isinstance(cmd, str) else "python " in cmd[0] for cmd in commands)
+            assert not any(".sandbox-venv" in (cmd if isinstance(cmd, str) else cmd[0]) for cmd in commands)
 
 
 class TestBaseSessionCodeExecution:
