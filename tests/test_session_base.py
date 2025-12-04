@@ -664,9 +664,7 @@ class TestBaseSessionSkipEnvironmentSetup:
             mock_handler = MockLanguageHandler(name=SupportedLanguage.PYTHON)
             mock_create_handler.return_value = mock_handler
 
-            config = SessionConfig(
-                lang=SupportedLanguage.PYTHON, workdir="/sandbox", skip_environment_setup=True
-            )
+            config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox", skip_environment_setup=True)
             session = MockBaseSession(config)
             session.container = Mock()
             session.is_open = True
@@ -689,7 +687,6 @@ class TestBaseSessionSkipEnvironmentSetup:
             # The MockLanguageHandler returns "python {filename}" which doesn't use venv paths
             # This verifies that RuntimeContext was created with None for python_executable_path
             # and the handler fell back to system python
-
 
 
 class TestBaseSessionCodeExecution:
