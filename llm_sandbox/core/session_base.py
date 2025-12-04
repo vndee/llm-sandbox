@@ -485,7 +485,7 @@ class BaseSession(
                 # When skip_environment_setup is True or using existing container,
                 # don't pass venv paths - let the handler use system Python
                 use_venv_paths = (
-                    self.language_handler.name == "python"
+                    self.language_handler.name == SupportedLanguage.PYTHON
                     and not self.config.skip_environment_setup
                     and not self.using_existing_container
                 )
