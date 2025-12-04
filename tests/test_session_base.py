@@ -43,7 +43,17 @@ class MockLanguageHandler:
         return f"pip install {library}"
 
     def get_execution_commands(self, filename: str, runtime_context: RuntimeContext | None = None) -> list[str]:
-        """Get execution commands."""
+        """Get execution commands.
+
+        If a runtime_context with a python_executable_path is provided, use that
+        executable. This mirrors the behaviour of the real PythonHandler and
+        allows tests to detect when a virtualenv python path is (incorrectly)
+        injected while skip_environment_setup=True.
+        """
+        if runtime_context and runtime_context.python_executable_path:
+            return [f"{runtime_context.python_executable_path} {filename}"]
+
+        # Fall back to system Python for backwards compatibility
         return [f"python {filename}"]
 
     def filter_comments(self, code: str) -> str:
