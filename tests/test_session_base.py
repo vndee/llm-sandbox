@@ -684,9 +684,11 @@ class TestBaseSessionSkipEnvironmentSetup:
             # Verify that execute_commands was called
             mock_execute_commands.assert_called()
 
-            # The MockLanguageHandler returns "python {filename}" which doesn't use venv paths
-            # This verifies that RuntimeContext was created with None for python_executable_path
-            # and the handler fell back to system python
+            # Verify that the command uses system python, not venv python
+            call_args = mock_execute_commands.call_args
+            commands = call_args[0][0]
+            assert any("python " in cmd if isinstance(cmd, str) else "python " in cmd[0] for cmd in commands)
+            assert not any(".sandbox-venv" in (cmd if isinstance(cmd, str) else cmd[0]) for cmd in commands)
 
 
 class TestBaseSessionCodeExecution:
