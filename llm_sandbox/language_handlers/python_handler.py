@@ -18,8 +18,8 @@ class PythonHandler(AbstractLanguageHandler):
         self.config = LanguageConfig(
             name=SupportedLanguage.PYTHON,
             file_extension="py",
-            execution_commands=["/tmp/venv/bin/python {file}"],
-            package_manager="/tmp/venv/bin/pip install --cache-dir /tmp/pip_cache",
+            execution_commands=["python {file}"],
+            package_manager="pip install",
             plot_detection=PlotDetectionConfig(
                 libraries=[
                     PlotLibrary.MATPLOTLIB,

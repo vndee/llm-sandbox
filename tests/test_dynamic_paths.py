@@ -39,13 +39,13 @@ class TestPythonHandlerDynamicPaths:
         assert commands[0] == "/workspace/.sandbox-venv/bin/python test.py"
 
     def test_execution_commands_without_context(self) -> None:
-        """Test execution commands fall back to hardcoded paths without context."""
+        """Test execution commands fall back to system python without context."""
         handler = PythonHandler()
 
         commands = handler.get_execution_commands("test.py")
 
         assert len(commands) == 1
-        assert commands[0] == "/tmp/venv/bin/python test.py"
+        assert commands[0] == "python test.py"
 
     def test_library_installation_with_context_default_workdir(self) -> None:
         """Test library installation uses runtime context paths with default workdir."""
@@ -76,12 +76,12 @@ class TestPythonHandlerDynamicPaths:
         assert command == "/workspace/.sandbox-venv/bin/pip install pandas --cache-dir /workspace/.sandbox-pip-cache"
 
     def test_library_installation_without_context(self) -> None:
-        """Test library installation falls back to hardcoded paths without context."""
+        """Test library installation falls back to system pip without context."""
         handler = PythonHandler()
 
         command = handler.get_library_installation_command("numpy")
 
-        assert command == "/tmp/venv/bin/pip install --cache-dir /tmp/pip_cache numpy"
+        assert command == "pip install numpy"
 
     def test_multiple_workdir_configurations(self) -> None:
         """Test handler works with various workdir configurations."""
@@ -158,9 +158,8 @@ class TestBackwardsCompatibility:
         commands = handler.get_execution_commands("test.py", runtime_context=None)
         install_cmd = handler.get_library_installation_command("numpy", runtime_context=None)
 
-        assert commands[0] == "/tmp/venv/bin/python test.py"
-        assert "/tmp/venv/bin/pip" in install_cmd
-        assert "/tmp/pip_cache" in install_cmd
+        assert commands[0] == "python test.py"
+        assert install_cmd == "pip install numpy"
 
     def test_cpp_handler_none_context(self) -> None:
         """Test C++ handler works when context is explicitly None."""
@@ -179,9 +178,9 @@ class TestBackwardsCompatibility:
         commands = handler.get_execution_commands("test.py")
         install_cmd = handler.get_library_installation_command("numpy")
 
-        # Should use hardcoded paths for backwards compatibility
-        assert commands[0] == "/tmp/venv/bin/python test.py"
-        assert "/tmp/venv/bin/pip" in install_cmd
+        # Should use system python/pip for backwards compatibility with skip_environment_setup
+        assert commands[0] == "python test.py"
+        assert install_cmd == "pip install numpy"
 
     def test_cpp_handler_old_calling_convention(self) -> None:
         """Test C++ handler works with old calling convention (no context arg)."""

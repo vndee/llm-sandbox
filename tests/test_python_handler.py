@@ -25,8 +25,8 @@ class TestPythonHandler:
 
         assert handler.config.name == SupportedLanguage.PYTHON
         assert handler.config.file_extension == "py"
-        assert "/tmp/venv/bin/python {file}" in handler.config.execution_commands
-        assert handler.config.package_manager == "/tmp/venv/bin/pip install --cache-dir /tmp/pip_cache"
+        assert "python {file}" in handler.config.execution_commands
+        assert handler.config.package_manager == "pip install"
         assert handler.config.plot_detection is not None
         assert PlotLibrary.MATPLOTLIB in handler.config.plot_detection.libraries
         assert PlotLibrary.PLOTLY in handler.config.plot_detection.libraries
