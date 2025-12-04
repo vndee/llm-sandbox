@@ -298,7 +298,7 @@ class SandboxDockerSession(BaseSession):
         self.docker_image, _ = self.client.images.build(
             path=docker_path,
             dockerfile=Path(self.config.dockerfile).name if self.config.dockerfile else None,
-            tag=f"sandbox-{self.config.lang.lower()}-{Path(docker_path).name if docker_path else None}",
+            tag=f"sandbox-{self.config.lang.lower()}-{Path(docker_path).name if docker_path else ''}".rstrip("-"),
         )
         self.is_create_template = True
 
