@@ -219,6 +219,37 @@ class TestSandboxDockerSessionOpen:
         mock_client.images.build.assert_called_once()
         assert session.is_create_template is True
 
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_open_with_dockerfile_in_current_dir(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test opening session with dockerfile in current directory creates valid tag name."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+
+        mock_image = MagicMock()
+        mock_build_logs = ["Build log"]
+        mock_client.images.build.return_value = (mock_image, mock_build_logs)
+
+        mock_container = MagicMock()
+        mock_client.containers.create.return_value = mock_container
+
+        # Use "Dockerfile" without path - this triggers the bug where Path('.').name is empty
+        session = SandboxDockerSession(dockerfile="Dockerfile")
+
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        # Verify the tag does not end with a hyphen
+        build_call_kwargs = mock_client.images.build.call_args[1]
+        tag = build_call_kwargs["tag"]
+        assert not tag.endswith("-"), f"Tag '{tag}' should not end with a hyphen"
+        assert tag == "sandbox-python", f"Tag should be 'sandbox-python' but got '{tag}'"
+        assert session.is_create_template is True
+
 
 class TestSandboxDockerSessionClose:
     """Test SandboxDockerSession close functionality."""
