@@ -16,10 +16,7 @@ from typing import Any, cast
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.docker import SandboxDockerSession
 from llm_sandbox.exceptions import ContainerError, LanguageNotSupportedError, NotOpenSessionError, SandboxTimeoutError
-from llm_sandbox.kubernetes import SandboxKubernetesSession
-from llm_sandbox.podman import SandboxPodmanSession
 
 from .const import StrEnum
 from .exceptions import UnsupportedBackendError
@@ -84,10 +81,16 @@ def _create_backend_session(
     """
     match backend:
         case SandboxBackend.DOCKER:
+            from llm_sandbox.docker import SandboxDockerSession
+
             return SandboxDockerSession(runtime_configs=runtime_configs, **kwargs)
         case SandboxBackend.PODMAN:
+            from llm_sandbox.podman import SandboxPodmanSession
+
             return SandboxPodmanSession(runtime_configs=runtime_configs, **kwargs)
         case SandboxBackend.KUBERNETES:
+            from llm_sandbox.kubernetes import SandboxKubernetesSession
+
             # Kubernetes backend doesn't support runtime_configs parameter
             # Filter it out from kwargs if it's present to avoid TypeError
             kubernetes_kwargs = {k: v for k, v in kwargs.items() if k != "runtime_configs"}
