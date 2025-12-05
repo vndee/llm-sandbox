@@ -1,4 +1,3 @@
-# ruff: noqa: SLF001
 # mypy: disable-error-code="method-assign"
 """Tests for the InteractiveSandboxSession."""
 
@@ -70,7 +69,7 @@ def test_create_backend_session_filters_runtime_configs_for_kubernetes() -> None
     from llm_sandbox.interactive import _create_backend_session
 
     # Patch SandboxKubernetesSession to verify it's not called with runtime_configs
-    with patch("llm_sandbox.interactive.SandboxKubernetesSession") as mock_k8s_class:
+    with patch("llm_sandbox.kubernetes.SandboxKubernetesSession") as mock_k8s_class:
         mock_k8s_session = MagicMock()
         mock_k8s_session.config = SessionConfig()
         mock_k8s_class.return_value = mock_k8s_session
@@ -366,7 +365,7 @@ def test_create_backend_session_docker() -> None:
     """Test _create_backend_session creates Docker session."""
     from llm_sandbox.interactive import _create_backend_session
 
-    with patch("llm_sandbox.interactive.SandboxDockerSession") as mock_docker:
+    with patch("llm_sandbox.docker.SandboxDockerSession") as mock_docker:
         mock_instance = MagicMock()
         mock_docker.return_value = mock_instance
         result = _create_backend_session(SandboxBackend.DOCKER, runtime_configs={})
@@ -378,7 +377,7 @@ def test_create_backend_session_podman() -> None:
     """Test _create_backend_session creates Podman session."""
     from llm_sandbox.interactive import _create_backend_session
 
-    with patch("llm_sandbox.interactive.SandboxPodmanSession") as mock_podman:
+    with patch("llm_sandbox.podman.SandboxPodmanSession") as mock_podman:
         mock_instance = MagicMock()
         mock_podman.return_value = mock_instance
         result = _create_backend_session(SandboxBackend.PODMAN, runtime_configs={})
@@ -390,7 +389,7 @@ def test_create_backend_session_kubernetes() -> None:
     """Test _create_backend_session creates Kubernetes session."""
     from llm_sandbox.interactive import _create_backend_session
 
-    with patch("llm_sandbox.interactive.SandboxKubernetesSession") as mock_k8s:
+    with patch("llm_sandbox.kubernetes.SandboxKubernetesSession") as mock_k8s:
         mock_instance = MagicMock()
         mock_k8s.return_value = mock_instance
         result = _create_backend_session(SandboxBackend.KUBERNETES)
