@@ -12,15 +12,15 @@ def test_import_without_kubernetes_dependency() -> None:
     """
     code = """
 import sys
+from importlib.abc import MetaPathFinder
+from importlib.machinery import ModuleSpec
 
-# Block kubernetes import by adding a fake finder
-class BlockKubernetesImport:
-    def find_module(self, name, path=None):
-        if name == 'kubernetes' or name.startswith('kubernetes.'):
-            return self
+# Block kubernetes import by adding a finder that returns None for find_spec
+class BlockKubernetesImport(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname == 'kubernetes' or fullname.startswith('kubernetes.'):
+            raise ModuleNotFoundError(f"No module named '{fullname}' (blocked for testing)")
         return None
-    def load_module(self, name):
-        raise ImportError(f"No module named '{name}' (blocked for testing)")
 
 sys.meta_path.insert(0, BlockKubernetesImport())
 
@@ -46,15 +46,15 @@ def test_import_without_podman_dependency() -> None:
     """
     code = """
 import sys
+from importlib.abc import MetaPathFinder
+from importlib.machinery import ModuleSpec
 
-# Block podman import by adding a fake finder
-class BlockPodmanImport:
-    def find_module(self, name, path=None):
-        if name == 'podman' or name.startswith('podman.'):
-            return self
+# Block podman import by adding a finder that returns None for find_spec
+class BlockPodmanImport(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname == 'podman' or fullname.startswith('podman.'):
+            raise ModuleNotFoundError(f"No module named '{fullname}' (blocked for testing)")
         return None
-    def load_module(self, name):
-        raise ImportError(f"No module named '{name}' (blocked for testing)")
 
 sys.meta_path.insert(0, BlockPodmanImport())
 
@@ -76,17 +76,17 @@ def test_import_without_both_kubernetes_and_podman() -> None:
     """Test that llm_sandbox can be imported when both kubernetes and podman are not installed."""
     code = """
 import sys
+from importlib.abc import MetaPathFinder
+from importlib.machinery import ModuleSpec
 
 # Block both kubernetes and podman imports
-class BlockOptionalImports:
-    def find_module(self, name, path=None):
+class BlockOptionalImports(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
         blocked = ['kubernetes', 'podman']
         for b in blocked:
-            if name == b or name.startswith(f'{b}.'):
-                return self
+            if fullname == b or fullname.startswith(f'{b}.'):
+                raise ModuleNotFoundError(f"No module named '{fullname}' (blocked for testing)")
         return None
-    def load_module(self, name):
-        raise ImportError(f"No module named '{name}' (blocked for testing)")
 
 sys.meta_path.insert(0, BlockOptionalImports())
 
