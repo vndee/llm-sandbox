@@ -115,3 +115,26 @@ class TestPodmanPoolManagerSessionCreation:
 
         call_kwargs = mock_session_class.call_args[1]
         assert call_kwargs["dockerfile"] == "/path/to/Dockerfile"
+
+    @patch("llm_sandbox.pool.podman_pool.PodmanClient.from_env")
+    @patch("llm_sandbox.podman.SandboxPodmanSession")
+    def test_create_session_with_string_lang(self, mock_session_class: MagicMock, mock_podman_client: MagicMock) -> None:
+        """Test creating Podman session with string language instead of SupportedLanguage enum."""
+        mock_client = MagicMock()
+        mock_podman_client.return_value = mock_client
+        config = PoolConfig(max_pool_size=3, enable_prewarming=False)
+
+        pool = PodmanPoolManager(
+            config=config,
+            lang="python",  # String instead of SupportedLanguage enum
+            image="test:latest",
+        )
+
+        pool._create_session_for_container()
+
+        # Verify session was created with correct parameters
+        mock_session_class.assert_called_once()
+        call_kwargs = mock_session_class.call_args[1]
+        assert call_kwargs["client"] == mock_client
+        assert call_kwargs["image"] == "test:latest"
+        assert call_kwargs["lang"] == "python"

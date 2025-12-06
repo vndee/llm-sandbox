@@ -22,7 +22,7 @@ class DockerPoolManager(ContainerPoolManager):
     def __init__(
         self,
         config: PoolConfig,
-        lang: SupportedLanguage,
+        lang: SupportedLanguage | str,
         image: str | None = None,
         dockerfile: str | None = None,
         client: docker.DockerClient | None = None,
@@ -76,7 +76,7 @@ class DockerPoolManager(ContainerPoolManager):
             client=self.client,
             image=self.image,
             dockerfile=self.dockerfile,
-            lang=self.lang.value,
+            lang=str(self.lang),
             runtime_configs=self.runtime_configs,
             **self.session_kwargs,
         )

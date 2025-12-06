@@ -20,7 +20,7 @@ class PodmanPoolManager(DockerPoolManager):
     def __init__(
         self,
         config: PoolConfig,
-        lang: SupportedLanguage,
+        lang: SupportedLanguage | str,
         image: str | None = None,
         dockerfile: str | None = None,
         client: PodmanClient | None = None,
@@ -77,7 +77,7 @@ class PodmanPoolManager(DockerPoolManager):
             client=self.client,
             image=self.image,
             dockerfile=self.dockerfile,
-            lang=self.lang.value,
+            lang=str(self.lang),
             runtime_configs=self.runtime_configs,
             **self.session_kwargs,
         )
