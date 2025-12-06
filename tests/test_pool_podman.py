@@ -118,7 +118,9 @@ class TestPodmanPoolManagerSessionCreation:
 
     @patch("llm_sandbox.pool.podman_pool.PodmanClient.from_env")
     @patch("llm_sandbox.podman.SandboxPodmanSession")
-    def test_create_session_with_string_lang(self, mock_session_class: MagicMock, mock_podman_client: MagicMock) -> None:
+    def test_create_session_with_string_lang(
+        self, mock_session_class: MagicMock, mock_podman_client: MagicMock
+    ) -> None:
         """Test creating Podman session with string language instead of SupportedLanguage enum."""
         mock_client = MagicMock()
         mock_podman_client.return_value = mock_client

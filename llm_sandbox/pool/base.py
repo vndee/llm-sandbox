@@ -16,7 +16,9 @@ from llm_sandbox.pool.exceptions import PoolClosedError, PoolExhaustedError
 PREWARMING_CHECK_INTERVAL = 10
 
 
-def resolve_default_image(lang: SupportedLanguage | str, image: str | None, dockerfile: str | None = None) -> str | None:
+def resolve_default_image(
+    lang: SupportedLanguage | str, image: str | None, dockerfile: str | None = None
+) -> str | None:
     """Resolve default image for a language if not explicitly provided.
 
     Args:
