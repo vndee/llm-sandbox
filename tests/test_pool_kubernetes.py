@@ -112,6 +112,34 @@ class TestKubernetesPoolManagerSessionCreation:
         assert call_kwargs["lang"] == "python"
         assert call_kwargs["kube_namespace"] == "test-ns"
 
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.pool.kubernetes_pool.CoreV1Api")
+    @patch("llm_sandbox.kubernetes.SandboxKubernetesSession")
+    def test_create_session_with_string_lang(
+        self, mock_session_class: MagicMock, mock_core_api: MagicMock, _mock_load_config: MagicMock
+    ) -> None:
+        """Test creating Kubernetes session with string language instead of SupportedLanguage enum."""
+        mock_client = MagicMock()
+        mock_core_api.return_value = mock_client
+        config = PoolConfig(max_pool_size=3, enable_prewarming=False)
+
+        pool = KubernetesPoolManager(
+            config=config,
+            lang="python",  # String instead of SupportedLanguage enum
+            image="test:latest",
+            namespace="test-ns",
+        )
+
+        pool._create_session_for_container()
+
+        # Verify session was created with correct parameters
+        mock_session_class.assert_called_once()
+        call_kwargs = mock_session_class.call_args[1]
+        assert call_kwargs["client"] == mock_client
+        assert call_kwargs["image"] == "test:latest"
+        assert call_kwargs["lang"] == "python"
+        assert call_kwargs["namespace"] == "test-ns"
+
 
 class TestKubernetesPoolManagerContainerDestruction:
     """Test pod destruction."""

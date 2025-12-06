@@ -12,7 +12,7 @@ def create_pool_manager(
     client: Any | None = None,
     backend: SandboxBackend = SandboxBackend.DOCKER,
     config: PoolConfig | None = None,
-    lang: SupportedLanguage = SupportedLanguage.PYTHON,
+    lang: SupportedLanguage | str = SupportedLanguage.PYTHON,
     **kwargs: Any,
 ) -> ContainerPoolManager:
     """Create a container pool manager for the specified backend.

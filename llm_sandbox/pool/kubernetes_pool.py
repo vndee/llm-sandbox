@@ -25,7 +25,7 @@ class KubernetesPoolManager(ContainerPoolManager):
     def __init__(
         self,
         config: PoolConfig,
-        lang: SupportedLanguage,
+        lang: SupportedLanguage | str,
         image: str | None = None,
         client: CoreV1Api | None = None,
         namespace: str = "default",
@@ -82,8 +82,8 @@ class KubernetesPoolManager(ContainerPoolManager):
         return SandboxKubernetesSession(
             client=self.client,
             image=self.image,
-            lang=self.lang.value,
-            kube_namespace=self.namespace,
+            lang=str(self.lang),
+            namespace=self.namespace,
             pod_manifest=self.pod_manifest_template,
             **self.session_kwargs,
         )

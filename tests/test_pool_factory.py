@@ -101,6 +101,15 @@ class TestCreatePoolManager:
         assert pool.lang == SupportedLanguage.JAVASCRIPT
 
     @patch("llm_sandbox.pool.docker_pool.docker.from_env")
+    def test_create_with_string_language(self, mock_docker_env: MagicMock) -> None:
+        """Test creating pool manager with string language instead of SupportedLanguage enum."""
+        mock_docker_env.return_value = MagicMock()
+
+        pool = create_pool_manager(backend=SandboxBackend.DOCKER, lang="python")
+
+        assert pool.lang == "python"
+
+    @patch("llm_sandbox.pool.docker_pool.docker.from_env")
     def test_create_with_additional_kwargs(self, mock_docker_env: MagicMock) -> None:
         """Test creating pool manager with additional kwargs."""
         mock_docker_env.return_value = MagicMock()
