@@ -482,12 +482,19 @@ class BaseSession(
                 self.copy_to_runtime(temp_file_path, code_dest_path_posix)
 
                 # Create runtime context for execution
-                # When skip_environment_setup is True or using existing container,
-                # don't pass venv paths - let the handler use system Python
+                # Use venv paths for Python when:
+                # 1. Not skipping environment setup (normal case)
+                # 2. OR when skip_environment_setup=True but using existing container
+                #    (pooled containers have venv)
+                #    Note: For pooled containers, skip_environment_setup=True means
+                #    "don't set up again", but the venv already exists from pool
+                #    initialization, so we should use it.
                 use_venv_paths = (
                     self.language_handler.name == "python"
-                    and not self.config.skip_environment_setup
-                    and not self.using_existing_container
+                    and (
+                        not self.config.skip_environment_setup
+                        or self.using_existing_container
+                    )
                 )
                 runtime_context = RuntimeContext(
                     workdir=self.config.workdir,
