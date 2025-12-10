@@ -489,12 +489,8 @@ class BaseSession(
                 #    Note: For pooled containers, skip_environment_setup=True means
                 #    "don't set up again", but the venv already exists from pool
                 #    initialization, so we should use it.
-                use_venv_paths = (
-                    self.language_handler.name == "python"
-                    and (
-                        not self.config.skip_environment_setup
-                        or self.using_existing_container
-                    )
+                use_venv_paths = self.language_handler.name == "python" and (
+                    not self.config.skip_environment_setup or self.using_existing_container
                 )
                 runtime_context = RuntimeContext(
                     workdir=self.config.workdir,
