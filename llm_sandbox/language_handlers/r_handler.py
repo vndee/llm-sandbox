@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 
 from llm_sandbox.const import SupportedLanguage
@@ -7,6 +8,16 @@ from llm_sandbox.language_handlers.artifact_detection import R_PLOT_DETECTION_CO
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
 from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
+
+
+def _get_r_repo() -> str:
+    """Get the CRAN repo URL from the R_REPO environment variable.
+
+    Returns:
+        str: The CRAN repository URL. Defaults to https://cran.rstudio.com/ if not set.
+
+    """
+    return os.environ.get("R_REPO", "https://cran.rstudio.com/")
 
 
 class RHandler(AbstractLanguageHandler):
@@ -88,4 +99,5 @@ class RHandler(AbstractLanguageHandler):
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)
 
-        return f"R -e \"install.packages('{library}', repos='https://cran.rstudio.com/')\""
+        repo_url = _get_r_repo()
+        return f"R -e \"install.packages('{library}', repos='{repo_url}')\""

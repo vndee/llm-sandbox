@@ -1,6 +1,5 @@
-# ruff: noqa: SLF001, PLR2004
-
 import logging
+import os
 import re
 from unittest.mock import MagicMock, patch
 
@@ -9,7 +8,7 @@ import pytest
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportPlotError, PackageManagerError
 from llm_sandbox.language_handlers.base import PlotLibrary
-from llm_sandbox.language_handlers.r_handler import RHandler
+from llm_sandbox.language_handlers.r_handler import RHandler, _get_r_repo
 
 
 class TestRHandler:
@@ -471,3 +470,49 @@ class TestRHandler:
         result = handler._extract_single_plot(mock_container, "/test/path.png")
 
         assert result is None
+
+    def test_get_r_repo_default(self) -> None:
+        """Test _get_r_repo returns default when R_REPO is not set."""
+        # Ensure R_REPO is not set
+        old_value = os.environ.pop("R_REPO", None)
+        try:
+            repo_url = _get_r_repo()
+            assert repo_url == "https://cran.rstudio.com/"
+        finally:
+            # Restore old value if it existed
+            if old_value is not None:
+                os.environ["R_REPO"] = old_value
+
+    def test_get_r_repo_custom(self) -> None:
+        """Test _get_r_repo returns custom repo when R_REPO is set."""
+        # Set custom R_REPO
+        old_value = os.environ.get("R_REPO")
+        custom_repo = "https://internal.cran.example.com/"
+        os.environ["R_REPO"] = custom_repo
+        try:
+            repo_url = _get_r_repo()
+            assert repo_url == custom_repo
+        finally:
+            # Restore old value
+            if old_value is not None:
+                os.environ["R_REPO"] = old_value
+            else:
+                os.environ.pop("R_REPO", None)
+
+    def test_get_library_installation_command_with_custom_repo(self) -> None:
+        """Test get_library_installation_command uses custom R_REPO when set."""
+        handler = RHandler()
+
+        # Set custom R_REPO
+        old_value = os.environ.get("R_REPO")
+        custom_repo = "https://internal.cran.example.com/"
+        os.environ["R_REPO"] = custom_repo
+        try:
+            command = handler.get_library_installation_command("ggplot2")
+            assert command == f"R -e \"install.packages('ggplot2', repos='{custom_repo}')\""
+        finally:
+            # Restore old value
+            if old_value is not None:
+                os.environ["R_REPO"] = old_value
+            else:
+                os.environ.pop("R_REPO", None)
