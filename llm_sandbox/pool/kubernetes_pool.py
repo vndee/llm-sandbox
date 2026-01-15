@@ -83,7 +83,7 @@ class KubernetesPoolManager(ContainerPoolManager):
             client=self.client,
             image=self.image,
             lang=str(self.lang),
-            namespace=self.namespace,
+            kube_namespace=self.namespace,
             pod_manifest=self.pod_manifest_template,
             **self.session_kwargs,
         )
