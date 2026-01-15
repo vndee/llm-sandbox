@@ -110,7 +110,7 @@ class TestKubernetesPoolManagerSessionCreation:
         assert call_kwargs["client"] == mock_client
         assert call_kwargs["image"] == "test:latest"
         assert call_kwargs["lang"] == "python"
-        assert call_kwargs["namespace"] == "test-ns"
+        assert call_kwargs["kube_namespace"] == "test-ns"
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.pool.kubernetes_pool.CoreV1Api")
@@ -138,7 +138,7 @@ class TestKubernetesPoolManagerSessionCreation:
         assert call_kwargs["client"] == mock_client
         assert call_kwargs["image"] == "test:latest"
         assert call_kwargs["lang"] == "python"
-        assert call_kwargs["namespace"] == "test-ns"
+        assert call_kwargs["kube_namespace"] == "test-ns"
 
 
 class TestKubernetesPoolManagerContainerDestruction:
