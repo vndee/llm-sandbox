@@ -1,6 +1,6 @@
-# ruff: noqa: SLF001, PLR2004
 
 import logging
+import os
 import re
 from unittest.mock import MagicMock, patch
 
@@ -474,8 +474,6 @@ class TestRHandler:
 
     def test_get_r_repo_default(self) -> None:
         """Test _get_r_repo returns default when R_REPO is not set."""
-        import os
-
         # Ensure R_REPO is not set
         old_value = os.environ.pop("R_REPO", None)
         try:
@@ -488,8 +486,6 @@ class TestRHandler:
 
     def test_get_r_repo_custom(self) -> None:
         """Test _get_r_repo returns custom repo when R_REPO is set."""
-        import os
-
         # Set custom R_REPO
         old_value = os.environ.get("R_REPO")
         custom_repo = "https://internal.cran.example.com/"
@@ -506,8 +502,6 @@ class TestRHandler:
 
     def test_get_library_installation_command_with_custom_repo(self) -> None:
         """Test get_library_installation_command uses custom R_REPO when set."""
-        import os
-
         handler = RHandler()
 
         # Set custom R_REPO
