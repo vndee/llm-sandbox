@@ -15,6 +15,7 @@ def _get_r_repo() -> str:
 
     Returns:
         str: The CRAN repository URL. Defaults to https://cran.rstudio.com/ if not set.
+
     """
     return os.environ.get("R_REPO", "https://cran.rstudio.com/")
 
