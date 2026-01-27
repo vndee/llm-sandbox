@@ -7,7 +7,7 @@ container image names.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 
 class StrEnum(str, Enum):
@@ -95,3 +95,9 @@ class DefaultImage:
     GO = "ghcr.io/vndee/sandbox-go-123-bullseye"
     RUBY = "ghcr.io/vndee/sandbox-ruby-302-bullseye"
     R = "ghcr.io/vndee/sandbox-r-451-bullseye"
+
+
+# Type alias for encoding error handling modes (matches Python's bytes.decode errors parameter)
+EncodingErrorsType = Literal[
+    "strict", "replace", "ignore", "surrogateescape", "backslashreplace", "xmlcharrefreplace"
+]

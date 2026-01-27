@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -82,6 +82,15 @@ class SessionConfig(BaseModel):
         description="Skip language-specific environment setup during container initialization. "
         "Useful when using custom images with pre-configured environments or when administrators "
         "want to avoid package installation delays in Kubernetes deployments.",
+    )
+
+    # Output encoding
+    encoding_errors: EncodingErrorsType = Field(
+        default="strict",
+        description="Error handling for decoding command output bytes to strings. "
+        "Uses Python's bytes.decode() error modes: 'strict' (default, raises UnicodeDecodeError), "
+        "'replace' (uses replacement character), 'surrogateescape' (PEP 383, round-trips), "
+        "'ignore' (skips invalid bytes), 'backslashreplace', 'xmlcharrefreplace'.",
     )
 
     def get_execution_timeout(self) -> float | None:

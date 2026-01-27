@@ -6,7 +6,7 @@ from podman import PodmanClient
 from podman.errors.exceptions import ImageNotFound as PodmanImageNotFound
 from podman.errors.exceptions import NotFound as PodmanNotFound
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
 from llm_sandbox.exceptions import ContainerError, ImagePullError
@@ -71,6 +71,7 @@ class SandboxPodmanSession(SandboxDockerSession):
         session_timeout: float | None = None,
         container_id: str | None = None,
         skip_environment_setup: bool = False,
+        encoding_errors: EncodingErrorsType = "strict",
         **kwargs: dict[str, Any],
     ) -> None:
         r"""Initialize Podman session.
@@ -93,6 +94,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             session_timeout (float | None): The session timeout to use.
             container_id (str | None): ID of existing container to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
+            encoding_errors (EncodingErrorsType): Error handling for decoding command output.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -112,6 +114,7 @@ class SandboxPodmanSession(SandboxDockerSession):
             session_timeout=session_timeout,
             container_id=container_id,
             skip_environment_setup=skip_environment_setup,
+            encoding_errors=encoding_errors,
         )
 
         # Initialize BaseSession (skip Docker's __init__)

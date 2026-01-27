@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import docker
 from docker.errors import ImageNotFound, NotFound
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import DefaultImage, EncodingErrorsType, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.exceptions import ContainerError, ImagePullError, NotOpenSessionError
@@ -100,6 +100,7 @@ class SandboxDockerSession(BaseSession):
         session_timeout: float | None = None,
         container_id: str | None = None,
         skip_environment_setup: bool = False,
+        encoding_errors: EncodingErrorsType = "strict",
         **kwargs: Any,
     ) -> None:
         r"""Initialize Docker session.
@@ -121,6 +122,7 @@ class SandboxDockerSession(BaseSession):
             session_timeout (float | None): The session timeout to use.
             container_id (str | None): ID of existing container to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
+            encoding_errors (EncodingErrorsType): Error handling for decoding command output.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -140,6 +142,7 @@ class SandboxDockerSession(BaseSession):
             session_timeout=session_timeout,
             container_id=container_id,
             skip_environment_setup=skip_environment_setup,
+            encoding_errors=encoding_errors,
         )
 
         super().__init__(config=config, **kwargs)
@@ -211,9 +214,9 @@ class SandboxDockerSession(BaseSession):
             # when the Engine misbehaves (e.g., returning None or truncated tuples).
             stdout_data, stderr_data = output
             if stdout_data:
-                stdout_output = stdout_data.decode("utf-8")
+                stdout_output = stdout_data.decode("utf-8", errors=self.config.encoding_errors)
             if stderr_data:
-                stderr_output = stderr_data.decode("utf-8")
+                stderr_output = stderr_data.decode("utf-8", errors=self.config.encoding_errors)
 
         # If output is not a 2-tuple (e.g., empty tuple, single value, None, etc.), treat as no output
         # This handles edge cases where Docker might return unexpected formats
@@ -227,11 +230,15 @@ class SandboxDockerSession(BaseSession):
             for stdout_chunk, stderr_chunk in output:
                 if stdout_chunk:
                     stdout_output += (
-                        stdout_chunk.decode("utf-8") if isinstance(stdout_chunk, bytes) else str(stdout_chunk)
+                        stdout_chunk.decode("utf-8", errors=self.config.encoding_errors)
+                        if isinstance(stdout_chunk, bytes)
+                        else str(stdout_chunk)
                     )
                 if stderr_chunk:
                     stderr_output += (
-                        stderr_chunk.decode("utf-8") if isinstance(stderr_chunk, bytes) else str(stderr_chunk)
+                        stderr_chunk.decode("utf-8", errors=self.config.encoding_errors)
+                        if isinstance(stderr_chunk, bytes)
+                        else str(stderr_chunk)
                     )
         except Exception as e:
             from llm_sandbox.exceptions import SandboxTimeoutError
