@@ -98,6 +98,4 @@ class DefaultImage:
 
 
 # Type alias for encoding error handling modes (matches Python's bytes.decode errors parameter)
-EncodingErrorsType = Literal[
-    "strict", "replace", "ignore", "surrogateescape", "backslashreplace", "xmlcharrefreplace"
-]
+EncodingErrorsType = Literal["strict", "replace", "ignore", "surrogateescape", "backslashreplace", "xmlcharrefreplace"]
