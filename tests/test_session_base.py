@@ -662,19 +662,44 @@ class TestBaseSessionSkipEnvironmentSetup:
 
         assert config.skip_environment_setup is False
 
+    @pytest.mark.parametrize(
+        ("config_kwargs", "test_id"),
+        [
+            ({"skip_environment_setup": True}, "skip_environment_setup"),
+            ({"container_id": "external-container-id"}, "existing_container"),
+        ],
+        ids=["skip_environment_setup=True", "container_id (external)"],
+    )
     @patch("tempfile.NamedTemporaryFile")
     @patch.object(MockBaseSession, "install")
     @patch.object(MockBaseSession, "copy_to_runtime")
     @patch.object(MockBaseSession, "execute_commands")
-    def test_run_uses_system_python_when_skip_environment_setup(
-        self, mock_execute_commands: Mock, mock_copy_to_runtime: Mock, mock_install: Mock, mock_tempfile: MagicMock
+    def test_run_uses_system_python_not_venv(
+        self,
+        mock_execute_commands: Mock,
+        mock_copy_to_runtime: Mock,
+        mock_install: Mock,
+        mock_tempfile: MagicMock,
+        config_kwargs: dict,
+        test_id: str,
     ) -> None:
-        """Test that run() uses system Python when skip_environment_setup=True."""
+        """Test that run() uses system Python instead of venv in specific scenarios.
+
+        Scenarios:
+        - skip_environment_setup=True: venv is not created, use system Python
+        - container_id (external container): venv may not exist, use system Python
+
+        Related to: https://github.com/vndee/llm-sandbox/issues/127
+        """
         with patch.object(LanguageHandlerFactory, "create_handler") as mock_create_handler:
             mock_handler = MockLanguageHandler(name=SupportedLanguage.PYTHON)
             mock_create_handler.return_value = mock_handler
 
-            config = SessionConfig(lang=SupportedLanguage.PYTHON, workdir="/sandbox", skip_environment_setup=True)
+            config = SessionConfig(
+                lang=SupportedLanguage.PYTHON,
+                workdir="/sandbox",
+                **config_kwargs,
+            )
             session = MockBaseSession(config)
             session.container = Mock()
             session.is_open = True
@@ -697,8 +722,12 @@ class TestBaseSessionSkipEnvironmentSetup:
             # Verify that the command uses system python, not venv python
             call_args = mock_execute_commands.call_args
             commands = call_args[0][0]
-            assert any("python " in cmd if isinstance(cmd, str) else "python " in cmd[0] for cmd in commands)
-            assert not any(".sandbox-venv" in (cmd if isinstance(cmd, str) else cmd[0]) for cmd in commands)
+            assert any(
+                "python " in cmd if isinstance(cmd, str) else "python " in cmd[0] for cmd in commands
+            ), f"Expected system python for {test_id}"
+            assert not any(
+                ".sandbox-venv" in (cmd if isinstance(cmd, str) else cmd[0]) for cmd in commands
+            ), f"Unexpected venv path for {test_id}"
 
 
 class TestBaseSessionCodeExecution:
