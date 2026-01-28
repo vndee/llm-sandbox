@@ -4,7 +4,7 @@ import logging
 from types import TracebackType
 from typing import TYPE_CHECKING, Any
 
-from llm_sandbox.const import SandboxBackend
+from llm_sandbox.const import EncodingErrorsType, SandboxBackend
 from llm_sandbox.data import ConsoleOutput, ExecutionResult
 from llm_sandbox.pool.base import ContainerPoolManager, PooledContainer
 from llm_sandbox.security import SecurityPolicy
@@ -53,6 +53,7 @@ class PooledSandboxSession:
         default_timeout: float | None = None,
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
+        encoding_errors: EncodingErrorsType = "strict",
         **kwargs: Any,
     ) -> None:
         """Initialize pooled sandbox session.
@@ -66,6 +67,7 @@ class PooledSandboxSession:
             default_timeout: Default timeout for operations
             execution_timeout: Timeout for code execution
             session_timeout: Maximum session lifetime
+            encoding_errors: Error handling for decoding command output
             **kwargs: Additional backend-specific arguments
 
         Examples:
@@ -108,6 +110,7 @@ class PooledSandboxSession:
         self._default_timeout = default_timeout
         self._execution_timeout = execution_timeout
         self._session_timeout = session_timeout
+        self._encoding_errors = encoding_errors
 
         # Extract common parameters that the backend session expects, falling back to pool defaults
         self._lang = kwargs.pop("lang", self._pool_manager.lang)
@@ -231,6 +234,7 @@ class PooledSandboxSession:
                     session_timeout=self._session_timeout,
                     container_id=container_id,  # Connect to existing pooled container
                     skip_environment_setup=True,  # Pool already set up the environment
+                    encoding_errors=self._encoding_errors,
                     **session_kwargs,
                 )
 
@@ -259,6 +263,7 @@ class PooledSandboxSession:
                     session_timeout=self._session_timeout,
                     pod_id=container_id,  # Connect to existing pooled pod
                     skip_environment_setup=True,
+                    encoding_errors=self._encoding_errors,
                     **session_kwargs,
                 )
 
@@ -283,6 +288,7 @@ class PooledSandboxSession:
                     session_timeout=self._session_timeout,
                     container_id=container_id,  # Connect to existing pooled container
                     skip_environment_setup=True,
+                    encoding_errors=self._encoding_errors,
                     **session_kwargs,
                 )
 

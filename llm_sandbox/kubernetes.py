@@ -12,7 +12,7 @@ from kubernetes.client import CoreV1Api
 from kubernetes.client.exceptions import ApiException
 from kubernetes.stream import stream
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import DefaultImage, EncodingErrorsType, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput
@@ -331,6 +331,7 @@ class SandboxKubernetesSession(BaseSession):
         session_timeout: float | None = None,
         container_id: str | None = None,  # This will be pod_id for Kubernetes
         skip_environment_setup: bool = False,
+        encoding_errors: EncodingErrorsType = "strict",
         **kwargs: Any,
     ) -> None:
         r"""Initialize Kubernetes session.
@@ -350,6 +351,7 @@ class SandboxKubernetesSession(BaseSession):
             session_timeout (float | None): The session timeout to use.
             container_id (str | None): ID of existing pod to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
+            encoding_errors (EncodingErrorsType): Error handling for decoding command output.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -367,6 +369,7 @@ class SandboxKubernetesSession(BaseSession):
             session_timeout=session_timeout,
             container_id=container_id,
             skip_environment_setup=skip_environment_setup,
+            encoding_errors=encoding_errors,
         )
 
         super().__init__(config=config, **kwargs)
