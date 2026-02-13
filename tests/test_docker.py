@@ -1,8 +1,9 @@
-# ruff: noqa: SLF001, PLR2004, ARG002, PT011
+# ruff: noqa: PT011
 
 """Tests for Docker backend implementation."""
 
 import io
+import shlex
 import tarfile
 import tempfile
 from collections.abc import Generator
@@ -15,7 +16,14 @@ from pydantic_core import ValidationError
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
-from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ImagePullError, NotOpenSessionError, SecurityError
+from llm_sandbox.exceptions import (
+    CommandEmptyError,
+    ContainerError,
+    ImagePullError,
+    NotOpenSessionError,
+    SandboxTimeoutError,
+    SecurityError,
+)
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -1000,8 +1008,6 @@ class TestSandboxDockerSessionEdgeCases:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test _process_stream_output with SandboxTimeoutError exception."""
-        from llm_sandbox.exceptions import SandboxTimeoutError
-
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
@@ -1524,8 +1530,6 @@ class TestCommandInjectionPrevention:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test _ensure_directory_exists uses shlex.quote to prevent injection."""
-        import shlex
-
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
@@ -1539,7 +1543,7 @@ class TestCommandInjectionPrevention:
         malicious_path = "/sandbox/x'; id > /tmp/pwned; echo '"
         session._ensure_directory_exists(malicious_path)
 
-        call_args = session.container_api.execute_command.call_args  # type: ignore[attr-defined]
+        call_args = session.container_api.execute_command.call_args
         command = call_args[0][1]
         # The command must use shlex.quote to properly escape the path
         expected = f"mkdir -p {shlex.quote(malicious_path)}"
@@ -1551,8 +1555,6 @@ class TestCommandInjectionPrevention:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test _ensure_ownership uses shlex.quote on user and paths."""
-        import shlex
-
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
@@ -1575,8 +1577,6 @@ class TestCommandInjectionPrevention:
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
         """Test _ensure_ownership uses shlex.quote on user value."""
-        import shlex
-
         mock_handler = MagicMock()
         mock_create_handler.return_value = mock_handler
 
@@ -1608,9 +1608,11 @@ class TestPathTraversalPrevention:
         mock_container = MagicMock()
         session.container = mock_container
 
-        with tempfile.NamedTemporaryFile() as temp_file:
-            with pytest.raises(SecurityError, match="Path traversal detected"):
-                session.copy_to_runtime(temp_file.name, "/sandbox/../etc/passwd")
+        with (
+            tempfile.NamedTemporaryFile() as temp_file,
+            pytest.raises(SecurityError, match="Path traversal detected"),
+        ):
+            session.copy_to_runtime(temp_file.name, "/sandbox/../etc/passwd")
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -1625,9 +1627,11 @@ class TestPathTraversalPrevention:
         mock_container = MagicMock()
         session.container = mock_container
 
-        with tempfile.NamedTemporaryFile() as temp_file:
-            with pytest.raises(SecurityError, match="Path traversal detected"):
-                session.copy_to_runtime(temp_file.name, "../../etc/shadow")
+        with (
+            tempfile.NamedTemporaryFile() as temp_file,
+            pytest.raises(SecurityError, match="Path traversal detected"),
+        ):
+            session.copy_to_runtime(temp_file.name, "../../etc/shadow")
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
