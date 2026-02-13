@@ -14,6 +14,16 @@ Security in LLM Sandbox is implemented through multiple layers:
 
 > **Note**: Container-level security (resource limits, network controls, file system restrictions) is configured through `runtime_config` for Docker/Podman or pod manifests for Kubernetes as described in the [Configuration Guide](configuration.md). This module focuses on the **Security Policy** system for code analysis.
 
+### Security Model
+
+LLM Sandbox follows an **advisory security model** for code analysis:
+
+- **Container isolation is the primary security boundary.** Code runs inside isolated containers, which limits the blast radius of any malicious code.
+- **Security policies are advisory.** The `SecurityPolicy` system provides pre-execution code analysis via `is_safe()`, but it is **not** automatically enforced by `run()`. You must explicitly check `is_safe()` and decide whether to proceed. This gives you full control over how violations are handled (logging, custom errors, partial execution, etc.).
+- **Container-level controls are enforced by the runtime.** Resource limits, network isolation, and filesystem restrictions configured through `runtime_configs` (Docker/Podman) or pod manifests (Kubernetes) are enforced by the container runtime itself.
+
+For production deployments handling untrusted code, always combine all layers: use security policies to screen code, apply strict container resource limits, and restrict network access.
+
 ## Security Policy System
 
 ### Overview
@@ -24,6 +34,8 @@ The security policy system analyzes code **before execution** using regex patter
 - **Language-specific module restriction** based on import statements
 - **Severity-based filtering** with configurable thresholds
 - **Comment filtering** to avoid false positives from documentation
+
+> **Important**: Security policies are an **advisory code analysis tool**, not an automatic enforcement layer. You **must** call `session.is_safe(code)` manually before `session.run(code)` and act on the result. Calling `session.run(code)` directly will execute the code regardless of any configured security policy. See [Basic Usage](#basic-usage) for the correct pattern.
 
 ### Understanding Security Policies
 
@@ -158,6 +170,8 @@ When you specify a restricted module like `"os"`, the language handler automatic
 
 ### Basic Usage
 
+Security policies require a **manual check-then-execute** pattern. You must call `is_safe()` before `run()` — the policy is **not** automatically enforced.
+
 ```python
 from llm_sandbox import SandboxSession
 from llm_sandbox.security import SecurityPolicy, RestrictedModule, SecurityIssueSeverity
@@ -180,10 +194,12 @@ policy = SecurityPolicy(
 )
 
 with SandboxSession(lang="python", security_policy=policy) as session:
-    # Check if code is safe before execution
     code = "import os\nos.system('ls')"
+
+    # Step 1: Check if code is safe (REQUIRED — not automatic)
     is_safe, violations = session.is_safe(code)
 
+    # Step 2: Only execute if safe
     if is_safe:
         result = session.run(code)
         print(result.stdout)
@@ -192,6 +208,8 @@ with SandboxSession(lang="python", security_policy=policy) as session:
         for violation in violations:
             print(f"  - {violation.description} (Severity: {violation.severity.name})")
 ```
+
+> **Warning**: Calling `session.run(code)` without first checking `session.is_safe(code)` will execute the code regardless of the security policy. Always use the check-then-execute pattern shown above.
 
 ### Custom Security Policies
 
@@ -430,8 +448,11 @@ with SandboxSession(
         "user": "nobody:nogroup"
     }
 ) as session:
-    # Double protection: policy blocks + container limits
-    pass
+    # Always check before executing
+    is_safe, violations = session.is_safe(user_code)
+    if is_safe:
+        result = session.run(user_code)
+    # Container limits provide defense-in-depth even if code analysis is bypassed
 ```
 
 ### 2. Use Language-Appropriate Restrictions

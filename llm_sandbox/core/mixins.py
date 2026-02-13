@@ -5,14 +5,14 @@ import tarfile
 import threading
 from abc import abstractmethod
 from contextlib import suppress
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from types import TracebackType
 
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
+from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError, SecurityError
 
 CLEANUP_THREAD_TIMEOUT = 0.1
 
@@ -146,10 +146,35 @@ class FileOperationsMixin:
     verbose: bool
     logger: Any
 
+    @staticmethod
+    def _validate_container_path(path: str) -> str:
+        """Validate and normalize a container destination path.
+
+        Ensures the path does not contain path traversal sequences (e.g., '..').
+
+        Args:
+            path: The container path to validate.
+
+        Returns:
+            The normalized path string.
+
+        Raises:
+            SecurityError: If the path contains traversal sequences.
+
+        """
+        normalized = PurePosixPath(path)
+        # Check for '..' in path components
+        if ".." in normalized.parts:
+            msg = f"Path traversal detected in container path: {path}"
+            raise SecurityError(msg)
+        return str(normalized)
+
     def copy_to_runtime(self, src: str, dest: str) -> None:
         """Copy file to runtime with common validation."""
         if not self.container:
             raise NotOpenSessionError
+
+        dest = self._validate_container_path(dest)
 
         src_path = Path(src)
         if not (src_path.exists() and (src_path.is_file() or src_path.is_dir())):

@@ -15,7 +15,7 @@ from pydantic_core import ValidationError
 from llm_sandbox.const import DefaultImage, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
-from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ImagePullError, NotOpenSessionError
+from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ImagePullError, NotOpenSessionError, SecurityError
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -719,7 +719,14 @@ class TestSandboxDockerSessionOwnership:
 
         session._ensure_ownership(["/tmp/test", "/tmp/test2"])
 
-        mock_container.exec_run.assert_called_once_with("chown -R 1000:1000 /tmp/test /tmp/test2", user="root")
+        call_args = mock_container.exec_run.call_args
+        command = call_args[0][0]
+        # shlex.quote passes safe strings through unchanged
+        assert "1000:1000" in command
+        assert "/tmp/test" in command
+        assert "/tmp/test2" in command
+        assert command.startswith("chown -R ")
+        assert call_args[1]["user"] == "root"
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -1506,3 +1513,141 @@ class TestSandboxDockerSessionExistingContainer:
         session._cleanup_image()
 
         mock_image.remove.assert_called_once()
+
+
+class TestCommandInjectionPrevention:
+    """Test that command injection is prevented in shell commands."""
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_ensure_directory_exists_quotes_path(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test _ensure_directory_exists uses shlex.quote to prevent injection."""
+        import shlex
+
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession()
+        mock_container = MagicMock()
+        session.container = mock_container
+
+        session.container_api.execute_command = Mock(return_value=(0, (b"", b"")))  # type: ignore[method-assign]
+
+        # Path with shell metacharacters that could be used for injection
+        malicious_path = "/sandbox/x'; id > /tmp/pwned; echo '"
+        session._ensure_directory_exists(malicious_path)
+
+        call_args = session.container_api.execute_command.call_args  # type: ignore[attr-defined]
+        command = call_args[0][1]
+        # The command must use shlex.quote to properly escape the path
+        expected = f"mkdir -p {shlex.quote(malicious_path)}"
+        assert command == expected
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_ensure_ownership_quotes_paths(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test _ensure_ownership uses shlex.quote on user and paths."""
+        import shlex
+
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession(runtime_configs={"user": "1000:1000"})
+        mock_container = MagicMock()
+        session.container = mock_container
+
+        malicious_path = "/tmp/test; rm -rf /"
+        session._ensure_ownership([malicious_path])
+
+        call_args = mock_container.exec_run.call_args
+        command = call_args[0][0]
+        # The path must be properly quoted
+        assert shlex.quote(malicious_path) in command
+        assert command == f"chown -R {shlex.quote('1000:1000')} {shlex.quote(malicious_path)}"
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_ensure_ownership_quotes_user(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test _ensure_ownership uses shlex.quote on user value."""
+        import shlex
+
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession(runtime_configs={"user": "user; malicious"})
+        mock_container = MagicMock()
+        session.container = mock_container
+
+        session._ensure_ownership(["/tmp/test"])
+
+        call_args = mock_container.exec_run.call_args
+        command = call_args[0][0]
+        # The user value must be properly quoted
+        assert shlex.quote("user; malicious") in command
+
+
+class TestPathTraversalPrevention:
+    """Test that path traversal is prevented in copy operations."""
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_copy_to_runtime_rejects_path_traversal(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test copy_to_runtime rejects paths with '..' traversal."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession()
+        mock_container = MagicMock()
+        session.container = mock_container
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            with pytest.raises(SecurityError, match="Path traversal detected"):
+                session.copy_to_runtime(temp_file.name, "/sandbox/../etc/passwd")
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_copy_to_runtime_rejects_relative_traversal(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test copy_to_runtime rejects relative traversal paths."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession()
+        mock_container = MagicMock()
+        session.container = mock_container
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            with pytest.raises(SecurityError, match="Path traversal detected"):
+                session.copy_to_runtime(temp_file.name, "../../etc/shadow")
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_copy_to_runtime_allows_normal_paths(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Test copy_to_runtime allows normal safe paths."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession()
+        mock_container = MagicMock()
+        session.container = mock_container
+
+        with (
+            tempfile.NamedTemporaryFile() as temp_file,
+            patch.object(session, "_ensure_directory_exists"),
+            patch.object(session, "_ensure_ownership"),
+            patch.object(session.container_api, "copy_to_container"),
+        ):
+            # These should not raise
+            session.copy_to_runtime(temp_file.name, "/sandbox/code.py")
+            session.copy_to_runtime(temp_file.name, "/sandbox/subdir/code.py")

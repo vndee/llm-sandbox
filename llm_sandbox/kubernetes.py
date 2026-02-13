@@ -550,7 +550,7 @@ class SandboxKubernetesSession(BaseSession):
     def _ensure_directory_exists(self, path: str) -> None:
         """Ensure directory exists in Kubernetes pod."""
         mkdir_result = self.container_api.execute_command(
-            self.container, f"mkdir -p '{path}'", container_name=self.container_name
+            self.container, f"mkdir -p {shlex.quote(path)}", container_name=self.container_name
         )
         if mkdir_result[0] != 0:
             stdout_output, stderr_output = mkdir_result[1]
@@ -565,7 +565,8 @@ class SandboxKubernetesSession(BaseSession):
 
         if not is_root:
             # For non-root pods, ensure directories are owned by current user
-            self.execute_command(f"chown -R $(id -u):$(id -g) {' '.join(paths)}")
+            quoted_paths = " ".join(shlex.quote(p) for p in paths)
+            self.execute_command(f"chown -R $(id -u):$(id -g) {quoted_paths}")
 
     def _process_non_stream_output(self, output: Any) -> tuple[str, str]:
         """Process non-streaming Kubernetes output."""
@@ -655,6 +656,8 @@ class SandboxKubernetesSession(BaseSession):
         """Override to pass container name for Kubernetes."""
         if not self.container:
             raise NotOpenSessionError
+
+        dest = self._validate_container_path(dest)
 
         # Validate source path exists and is accessible (same as mixin)
         src_path = Path(src)

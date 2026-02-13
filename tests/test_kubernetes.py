@@ -1178,7 +1178,7 @@ class TestSandboxKubernetesSessionEdgeCases:
             session._ensure_directory_exists("/test/path")
 
             mock_execute.assert_called_once_with(
-                "test-pod", "mkdir -p '/test/path'", container_name="sandbox-container"
+                "test-pod", "mkdir -p /test/path", container_name="sandbox-container"
             )
 
     @patch("kubernetes.config.load_kube_config")
