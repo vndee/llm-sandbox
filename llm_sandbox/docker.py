@@ -1,3 +1,4 @@
+import shlex
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -183,7 +184,7 @@ class SandboxDockerSession(BaseSession):
             path (str): The path to ensure exists.
 
         """
-        mkdir_result = self.container_api.execute_command(self.container, f"mkdir -p '{path}'")
+        mkdir_result = self.container_api.execute_command(self.container, f"mkdir -p {shlex.quote(path)}")
         if mkdir_result[0] != 0:
             stdout_output, stderr_output = self._process_non_stream_output(mkdir_result[1])
             error_msg = stderr_output if stderr_output else stdout_output
@@ -200,7 +201,8 @@ class SandboxDockerSession(BaseSession):
         """
         current_user = self.config.runtime_configs.get("user") if self.config.runtime_configs else None
         if current_user and current_user != "root":
-            self.container.exec_run(f"chown -R {current_user} {' '.join(paths)}", user="root")
+            quoted_paths = " ".join(shlex.quote(p) for p in paths)
+            self.container.exec_run(f"chown -R {shlex.quote(current_user)} {quoted_paths}", user="root")
 
     def _process_non_stream_output(self, output: Any) -> tuple[str, str]:
         """Process non-streaming Docker output."""

@@ -366,7 +366,9 @@ WORKDIR /sandbox
 
 ## Runtime Configuration
 
-**Important**: Runtime configurations work differently depending on the backend:
+**Important**: Runtime configurations work differently depending on the backend.
+
+> **Security Warning**: The `runtime_configs` parameter is passed directly to the container runtime without filtering. When accepting `runtime_configs` from untrusted sources, be aware that dangerous options such as `privileged: True`, `cap_add`, `network_mode: "host"`, or host volume mounts can weaken or eliminate container isolation. In applications where end users can influence container configuration, always validate and restrict the allowed keys before passing them to `runtime_configs`. See [Security Considerations for runtime_configs](#security-considerations-for-runtime_configs) below.
 
 ### Docker and Podman Backends
 
@@ -582,6 +584,43 @@ runtime_configs = {
     "cap_add": ["NET_ADMIN"],      # Add specific capabilities
     "security_opt": ["no-new-privileges:true"]
 }
+```
+
+### Security Considerations for runtime_configs
+
+The `runtime_configs` parameter is a **direct pass-through** to the container runtime API. This provides maximum flexibility but means **no automatic filtering is applied**. If your application allows users or external systems to influence `runtime_configs`, you must validate the input yourself.
+
+**Dangerous options that can weaken sandbox isolation:**
+
+| Option | Risk | Description |
+|--------|------|-------------|
+| `privileged: True` | **Critical** | Grants full host access, effectively disabling sandbox isolation |
+| `network_mode: "host"` | **High** | Shares the host network stack, exposing host services |
+| `pid_mode: "host"` | **High** | Shares the host PID namespace, allowing process visibility |
+| `volumes` (host mounts) | **High** | Mounting host paths (especially `/`, `/etc`, `/var/run/docker.sock`) exposes the host filesystem |
+| `cap_add` | **Medium-High** | Adding capabilities like `SYS_ADMIN`, `NET_ADMIN`, `SYS_PTRACE` can enable container escapes |
+| `security_opt` | **Medium** | Disabling AppArmor/SELinux profiles removes kernel-level protections |
+| `devices` | **Medium** | Exposing host devices to the container |
+
+**Recommended: validate runtime_configs in multi-tenant applications:**
+
+```python
+# Example: allowlist for safe runtime_configs keys
+ALLOWED_RUNTIME_KEYS = {
+    "mem_limit", "cpu_count", "cpu_period", "cpu_quota",
+    "memswap_limit", "pids_limit", "environment", "user",
+    "working_dir",
+}
+
+def sanitize_runtime_configs(configs: dict) -> dict:
+    """Filter runtime_configs to only allow safe options."""
+    return {k: v for k, v in configs.items() if k in ALLOWED_RUNTIME_KEYS}
+
+# Use sanitized configs
+session = SandboxSession(
+    lang="python",
+    runtime_configs=sanitize_runtime_configs(user_provided_configs)
+)
 ```
 
 ## Backend-Specific Documentation Links

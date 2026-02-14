@@ -12,7 +12,7 @@ import pytest
 
 from llm_sandbox.core.mixins import CommandExecutionMixin, FileOperationsMixin, TimeoutMixin
 from llm_sandbox.data import ConsoleOutput
-from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError
+from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, SandboxTimeoutError, SecurityError
 
 
 class MockContainerAPI:
@@ -299,6 +299,52 @@ class TestFileOperationsMixin:
 
         with pytest.raises(FileNotFoundError, match="No safe content found"):
             self.mixin._extract_archive_safely(tar_buffer.getvalue(), "/dest")
+
+
+class TestPathTraversalValidation:
+    """Test _validate_container_path method."""
+
+    def setup_method(self) -> None:
+        """Set up test fixtures."""
+
+        class ConcreteFileOperationsMixin(FileOperationsMixin):
+            def _ensure_directory_exists(self, path: str) -> None:
+                pass
+
+            def _ensure_ownership(self, paths: list[str]) -> None:
+                pass
+
+        self.mixin = ConcreteFileOperationsMixin()
+
+    def test_rejects_dotdot_in_path(self) -> None:
+        """Test that '..' components are rejected."""
+        with pytest.raises(SecurityError, match="Path traversal detected"):
+            self.mixin._validate_container_path("/sandbox/../etc/passwd")
+
+    def test_rejects_relative_dotdot(self) -> None:
+        """Test that relative '..' paths are rejected."""
+        with pytest.raises(SecurityError, match="Path traversal detected"):
+            self.mixin._validate_container_path("../../etc/shadow")
+
+    def test_rejects_dotdot_at_end(self) -> None:
+        """Test that '..' at end of path is rejected."""
+        with pytest.raises(SecurityError, match="Path traversal detected"):
+            self.mixin._validate_container_path("/sandbox/..")
+
+    def test_allows_normal_absolute_path(self) -> None:
+        """Test that normal absolute paths are allowed."""
+        result = self.mixin._validate_container_path("/sandbox/code.py")
+        assert result == "/sandbox/code.py"
+
+    def test_allows_nested_path(self) -> None:
+        """Test that nested paths without traversal are allowed."""
+        result = self.mixin._validate_container_path("/sandbox/subdir/code.py")
+        assert result == "/sandbox/subdir/code.py"
+
+    def test_allows_dotfile(self) -> None:
+        """Test that dotfiles (not '..') are allowed."""
+        result = self.mixin._validate_container_path("/sandbox/.hidden")
+        assert result == "/sandbox/.hidden"
 
 
 class TestCommandExecutionMixin:
