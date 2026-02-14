@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/vndee-llm-sandbox-badge.png)](https://mseep.ai/app/vndee-llm-sandbox)
+
 ## LLM Sandbox
 
 *Securely Execute LLM-Generated Code with Ease*
