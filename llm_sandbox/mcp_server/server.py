@@ -92,10 +92,11 @@ def execute_code(
                 code=code,
                 libraries=libraries or [],
                 timeout=timeout,
+                clear_plots=True,
             )
 
             if use_artifact_session and hasattr(result, "plots") and result.plots:
-                plot = result.plots[0]
+                plot = result.plots[-1]
                 results.append(
                     ImageContent(
                         data=plot.content_base64,
