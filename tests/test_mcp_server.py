@@ -292,7 +292,9 @@ class TestExecuteCode:
             session_timeout=30,
             kube_namespace="default",
         )
-        mock_session.run.assert_called_once_with(code="print('Hello, World!')", libraries=[], timeout=30)
+        mock_session.run.assert_called_once_with(
+            code="print('Hello, World!')", libraries=[], timeout=30, clear_plots=True
+        )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
     @patch("llm_sandbox.mcp_server.server._get_commit_container")
@@ -394,6 +396,7 @@ class TestExecuteCode:
             code="import requests; print(requests.__version__)",
             libraries=["requests", "pandas"],
             timeout=60,
+            clear_plots=True,
         )
         mock_session_cls.assert_called_once_with(
             lang="python",
@@ -746,6 +749,7 @@ class TestErrorScenarios:
                 code="print('test')",
                 libraries=[],
                 timeout=30,
+                clear_plots=True,
             )
 
     def test_supports_visualization_edge_cases(self) -> None:
