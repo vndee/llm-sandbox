@@ -24,38 +24,45 @@ RUN apt-get install -y --no-install-recommends \
     && groupadd -r sandbox && useradd -ms /bin/bash -g sandbox sandbox \
     && mkdir -p /tmp/sandbox_output /tmp/sandbox_plots && chown -R sandbox:sandbox /tmp/sandbox_*
 
-# Install core tidyverse and data manipulation packages
-RUN R -e "install.packages(c('tidyverse', 'data.table'), repos='https://cran.rstudio.com/', dependencies=TRUE)"
+# Install parallel package management tool
+RUN R -e "install.packages('pak', repos='https://cran.rstudio.com/', dependencies=TRUE)"
 
-# Install essential visualization packages
-RUN R -e "install.packages(c('plotly', 'gridExtra', 'RColorBrewer', 'viridis'), repos='https://cran.rstudio.com/', dependencies=TRUE)"
+# Install all R packages in a single parallelized step using pak
+RUN R -e "pak::pkg_install(c( \
+  # Core tidyverse and data manipulation packages
+  'tidyverse', 'data.table', \
+  \
+  # Essential visualization packages
+  'plotly', 'gridExtra', 'RColorBrewer', 'viridis', \
+  \
+  # Core statistical modeling and machine learning packages
+  'caret', 'randomForest', 'glmnet', 'broom', \
+  \
+  # Time series analysis packages
+  'forecast', 'zoo', 'xts', 'lubridate', \
+  \
+  # Basic text analysis packages
+  'tm', 'stringr', \
+  \
+  # Essential utility packages
+  'devtools', 'here', 'janitor', \
+  \
+  # BiocManager for Bioconductor packages
+  'BiocManager', \
+  \
+  # Core Bioconductor packages for biological analysis
+  'Biobase', 'BiocGenerics', 'S4Vectors', 'IRanges', 'GenomeInfoDb', \
+  \
+  # Essential genomics and bioinformatics packages
+  'GenomicRanges', 'GenomicFeatures', 'AnnotationDbi', 'org.Hs.eg.db', \
+  \
+  # Popular analysis packages
+  'DESeq2', 'edgeR', 'limma', 'ComplexHeatmap', 'EnhancedVolcano', \
+  \
+  # Additional useful Bioconductor packages
+  'biomaRt', 'GO.db', 'KEGGREST', 'clusterProfiler' \
+), dependencies=TRUE, upgrade=FALSE)"
 
-# Install core statistical modeling and machine learning packages
-RUN R -e "install.packages(c('caret', 'randomForest', 'glmnet', 'broom'), repos='https://cran.rstudio.com/', dependencies=TRUE)"
-
-# Install time series analysis packages
-RUN R -e "install.packages(c('forecast', 'zoo', 'xts', 'lubridate'), repos='https://cran.rstudio.com/', dependencies=TRUE)"
-
-# Install basic text analysis packages
-RUN R -e "install.packages(c('tm', 'stringr'), repos='https://cran.rstudio.com/', dependencies=TRUE)"
-
-# Install essential utility packages
-RUN R -e "install.packages(c('devtools', 'here', 'janitor'), repos='https://cran.rstudio.com/', dependencies=TRUE)"
-
-# Install BiocManager for Bioconductor packages
-RUN R -e "install.packages('BiocManager', repos='https://cran.rstudio.com/')"
-
-# Install core Bioconductor packages for biological analysis
-RUN R -e "BiocManager::install(c('Biobase', 'BiocGenerics', 'S4Vectors', 'IRanges', 'GenomeInfoDb'), ask = FALSE, update = FALSE)"
-
-# Install essential genomics and bioinformatics packages
-RUN R -e "BiocManager::install(c('GenomicRanges', 'GenomicFeatures', 'AnnotationDbi', 'org.Hs.eg.db'), ask = FALSE, update = FALSE)"
-
-# Install popular analysis packages
-RUN R -e "BiocManager::install(c('DESeq2', 'edgeR', 'limma', 'ComplexHeatmap', 'EnhancedVolcano'), ask = FALSE, update = FALSE)"
-
-# Install additional useful Bioconductor packages
-RUN R -e "BiocManager::install(c('biomaRt', 'GO.db', 'KEGGREST', 'clusterProfiler'), ask = FALSE, update = FALSE)"
 USER sandbox
 
 WORKDIR /sandbox
