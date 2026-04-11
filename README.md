@@ -869,9 +869,15 @@ session `runtime_configs`.
 Supported variables: `SANDBOX_NETWORK_MODE`, `SANDBOX_READ_ONLY`, `SANDBOX_MEMORY`, `SANDBOX_MEM_LIMIT`,
 `SANDBOX_CPUS`, `SANDBOX_CPU_COUNT`, `SANDBOX_CAP_DROP`, `SANDBOX_SECURITY_OPT`, and `SANDBOX_PRIVILEGED`.
 
-`SANDBOX_MEMORY` is normalized to the backend-safe `mem_limit` runtime config. `SANDBOX_CPUS` is normalized
-to backend-safe CPU limits, while `SANDBOX_CPU_COUNT` maps directly to `cpu_count`.
+`SANDBOX_MEMORY` is normalized to the backend-safe `mem_limit` runtime config. `SANDBOX_CPUS` and
+`SANDBOX_CPU_COUNT` are normalized to Linux-compatible CPU quota settings.
 
+> Security note: prefer `SANDBOX_NETWORK_MODE=none`, `SANDBOX_READ_ONLY=true`,
+> `SANDBOX_CAP_DROP=ALL`, and restrictive `SANDBOX_SECURITY_OPT` values for hardened
+> sandboxes. Avoid `SANDBOX_PRIVILEGED=true` unless you explicitly need it, keep CPU
+> and memory limits minimal, and audit any combination that re-enables privileges.
+> `SANDBOX_*` settings do not apply to the Kubernetes backend; use `pod_manifest`
+> there instead.
 These MCP runtime config variables are not supported for the Kubernetes backend. Use `pod_manifest`
 for Kubernetes resource and security settings instead.
 

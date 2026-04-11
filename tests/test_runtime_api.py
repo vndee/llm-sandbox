@@ -34,13 +34,13 @@ class IncompleteRuntime:
         return {"config": config}
 
 
-def test_mock_runtime_satisfies_protocol():
+def test_mock_runtime_satisfies_protocol() -> None:
     """MockRuntime satisfies ContainerAPI protocol."""
     runtime: ContainerAPI = MockRuntime()
     assert isinstance(runtime, ContainerAPI)
 
 
-def test_incomplete_runtime_does_not_satisfy_protocol():
+def test_incomplete_runtime_does_not_satisfy_protocol() -> None:
     """IncompleteRuntime does not satisfy ContainerAPI."""
     runtime = IncompleteRuntime()
     assert not isinstance(runtime, ContainerAPI)

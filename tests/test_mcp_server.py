@@ -240,7 +240,8 @@ class TestGetRuntimeConfigs:
             "network_mode": "none",
             "read_only": True,
             "mem_limit": "4g",
-            "cpu_count": 1,
+            "cpu_period": 100000,
+            "cpu_quota": 100000,
             "cap_drop": ["ALL", "SYS_ADMIN"],
             "security_opt": ["no-new-privileges:true", "label=disable"],
             "privileged": False,
@@ -279,6 +280,13 @@ class TestRuntimeConfigHelpers:
         """Test cpu_count parser rejects non-numeric values."""
         with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be a positive number"):
             _parse_cpu_count_env("abc", "SANDBOX_CPU_COUNT")
+
+    def test_parse_cpu_count_env_valid_value(self) -> None:
+        """Test cpu_count parser returns Linux-compatible CPU quota settings."""
+        assert _parse_cpu_count_env("2", "SANDBOX_CPU_COUNT") == {
+            "cpu_period": 100000,
+            "cpu_quota": 200000,
+        }
 
     def test_parse_cpu_count_env_must_be_positive(self) -> None:
         """Test cpu_count parser rejects zero and negative values."""
@@ -448,7 +456,8 @@ class TestExecuteCode:
                 "network_mode": "none",
                 "read_only": True,
                 "mem_limit": "4g",
-                "cpu_count": 1,
+                "cpu_period": 100000,
+                "cpu_quota": 100000,
                 "cap_drop": ["ALL"],
             },
         )
@@ -685,6 +694,34 @@ class TestExecuteCode:
     @patch("llm_sandbox.mcp_server.server._get_backend")
     def test_execute_code_rejects_runtime_configs_for_kubernetes(self, mock_get_backend: MagicMock) -> None:
         """Test runtime config env vars are rejected for Kubernetes backend."""
+        mock_get_backend.return_value = SandboxBackend.KUBERNETES
+
+        result = execute_code("print('Hello')", "python")
+
+        assert len(result) == 1
+        assert isinstance(result[0], TextContent)
+        result_data = json.loads(result[0].text)
+        assert result_data["exit_code"] == 1
+        assert "not supported for the Kubernetes backend" in result_data["stderr"]
+
+    @patch.dict(os.environ, {"SANDBOX_CAP_DROP": " , "}, clear=True)
+    @patch("llm_sandbox.mcp_server.server._get_backend")
+    def test_execute_code_rejects_empty_sandbox_env_for_kubernetes(self, mock_get_backend: MagicMock) -> None:
+        """Test Kubernetes rejects SANDBOX_* envs even when parsing yields no runtime config values."""
+        mock_get_backend.return_value = SandboxBackend.KUBERNETES
+
+        result = execute_code("print('Hello')", "python")
+
+        assert len(result) == 1
+        assert isinstance(result[0], TextContent)
+        result_data = json.loads(result[0].text)
+        assert result_data["exit_code"] == 1
+        assert "not supported for the Kubernetes backend" in result_data["stderr"]
+
+    @patch.dict(os.environ, {"SANDBOX_READ_ONLY": "maybe"}, clear=True)
+    @patch("llm_sandbox.mcp_server.server._get_backend")
+    def test_execute_code_rejects_invalid_sandbox_env_for_kubernetes(self, mock_get_backend: MagicMock) -> None:
+        """Test Kubernetes rejects SANDBOX_* envs before boolean parsing."""
         mock_get_backend.return_value = SandboxBackend.KUBERNETES
 
         result = execute_code("print('Hello')", "python")

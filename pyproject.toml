@@ -133,4 +133,3 @@ source = ["llm_sandbox"]
 
 [tool.deptry]
 ignore = ["DEP004"]
-extend_exclude = [".worktrees"]

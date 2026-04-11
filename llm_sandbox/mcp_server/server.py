@@ -7,6 +7,7 @@ import json
 import logging
 import os
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ImageContent, TextContent
@@ -78,8 +79,19 @@ def _get_optional_list_env(var_name: str) -> list[str] | None:
     return items or None
 
 
-def _parse_cpu_count_env(value: str, var_name: str) -> int:
-    """Parse a CPU count environment variable into an integer CPU count."""
+def _build_cpu_runtime_configs(cpu_units: Decimal, var_name: str) -> dict[str, int]:
+    """Translate CPU units into Linux-compatible runtime config keys."""
+    cpu_period = 100_000
+    cpu_quota = int(cpu_units * cpu_period)
+    if cpu_quota <= 0:
+        msg = f"{var_name} is too small to translate into cpu_quota"
+        raise ValueError(msg)
+
+    return {"cpu_period": cpu_period, "cpu_quota": cpu_quota}
+
+
+def _parse_cpu_count_env(value: str, var_name: str) -> dict[str, int]:
+    """Parse SANDBOX_CPU_COUNT into Linux-compatible CPU runtime configs."""
     try:
         parsed = Decimal(value.strip())
     except InvalidOperation as exc:
@@ -93,11 +105,11 @@ def _parse_cpu_count_env(value: str, var_name: str) -> int:
         msg = f"{var_name} must be a whole number when mapped to cpu_count"
         raise ValueError(msg)
 
-    return int(parsed)
+    return _build_cpu_runtime_configs(parsed, var_name)
 
 
 def _parse_cpus_env(value: str) -> dict[str, int]:
-    """Parse SANDBOX_CPUS into backend-safe runtime configs."""
+    """Parse SANDBOX_CPUS into Linux-compatible CPU runtime configs."""
     try:
         parsed = Decimal(value.strip())
     except InvalidOperation as exc:
@@ -108,16 +120,7 @@ def _parse_cpus_env(value: str) -> dict[str, int]:
         msg = "SANDBOX_CPUS must be greater than 0"
         raise ValueError(msg)
 
-    if parsed == parsed.to_integral_value():
-        return {"cpu_count": int(parsed)}
-
-    cpu_period = 100_000
-    cpu_quota = int(parsed * cpu_period)
-    if cpu_quota <= 0:
-        msg = "SANDBOX_CPUS is too small to translate into cpu_quota"
-        raise ValueError(msg)
-
-    return {"cpu_period": cpu_period, "cpu_quota": cpu_quota}
+    return _build_cpu_runtime_configs(parsed, "SANDBOX_CPUS")
 
 
 def _get_runtime_configs() -> dict[str, bool | str | int | list[str]]:
@@ -139,7 +142,7 @@ def _get_runtime_configs() -> dict[str, bool | str | int | list[str]]:
     cpu_count = os.environ.get("SANDBOX_CPU_COUNT")
     cpus = os.environ.get("SANDBOX_CPUS")
     if cpu_count is not None:
-        runtime_configs["cpu_count"] = _parse_cpu_count_env(cpu_count, "SANDBOX_CPU_COUNT")
+        runtime_configs.update(_parse_cpu_count_env(cpu_count, "SANDBOX_CPU_COUNT"))
     elif cpus is not None:
         runtime_configs.update(_parse_cpus_env(cpus))
 
@@ -164,13 +167,22 @@ def _get_runtime_configs() -> dict[str, bool | str | int | list[str]]:
     return runtime_configs
 
 
-def _validate_backend_runtime_configs(backend: SandboxBackend, runtime_configs: dict) -> None:
+def _validate_backend_runtime_configs(
+    backend: SandboxBackend,
+    runtime_configs: dict[str, bool | str | int | list[str]] | None = None,
+) -> None:
     """Raise ValueError if runtime configs are used with an unsupported backend."""
-    if backend == SandboxBackend.KUBERNETES and runtime_configs:
-        msg = (
-            "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend. "
-            "Use a custom pod_manifest instead."
-        )
+    if backend != SandboxBackend.KUBERNETES:
+        return
+
+    msg = (
+        "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend. "
+        "Use a custom pod_manifest instead."
+    )
+
+    if any(env_name.startswith("SANDBOX_") for env_name in os.environ):
+        raise ValueError(msg)
+    if runtime_configs:
         raise ValueError(msg)
 
 
@@ -203,13 +215,14 @@ def execute_code(
 
     try:
         backend = _get_backend()
+        _validate_backend_runtime_configs(backend)
         runtime_configs = _get_runtime_configs()
         _validate_backend_runtime_configs(backend, runtime_configs)
 
         use_artifact_session = _supports_visualization(language)
         session_cls = ArtifactSandboxSession if use_artifact_session else SandboxSession
 
-        session_kwargs = {
+        session_kwargs: dict[str, Any] = {
             "lang": language,
             "keep_template": _get_keep_template(),
             "commit_container": _get_commit_container(),
@@ -221,9 +234,7 @@ def execute_code(
         if runtime_configs:
             session_kwargs["runtime_configs"] = runtime_configs
 
-        with session_cls(
-            **session_kwargs,  # type: ignore[arg-type]
-        ) as session:
+        with session_cls(**session_kwargs) as session:
             if use_artifact_session:
                 result = session.run(  # type: ignore[call-arg]
                     code=code, libraries=libraries or [], timeout=timeout, clear_plots=True

@@ -252,10 +252,17 @@ Supported environment variables:
 - `SANDBOX_MEMORY` -> `runtime_configs["mem_limit"]`
 - `SANDBOX_MEM_LIMIT` -> `runtime_configs["mem_limit"]`
 - `SANDBOX_CPUS` -> normalized CPU runtime configs (`cpu_count` for whole numbers, `cpu_period` and `cpu_quota` for fractional values)
-- `SANDBOX_CPU_COUNT` -> `runtime_configs["cpu_count"]`
+- `SANDBOX_CPU_COUNT` -> normalized CPU runtime configs (`cpu_period` and `cpu_quota`)
 - `SANDBOX_CAP_DROP` -> `runtime_configs["cap_drop"]` (comma-separated)
 - `SANDBOX_SECURITY_OPT` -> `runtime_configs["security_opt"]` (comma-separated)
 - `SANDBOX_PRIVILEGED` -> `runtime_configs["privileged"]`
+
+> Security note: prefer `SANDBOX_NETWORK_MODE=none`, `SANDBOX_READ_ONLY=true`,
+> `SANDBOX_CAP_DROP=ALL`, and restrictive `SANDBOX_SECURITY_OPT` values for hardened
+> sandboxes. Avoid `SANDBOX_PRIVILEGED=true` unless you explicitly need it, keep CPU
+> and memory limits minimal, and audit any combination that re-enables privileges.
+> `SANDBOX_*` settings do not apply to the Kubernetes backend; use `pod_manifest`
+> there instead.
 
 `SANDBOX_*` runtime config variables are not supported for the Kubernetes backend. Use `pod_manifest`
 for Kubernetes-specific resource and security controls.
