@@ -27,6 +27,17 @@ mcp = FastMCP("llm-sandbox")
 
 _TRUE_ENV_VALUES = {"true", "1", "yes", "on"}
 _FALSE_ENV_VALUES = {"false", "0", "no", "off"}
+_RUNTIME_CONFIG_ENV_VARS = {
+    "SANDBOX_NETWORK_MODE",
+    "SANDBOX_READ_ONLY",
+    "SANDBOX_MEMORY",
+    "SANDBOX_MEM_LIMIT",
+    "SANDBOX_CPUS",
+    "SANDBOX_CPU_COUNT",
+    "SANDBOX_CAP_DROP",
+    "SANDBOX_SECURITY_OPT",
+    "SANDBOX_PRIVILEGED",
+}
 
 
 def _get_backend() -> SandboxBackend:
@@ -39,13 +50,13 @@ def _get_backend() -> SandboxBackend:
 def _get_commit_container() -> bool:
     """Get the commit_container setting from environment variable."""
     commit_container_env = os.environ.get("COMMIT_CONTAINER", "true").lower()
-    return commit_container_env in ("true", "1", "yes", "on")
+    return commit_container_env in _TRUE_ENV_VALUES
 
 
 def _get_keep_template() -> bool:
     """Get the keep_template setting from environment variable."""
     keep_template_env = os.environ.get("KEEP_TEMPLATE", "true").lower()
-    return keep_template_env in ("true", "1", "yes", "on")
+    return keep_template_env in _TRUE_ENV_VALUES
 
 
 def _get_kube_namespace() -> str:
@@ -79,6 +90,16 @@ def _get_optional_list_env(var_name: str) -> list[str] | None:
     return items or None
 
 
+def _get_optional_str_env(var_name: str) -> str | None:
+    """Parse an optional string environment variable."""
+    value = os.environ.get(var_name)
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    return normalized or None
+
+
 def _build_cpu_runtime_configs(cpu_units: Decimal, var_name: str) -> dict[str, int]:
     """Translate CPU units into Linux-compatible runtime config keys."""
     cpu_period = 100_000
@@ -102,7 +123,7 @@ def _parse_cpu_count_env(value: str, var_name: str) -> dict[str, int]:
         msg = f"{var_name} must be greater than 0"
         raise ValueError(msg)
     if parsed != parsed.to_integral_value():
-        msg = f"{var_name} must be a whole number when mapped to cpu_count"
+        msg = f"{var_name} must be a whole number when mapped to cpu_period/cpu_quota"
         raise ValueError(msg)
 
     return _build_cpu_runtime_configs(parsed, var_name)
@@ -131,11 +152,11 @@ def _get_runtime_configs() -> dict[str, bool | str | int | list[str]]:
         "SANDBOX_NETWORK_MODE": "network_mode",
     }
     for env_name, config_key in passthrough_env_to_config.items():
-        value = os.environ.get(env_name)
+        value = _get_optional_str_env(env_name)
         if value is not None:
             runtime_configs[config_key] = value
 
-    mem_limit = os.environ.get("SANDBOX_MEM_LIMIT") or os.environ.get("SANDBOX_MEMORY")
+    mem_limit = _get_optional_str_env("SANDBOX_MEM_LIMIT") or _get_optional_str_env("SANDBOX_MEMORY")
     if mem_limit is not None:
         runtime_configs["mem_limit"] = mem_limit
 
@@ -176,11 +197,12 @@ def _validate_backend_runtime_configs(
         return
 
     msg = (
-        "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend. "
-        "Use a custom pod_manifest instead."
+        "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend "
+        "in this MCP server. Kubernetes resource and security controls require a custom pod_manifest "
+        "via a custom MCP wrapper or direct llm-sandbox usage."
     )
 
-    if any(env_name.startswith("SANDBOX_") for env_name in os.environ):
+    if any(env_name in os.environ for env_name in _RUNTIME_CONFIG_ENV_VARS):
         raise ValueError(msg)
     if runtime_configs:
         raise ValueError(msg)

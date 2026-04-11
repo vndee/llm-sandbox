@@ -256,10 +256,20 @@ class TestGetRuntimeConfigs:
             "cpu_quota": 50000,
         }
 
+    @patch.dict(os.environ, {"SANDBOX_NETWORK_MODE": "  ", "SANDBOX_MEMORY": "   "}, clear=True)
+    def test_get_runtime_configs_ignores_empty_string_values(self) -> None:
+        """Test empty string runtime config values are treated as unset."""
+        assert _get_runtime_configs() == {}
+
     @patch.dict(os.environ, {"SANDBOX_MEM_LIMIT": "512m", "SANDBOX_MEMORY": "4g"}, clear=True)
     def test_get_runtime_configs_prefers_mem_limit(self) -> None:
         """Test SANDBOX_MEM_LIMIT takes precedence over SANDBOX_MEMORY."""
         assert _get_runtime_configs() == {"mem_limit": "512m"}
+
+    @patch.dict(os.environ, {"SANDBOX_MEM_LIMIT": "  ", "SANDBOX_MEMORY": "4g"}, clear=True)
+    def test_get_runtime_configs_falls_back_to_memory_when_mem_limit_is_blank(self) -> None:
+        """Test blank SANDBOX_MEM_LIMIT falls back to SANDBOX_MEMORY."""
+        assert _get_runtime_configs() == {"mem_limit": "4g"}
 
     @patch.dict(os.environ, {"SANDBOX_CPU_COUNT": "2.5"}, clear=True)
     def test_get_runtime_configs_invalid_cpu_count(self) -> None:
@@ -296,7 +306,10 @@ class TestRuntimeConfigHelpers:
 
     def test_parse_cpu_count_env_requires_whole_number(self) -> None:
         """Test cpu_count parser rejects fractional values."""
-        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be a whole number"):
+        with pytest.raises(
+            ValueError,
+            match="SANDBOX_CPU_COUNT must be a whole number when mapped to cpu_period/cpu_quota",
+        ):
             _parse_cpu_count_env("1.5", "SANDBOX_CPU_COUNT")
 
     def test_parse_cpus_env_invalid_number(self) -> None:
@@ -324,6 +337,11 @@ class TestRuntimeConfigHelpers:
         """Test Kubernetes backend rejects parsed runtime configs even without raw env vars present."""
         with pytest.raises(ValueError, match="not supported for the Kubernetes backend"):
             _validate_backend_runtime_configs(SandboxBackend.KUBERNETES, {"mem_limit": "512m"})
+
+    @patch.dict(os.environ, {"SANDBOX_FOO": "bar"}, clear=True)
+    def test_validate_backend_runtime_configs_ignores_unrelated_sandbox_envs(self) -> None:
+        """Test Kubernetes backend ignores SANDBOX_* env vars unrelated to runtime_configs."""
+        _validate_backend_runtime_configs(SandboxBackend.KUBERNETES)
 
 
 class TestSupportsVisualization:

@@ -876,10 +876,9 @@ Supported variables: `SANDBOX_NETWORK_MODE`, `SANDBOX_READ_ONLY`, `SANDBOX_MEMOR
 > `SANDBOX_CAP_DROP=ALL`, and restrictive `SANDBOX_SECURITY_OPT` values for hardened
 > sandboxes. Avoid `SANDBOX_PRIVILEGED=true` unless you explicitly need it, keep CPU
 > and memory limits minimal, and audit any combination that re-enables privileges.
-> `SANDBOX_*` settings do not apply to the Kubernetes backend; use `pod_manifest`
-> there instead.
-These MCP runtime config variables are not supported for the Kubernetes backend. Use `pod_manifest`
-for Kubernetes resource and security settings instead.
+> `SANDBOX_*` settings do not apply to the Kubernetes backend in this MCP server.
+> If you need Kubernetes-specific resource or security controls, provide a custom
+> `pod_manifest` via a custom MCP wrapper or use the llm-sandbox Python API directly.
 
 ### Available Tools
 
