@@ -221,8 +221,8 @@ The MCP server provides fine-grained control over container behavior through env
 
 ### Runtime Configuration via Environment Variables
 
-For Docker and Podman backends, the MCP server can translate `SANDBOX_*` environment variables into
-`runtime_configs` for every sandbox session it creates.
+For Docker, Podman, and Micromamba backends, the MCP server can translate `SANDBOX_*` environment
+variables into `runtime_configs` for every sandbox session it creates.
 
 ```json
 {

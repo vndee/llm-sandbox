@@ -12,7 +12,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ImageContent, TextContent
 
-from llm_sandbox import ArtifactSandboxSession, SandboxBackend, SandboxSession, SupportedLanguage
+from llm_sandbox import ArtifactSandboxSession, SandboxBackend, SandboxSession, SupportedLanguage, ValidationError
 from llm_sandbox.data import ExecutionResult
 from llm_sandbox.mcp_server.const import LANGUAGE_RESOURCES
 from llm_sandbox.session import _check_dependency
@@ -37,6 +37,11 @@ _RUNTIME_CONFIG_ENV_VARS = {
     "SANDBOX_CAP_DROP",
     "SANDBOX_SECURITY_OPT",
     "SANDBOX_PRIVILEGED",
+}
+_RUNTIME_CONFIG_SUPPORTED_BACKENDS = {
+    SandboxBackend.DOCKER,
+    SandboxBackend.PODMAN,
+    SandboxBackend.MICROMAMBA,
 }
 
 
@@ -77,7 +82,7 @@ def _get_optional_bool_env(var_name: str) -> bool | None:
         return False
 
     msg = f"{var_name} must be one of: true, false, 1, 0, yes, no, on, off"
-    raise ValueError(msg)
+    raise ValidationError(msg)
 
 
 def _get_optional_list_env(var_name: str) -> list[str] | None:
@@ -106,7 +111,7 @@ def _build_cpu_runtime_configs(cpu_units: Decimal, var_name: str) -> dict[str, i
     cpu_quota = int(cpu_units * cpu_period)
     if cpu_quota <= 0:
         msg = f"{var_name} is too small to translate into cpu_quota"
-        raise ValueError(msg)
+        raise ValidationError(msg)
 
     return {"cpu_period": cpu_period, "cpu_quota": cpu_quota}
 
@@ -117,14 +122,14 @@ def _parse_cpu_count_env(value: str, var_name: str) -> dict[str, int]:
         parsed = Decimal(value.strip())
     except InvalidOperation as exc:
         msg = f"{var_name} must be a positive number"
-        raise ValueError(msg) from exc
+        raise ValidationError(msg) from exc
 
     if parsed <= 0:
         msg = f"{var_name} must be greater than 0"
-        raise ValueError(msg)
+        raise ValidationError(msg)
     if parsed != parsed.to_integral_value():
         msg = f"{var_name} must be a whole number when mapped to cpu_period/cpu_quota"
-        raise ValueError(msg)
+        raise ValidationError(msg)
 
     return _build_cpu_runtime_configs(parsed, var_name)
 
@@ -135,11 +140,11 @@ def _parse_cpus_env(value: str) -> dict[str, int]:
         parsed = Decimal(value.strip())
     except InvalidOperation as exc:
         msg = "SANDBOX_CPUS must be a positive number"
-        raise ValueError(msg) from exc
+        raise ValidationError(msg) from exc
 
     if parsed <= 0:
         msg = "SANDBOX_CPUS must be greater than 0"
-        raise ValueError(msg)
+        raise ValidationError(msg)
 
     return _build_cpu_runtime_configs(parsed, "SANDBOX_CPUS")
 
@@ -192,20 +197,20 @@ def _validate_backend_runtime_configs(
     backend: SandboxBackend,
     runtime_configs: dict[str, bool | str | int | list[str]] | None = None,
 ) -> None:
-    """Raise ValueError if runtime configs are used with an unsupported backend."""
-    if backend != SandboxBackend.KUBERNETES:
+    """Raise ValidationError if runtime configs are used with an unsupported backend."""
+    if backend in _RUNTIME_CONFIG_SUPPORTED_BACKENDS:
         return
 
     msg = (
-        "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend "
+        f"SANDBOX_* runtime config environment variables are not supported for backend '{backend.value}' "
         "in this MCP server. Kubernetes resource and security controls require a custom pod_manifest "
         "via a custom MCP wrapper or direct llm-sandbox usage."
     )
 
     if any(env_name in os.environ for env_name in _RUNTIME_CONFIG_ENV_VARS):
-        raise ValueError(msg)
+        raise ValidationError(msg)
     if runtime_configs:
-        raise ValueError(msg)
+        raise ValidationError(msg)
 
 
 def _supports_visualization(language: str) -> bool:

@@ -842,8 +842,8 @@ For Kubernetes, you might need to set the `KUBECONFIG` environment variable to t
 
 #### Runtime Config Environment Variables
 
-For Docker and Podman backends, the MCP server can translate `SANDBOX_*` environment variables into
-session `runtime_configs`.
+For Docker, Podman, and Micromamba backends, the MCP server can translate `SANDBOX_*` environment
+variables into session `runtime_configs`.
 
 ```json
 {

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mcp.types import ImageContent, TextContent
 
-from llm_sandbox import SupportedLanguage
+from llm_sandbox import SupportedLanguage, ValidationError
 from llm_sandbox.const import SandboxBackend
 from llm_sandbox.data import ExecutionResult, FileType, PlotOutput
 from llm_sandbox.exceptions import MissingDependencyError
@@ -274,13 +274,13 @@ class TestGetRuntimeConfigs:
     @patch.dict(os.environ, {"SANDBOX_CPU_COUNT": "2.5"}, clear=True)
     def test_get_runtime_configs_invalid_cpu_count(self) -> None:
         """Test invalid cpu_count values raise a clear error."""
-        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be a whole number"):
+        with pytest.raises(ValidationError, match="SANDBOX_CPU_COUNT must be a whole number"):
             _get_runtime_configs()
 
     @patch.dict(os.environ, {"SANDBOX_READ_ONLY": "maybe"}, clear=True)
     def test_get_runtime_configs_invalid_boolean(self) -> None:
         """Test invalid boolean environment values raise a clear error."""
-        with pytest.raises(ValueError, match="SANDBOX_READ_ONLY must be one of"):
+        with pytest.raises(ValidationError, match="SANDBOX_READ_ONLY must be one of"):
             _get_runtime_configs()
 
 
@@ -289,7 +289,7 @@ class TestRuntimeConfigHelpers:
 
     def test_parse_cpu_count_env_invalid_number(self) -> None:
         """Test cpu_count parser rejects non-numeric values."""
-        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be a positive number"):
+        with pytest.raises(ValidationError, match="SANDBOX_CPU_COUNT must be a positive number"):
             _parse_cpu_count_env("abc", "SANDBOX_CPU_COUNT")
 
     def test_parse_cpu_count_env_valid_value(self) -> None:
@@ -301,30 +301,30 @@ class TestRuntimeConfigHelpers:
 
     def test_parse_cpu_count_env_must_be_positive(self) -> None:
         """Test cpu_count parser rejects zero and negative values."""
-        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be greater than 0"):
+        with pytest.raises(ValidationError, match="SANDBOX_CPU_COUNT must be greater than 0"):
             _parse_cpu_count_env("0", "SANDBOX_CPU_COUNT")
 
     def test_parse_cpu_count_env_requires_whole_number(self) -> None:
         """Test cpu_count parser rejects fractional values."""
         with pytest.raises(
-            ValueError,
+            ValidationError,
             match="SANDBOX_CPU_COUNT must be a whole number when mapped to cpu_period/cpu_quota",
         ):
             _parse_cpu_count_env("1.5", "SANDBOX_CPU_COUNT")
 
     def test_parse_cpus_env_invalid_number(self) -> None:
         """Test CPU parser rejects non-numeric values."""
-        with pytest.raises(ValueError, match="SANDBOX_CPUS must be a positive number"):
+        with pytest.raises(ValidationError, match="SANDBOX_CPUS must be a positive number"):
             _parse_cpus_env("abc")
 
     def test_parse_cpus_env_must_be_positive(self) -> None:
         """Test CPU parser rejects zero and negative values."""
-        with pytest.raises(ValueError, match="SANDBOX_CPUS must be greater than 0"):
+        with pytest.raises(ValidationError, match="SANDBOX_CPUS must be greater than 0"):
             _parse_cpus_env("0")
 
     def test_parse_cpus_env_rejects_too_small_fraction(self) -> None:
         """Test CPU parser rejects values that round down to zero quota."""
-        with pytest.raises(ValueError, match="SANDBOX_CPUS is too small to translate into cpu_quota"):
+        with pytest.raises(ValidationError, match="SANDBOX_CPUS is too small to translate into cpu_quota"):
             _parse_cpus_env("0.000001")
 
     @patch.dict(os.environ, {"SANDBOX_CAP_DROP": " , "}, clear=True)
@@ -335,13 +335,18 @@ class TestRuntimeConfigHelpers:
     @patch.dict(os.environ, {}, clear=True)
     def test_validate_backend_runtime_configs_rejects_kubernetes_runtime_configs(self) -> None:
         """Test Kubernetes backend rejects parsed runtime configs even without raw env vars present."""
-        with pytest.raises(ValueError, match="not supported for the Kubernetes backend"):
+        with pytest.raises(ValidationError, match="not supported for backend 'kubernetes'"):
             _validate_backend_runtime_configs(SandboxBackend.KUBERNETES, {"mem_limit": "512m"})
 
     @patch.dict(os.environ, {"SANDBOX_FOO": "bar"}, clear=True)
     def test_validate_backend_runtime_configs_ignores_unrelated_sandbox_envs(self) -> None:
         """Test Kubernetes backend ignores SANDBOX_* env vars unrelated to runtime_configs."""
         _validate_backend_runtime_configs(SandboxBackend.KUBERNETES)
+
+    @patch.dict(os.environ, {"SANDBOX_READ_ONLY": "true"}, clear=True)
+    def test_validate_backend_runtime_configs_allows_micromamba_runtime_configs(self) -> None:
+        """Test Micromamba backend accepts Docker-compatible runtime config env vars."""
+        _validate_backend_runtime_configs(SandboxBackend.MICROMAMBA)
 
 
 class TestSupportsVisualization:
@@ -727,7 +732,7 @@ class TestExecuteCode:
         assert isinstance(result[0], TextContent)
         result_data = json.loads(result[0].text)
         assert result_data["exit_code"] == 1
-        assert "not supported for the Kubernetes backend" in result_data["stderr"]
+        assert "not supported for backend 'kubernetes'" in result_data["stderr"]
 
     @patch.dict(os.environ, {"SANDBOX_CAP_DROP": " , "}, clear=True)
     @patch("llm_sandbox.mcp_server.server._get_backend")
@@ -741,7 +746,7 @@ class TestExecuteCode:
         assert isinstance(result[0], TextContent)
         result_data = json.loads(result[0].text)
         assert result_data["exit_code"] == 1
-        assert "not supported for the Kubernetes backend" in result_data["stderr"]
+        assert "not supported for backend 'kubernetes'" in result_data["stderr"]
 
     @patch.dict(os.environ, {"SANDBOX_READ_ONLY": "maybe"}, clear=True)
     @patch("llm_sandbox.mcp_server.server._get_backend")
@@ -755,7 +760,7 @@ class TestExecuteCode:
         assert isinstance(result[0], TextContent)
         result_data = json.loads(result[0].text)
         assert result_data["exit_code"] == 1
-        assert "not supported for the Kubernetes backend" in result_data["stderr"]
+        assert "not supported for backend 'kubernetes'" in result_data["stderr"]
 
 
 class TestGetSupportedLanguages:
