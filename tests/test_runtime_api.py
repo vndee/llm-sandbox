@@ -1,4 +1,5 @@
 """Tests for ContainerAPI protocol runtime checks."""
+
 from typing import Any
 
 from llm_sandbox.core.mixins import ContainerAPI
@@ -7,29 +8,29 @@ from llm_sandbox.core.mixins import ContainerAPI
 class MockRuntime:
     """Mock runtime that implements ContainerAPI."""
 
-    def create_container(self, config: Any) -> Any:
+    def create_container(self, config: Any) -> Any:  # noqa: D102
         return {"config": config}
 
-    def start_container(self, container: Any) -> None:
+    def start_container(self, container: Any) -> None:  # noqa: D102
         pass
 
-    def stop_container(self, container: Any) -> None:
+    def stop_container(self, container: Any) -> None:  # noqa: D102
         pass
 
-    def execute_command(self, container: Any, command: str, **kwargs: Any) -> tuple[int, Any]:
+    def execute_command(self, container: Any, command: str, **kwargs: Any) -> tuple[int, Any]:  # noqa: D102
         return 0, ("stdout", "stderr")
 
-    def copy_to_container(self, container: Any, src: str, dest: str, **kwargs: Any) -> None:
+    def copy_to_container(self, container: Any, src: str, dest: str, **kwargs: Any) -> None:  # noqa: D102
         pass
 
-    def copy_from_container(self, container: Any, src: str, **kwargs: Any) -> tuple[bytes, dict]:
+    def copy_from_container(self, container: Any, src: str, **kwargs: Any) -> tuple[bytes, dict]:  # noqa: D102
         return b"data", {"size": 4}
 
 
 class IncompleteRuntime:
     """Mock runtime missing methods."""
 
-    def create_container(self, config: Any) -> Any:
+    def create_container(self, config: Any) -> Any:  # noqa: D102
         return {"config": config}
 
 

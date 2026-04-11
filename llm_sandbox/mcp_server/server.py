@@ -148,20 +148,30 @@ def _get_runtime_configs() -> dict[str, bool | str | int | list[str]]:
         "SANDBOX_PRIVILEGED": "privileged",
     }
     for env_name, config_key in bool_env_to_config.items():
-        value = _get_optional_bool_env(env_name)
-        if value is not None:
-            runtime_configs[config_key] = value
+        bool_value = _get_optional_bool_env(env_name)
+        if bool_value is not None:
+            runtime_configs[config_key] = bool_value
 
     list_env_to_config: dict[str, str] = {
         "SANDBOX_CAP_DROP": "cap_drop",
         "SANDBOX_SECURITY_OPT": "security_opt",
     }
     for env_name, config_key in list_env_to_config.items():
-        value = _get_optional_list_env(env_name)
-        if value is not None:
-            runtime_configs[config_key] = value
+        list_value = _get_optional_list_env(env_name)
+        if list_value is not None:
+            runtime_configs[config_key] = list_value
 
     return runtime_configs
+
+
+def _validate_backend_runtime_configs(backend: SandboxBackend, runtime_configs: dict) -> None:
+    """Raise ValueError if runtime configs are used with an unsupported backend."""
+    if backend == SandboxBackend.KUBERNETES and runtime_configs:
+        msg = (
+            "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend. "
+            "Use a custom pod_manifest instead."
+        )
+        raise ValueError(msg)
 
 
 def _supports_visualization(language: str) -> bool:
@@ -194,12 +204,7 @@ def execute_code(
     try:
         backend = _get_backend()
         runtime_configs = _get_runtime_configs()
-        if backend == SandboxBackend.KUBERNETES and runtime_configs:
-            msg = (
-                "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend. "
-                "Use a custom pod_manifest instead."
-            )
-            raise ValueError(msg)
+        _validate_backend_runtime_configs(backend, runtime_configs)
 
         use_artifact_session = _supports_visualization(language)
         session_cls = ArtifactSandboxSession if use_artifact_session else SandboxSession
@@ -217,7 +222,7 @@ def execute_code(
             session_kwargs["runtime_configs"] = runtime_configs
 
         with session_cls(
-            **session_kwargs,
+            **session_kwargs,  # type: ignore[arg-type]
         ) as session:
             if use_artifact_session:
                 result = session.run(  # type: ignore[call-arg]
