@@ -17,7 +17,10 @@ from llm_sandbox.mcp_server.server import (
     _get_commit_container,
     _get_keep_template,
     _get_kube_namespace,
+    _get_optional_list_env,
     _get_runtime_configs,
+    _parse_cpu_count_env,
+    _parse_cpus_env,
     _supports_visualization,
     execute_code,
     get_language_details,
@@ -251,6 +254,11 @@ class TestGetRuntimeConfigs:
             "cpu_quota": 50000,
         }
 
+    @patch.dict(os.environ, {"SANDBOX_MEM_LIMIT": "512m", "SANDBOX_MEMORY": "4g"}, clear=True)
+    def test_get_runtime_configs_prefers_mem_limit(self) -> None:
+        """Test SANDBOX_MEM_LIMIT takes precedence over SANDBOX_MEMORY."""
+        assert _get_runtime_configs() == {"mem_limit": "512m"}
+
     @patch.dict(os.environ, {"SANDBOX_CPU_COUNT": "2.5"}, clear=True)
     def test_get_runtime_configs_invalid_cpu_count(self) -> None:
         """Test invalid cpu_count values raise a clear error."""
@@ -262,6 +270,45 @@ class TestGetRuntimeConfigs:
         """Test invalid boolean environment values raise a clear error."""
         with pytest.raises(ValueError, match="SANDBOX_READ_ONLY must be one of"):
             _get_runtime_configs()
+
+
+class TestRuntimeConfigHelpers:
+    """Test helper functions used by runtime config env parsing."""
+
+    def test_parse_cpu_count_env_invalid_number(self) -> None:
+        """Test cpu_count parser rejects non-numeric values."""
+        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be a positive number"):
+            _parse_cpu_count_env("abc", "SANDBOX_CPU_COUNT")
+
+    def test_parse_cpu_count_env_must_be_positive(self) -> None:
+        """Test cpu_count parser rejects zero and negative values."""
+        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be greater than 0"):
+            _parse_cpu_count_env("0", "SANDBOX_CPU_COUNT")
+
+    def test_parse_cpu_count_env_requires_whole_number(self) -> None:
+        """Test cpu_count parser rejects fractional values."""
+        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be a whole number"):
+            _parse_cpu_count_env("1.5", "SANDBOX_CPU_COUNT")
+
+    def test_parse_cpus_env_invalid_number(self) -> None:
+        """Test CPU parser rejects non-numeric values."""
+        with pytest.raises(ValueError, match="SANDBOX_CPUS must be a positive number"):
+            _parse_cpus_env("abc")
+
+    def test_parse_cpus_env_must_be_positive(self) -> None:
+        """Test CPU parser rejects zero and negative values."""
+        with pytest.raises(ValueError, match="SANDBOX_CPUS must be greater than 0"):
+            _parse_cpus_env("0")
+
+    def test_parse_cpus_env_rejects_too_small_fraction(self) -> None:
+        """Test CPU parser rejects values that round down to zero quota."""
+        with pytest.raises(ValueError, match="SANDBOX_CPUS is too small to translate into cpu_quota"):
+            _parse_cpus_env("0.000001")
+
+    @patch.dict(os.environ, {"SANDBOX_CAP_DROP": " , "}, clear=True)
+    def test_get_optional_list_env_empty_value_returns_none(self) -> None:
+        """Test list parser ignores empty comma-separated values."""
+        assert _get_optional_list_env("SANDBOX_CAP_DROP") is None
 
 
 class TestSupportsVisualization:
