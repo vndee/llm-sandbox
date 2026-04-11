@@ -6,6 +6,7 @@ A Model Context Protocol server that provides secure code execution capabilities
 import json
 import logging
 import os
+from decimal import Decimal, InvalidOperation
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ImageContent, TextContent
@@ -22,6 +23,9 @@ logging.basicConfig(
 logger = logging.getLogger("llm-sandbox-mcp")
 
 mcp = FastMCP("llm-sandbox")
+
+_TRUE_ENV_VALUES = {"true", "1", "yes", "on"}
+_FALSE_ENV_VALUES = {"false", "0", "no", "off"}
 
 
 def _get_backend() -> SandboxBackend:
@@ -46,6 +50,118 @@ def _get_keep_template() -> bool:
 def _get_kube_namespace() -> str:
     """Get the Kubernetes namespace from environment variable."""
     return os.environ.get("NAMESPACE", "default")
+
+
+def _get_optional_bool_env(var_name: str) -> bool | None:
+    """Parse an optional boolean environment variable."""
+    value = os.environ.get(var_name)
+    if value is None:
+        return None
+
+    normalized = value.strip().lower()
+    if normalized in _TRUE_ENV_VALUES:
+        return True
+    if normalized in _FALSE_ENV_VALUES:
+        return False
+
+    msg = f"{var_name} must be one of: true, false, 1, 0, yes, no, on, off"
+    raise ValueError(msg)
+
+
+def _get_optional_list_env(var_name: str) -> list[str] | None:
+    """Parse an optional comma-separated list environment variable."""
+    value = os.environ.get(var_name)
+    if value is None:
+        return None
+
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    return items or None
+
+
+def _parse_cpu_count_env(value: str, var_name: str) -> int:
+    """Parse a CPU count environment variable into an integer CPU count."""
+    try:
+        parsed = Decimal(value.strip())
+    except InvalidOperation as exc:
+        msg = f"{var_name} must be a positive number"
+        raise ValueError(msg) from exc
+
+    if parsed <= 0:
+        msg = f"{var_name} must be greater than 0"
+        raise ValueError(msg)
+    if parsed != parsed.to_integral_value():
+        msg = f"{var_name} must be a whole number when mapped to cpu_count"
+        raise ValueError(msg)
+
+    return int(parsed)
+
+
+def _parse_cpus_env(value: str) -> dict[str, int]:
+    """Parse SANDBOX_CPUS into backend-safe runtime configs."""
+    try:
+        parsed = Decimal(value.strip())
+    except InvalidOperation as exc:
+        msg = "SANDBOX_CPUS must be a positive number"
+        raise ValueError(msg) from exc
+
+    if parsed <= 0:
+        msg = "SANDBOX_CPUS must be greater than 0"
+        raise ValueError(msg)
+
+    if parsed == parsed.to_integral_value():
+        return {"cpu_count": int(parsed)}
+
+    cpu_period = 100_000
+    cpu_quota = int(parsed * cpu_period)
+    if cpu_quota <= 0:
+        msg = "SANDBOX_CPUS is too small to translate into cpu_quota"
+        raise ValueError(msg)
+
+    return {"cpu_period": cpu_period, "cpu_quota": cpu_quota}
+
+
+def _get_runtime_configs() -> dict[str, bool | str | int | list[str]]:
+    """Build runtime_configs from MCP server environment variables."""
+    runtime_configs: dict[str, bool | str | int | list[str]] = {}
+
+    passthrough_env_to_config: dict[str, str] = {
+        "SANDBOX_NETWORK_MODE": "network_mode",
+    }
+    for env_name, config_key in passthrough_env_to_config.items():
+        value = os.environ.get(env_name)
+        if value is not None:
+            runtime_configs[config_key] = value
+
+    mem_limit = os.environ.get("SANDBOX_MEM_LIMIT") or os.environ.get("SANDBOX_MEMORY")
+    if mem_limit is not None:
+        runtime_configs["mem_limit"] = mem_limit
+
+    cpu_count = os.environ.get("SANDBOX_CPU_COUNT")
+    cpus = os.environ.get("SANDBOX_CPUS")
+    if cpu_count is not None:
+        runtime_configs["cpu_count"] = _parse_cpu_count_env(cpu_count, "SANDBOX_CPU_COUNT")
+    elif cpus is not None:
+        runtime_configs.update(_parse_cpus_env(cpus))
+
+    bool_env_to_config: dict[str, str] = {
+        "SANDBOX_READ_ONLY": "read_only",
+        "SANDBOX_PRIVILEGED": "privileged",
+    }
+    for env_name, config_key in bool_env_to_config.items():
+        value = _get_optional_bool_env(env_name)
+        if value is not None:
+            runtime_configs[config_key] = value
+
+    list_env_to_config: dict[str, str] = {
+        "SANDBOX_CAP_DROP": "cap_drop",
+        "SANDBOX_SECURITY_OPT": "security_opt",
+    }
+    for env_name, config_key in list_env_to_config.items():
+        value = _get_optional_list_env(env_name)
+        if value is not None:
+            runtime_configs[config_key] = value
+
+    return runtime_configs
 
 
 def _supports_visualization(language: str) -> bool:
@@ -76,17 +192,32 @@ def execute_code(
     results: list[ImageContent | TextContent] = []
 
     try:
+        backend = _get_backend()
+        runtime_configs = _get_runtime_configs()
+        if backend == SandboxBackend.KUBERNETES and runtime_configs:
+            msg = (
+                "SANDBOX_* runtime config environment variables are not supported for the Kubernetes backend. "
+                "Use a custom pod_manifest instead."
+            )
+            raise ValueError(msg)
+
         use_artifact_session = _supports_visualization(language)
         session_cls = ArtifactSandboxSession if use_artifact_session else SandboxSession
 
+        session_kwargs = {
+            "lang": language,
+            "keep_template": _get_keep_template(),
+            "commit_container": _get_commit_container(),
+            "verbose": False,
+            "backend": backend,
+            "session_timeout": timeout,
+            "kube_namespace": _get_kube_namespace(),
+        }
+        if runtime_configs:
+            session_kwargs["runtime_configs"] = runtime_configs
+
         with session_cls(
-            lang=language,
-            keep_template=_get_keep_template(),
-            commit_container=_get_commit_container(),
-            verbose=False,
-            backend=_get_backend(),
-            session_timeout=timeout,
-            kube_namespace=_get_kube_namespace(),
+            **session_kwargs,
         ) as session:
             if use_artifact_session:
                 result = session.run(  # type: ignore[call-arg]

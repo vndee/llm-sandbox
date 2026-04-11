@@ -17,6 +17,7 @@ from llm_sandbox.mcp_server.server import (
     _get_commit_container,
     _get_keep_template,
     _get_kube_namespace,
+    _get_runtime_configs,
     _supports_visualization,
     execute_code,
     get_language_details,
@@ -209,6 +210,60 @@ class TestGetKubeNamespace:
         assert result == "default"
 
 
+class TestGetRuntimeConfigs:
+    """Test _get_runtime_configs function."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_runtime_configs_default_empty(self) -> None:
+        """Test that runtime configs default to empty when no env vars are set."""
+        assert _get_runtime_configs() == {}
+
+    @patch.dict(
+        os.environ,
+        {
+            "SANDBOX_NETWORK_MODE": "none",
+            "SANDBOX_READ_ONLY": "true",
+            "SANDBOX_MEMORY": "4g",
+            "SANDBOX_CPUS": "1.0",
+            "SANDBOX_CAP_DROP": "ALL,SYS_ADMIN",
+            "SANDBOX_SECURITY_OPT": "no-new-privileges:true,label=disable",
+            "SANDBOX_PRIVILEGED": "false",
+        },
+        clear=True,
+    )
+    def test_get_runtime_configs_from_env(self) -> None:
+        """Test building runtime configs from environment variables."""
+        assert _get_runtime_configs() == {
+            "network_mode": "none",
+            "read_only": True,
+            "mem_limit": "4g",
+            "cpu_count": 1,
+            "cap_drop": ["ALL", "SYS_ADMIN"],
+            "security_opt": ["no-new-privileges:true", "label=disable"],
+            "privileged": False,
+        }
+
+    @patch.dict(os.environ, {"SANDBOX_CPUS": "0.5"}, clear=True)
+    def test_get_runtime_configs_fractional_cpus(self) -> None:
+        """Test fractional CPU values are normalized into quota settings."""
+        assert _get_runtime_configs() == {
+            "cpu_period": 100000,
+            "cpu_quota": 50000,
+        }
+
+    @patch.dict(os.environ, {"SANDBOX_CPU_COUNT": "2.5"}, clear=True)
+    def test_get_runtime_configs_invalid_cpu_count(self) -> None:
+        """Test invalid cpu_count values raise a clear error."""
+        with pytest.raises(ValueError, match="SANDBOX_CPU_COUNT must be a whole number"):
+            _get_runtime_configs()
+
+    @patch.dict(os.environ, {"SANDBOX_READ_ONLY": "maybe"}, clear=True)
+    def test_get_runtime_configs_invalid_boolean(self) -> None:
+        """Test invalid boolean environment values raise a clear error."""
+        with pytest.raises(ValueError, match="SANDBOX_READ_ONLY must be one of"):
+            _get_runtime_configs()
+
+
 class TestSupportsVisualization:
     """Test _supports_visualization function."""
 
@@ -294,6 +349,61 @@ class TestExecuteCode:
         )
         mock_session.run.assert_called_once_with(
             code="print('Hello, World!')", libraries=[], timeout=30, clear_plots=True
+        )
+
+    @patch.dict(
+        os.environ,
+        {
+            "SANDBOX_NETWORK_MODE": "none",
+            "SANDBOX_READ_ONLY": "true",
+            "SANDBOX_MEMORY": "4g",
+            "SANDBOX_CPUS": "1.0",
+            "SANDBOX_CAP_DROP": "ALL",
+        },
+        clear=True,
+    )
+    @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
+    @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
+    def test_execute_code_passes_runtime_configs(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
+        """Test runtime configs from env are passed into sandbox sessions."""
+        mock_backend = SandboxBackend.DOCKER
+        mock_get_backend.return_value = mock_backend
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_cls.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session.run.return_value = ExecutionResult(exit_code=0, stdout="OK", stderr="")
+
+        _ = execute_code("print('Hello')", "python")
+
+        mock_session_cls.assert_called_once_with(
+            lang="python",
+            keep_template=True,
+            commit_container=True,
+            verbose=False,
+            backend=mock_backend,
+            session_timeout=30,
+            kube_namespace="default",
+            runtime_configs={
+                "network_mode": "none",
+                "read_only": True,
+                "mem_limit": "4g",
+                "cpu_count": 1,
+                "cap_drop": ["ALL"],
+            },
         )
 
     @patch("llm_sandbox.mcp_server.server._get_backend")
@@ -523,6 +633,20 @@ class TestExecuteCode:
         result_data = json.loads(result[0].text)
         assert result_data["exit_code"] == 1
         assert "Execution failed" in result_data["stderr"]
+
+    @patch.dict(os.environ, {"SANDBOX_READ_ONLY": "true"}, clear=True)
+    @patch("llm_sandbox.mcp_server.server._get_backend")
+    def test_execute_code_rejects_runtime_configs_for_kubernetes(self, mock_get_backend: MagicMock) -> None:
+        """Test runtime config env vars are rejected for Kubernetes backend."""
+        mock_get_backend.return_value = SandboxBackend.KUBERNETES
+
+        result = execute_code("print('Hello')", "python")
+
+        assert len(result) == 1
+        assert isinstance(result[0], TextContent)
+        result_data = json.loads(result[0].text)
+        assert result_data["exit_code"] == 1
+        assert "not supported for the Kubernetes backend" in result_data["stderr"]
 
 
 class TestGetSupportedLanguages:

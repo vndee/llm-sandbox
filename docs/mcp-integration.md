@@ -219,6 +219,47 @@ The MCP server provides fine-grained control over container behavior through env
 }
 ```
 
+### Runtime Configuration via Environment Variables
+
+For Docker and Podman backends, the MCP server can translate `SANDBOX_*` environment variables into
+`runtime_configs` for every sandbox session it creates.
+
+```json
+{
+  "mcpServers": {
+    "llm-sandbox": {
+      "command": "python3",
+      "args": ["-m", "llm_sandbox.mcp_server.server"],
+      "env": {
+        "BACKEND": "podman",
+        "DOCKER_HOST": "unix:///run/podman/podman.sock",
+        "SANDBOX_NETWORK_MODE": "none",
+        "SANDBOX_READ_ONLY": "true",
+        "SANDBOX_CAP_DROP": "ALL",
+        "SANDBOX_SECURITY_OPT": "no-new-privileges:true",
+        "SANDBOX_MEMORY": "4g",
+        "SANDBOX_CPU_COUNT": "1"
+      }
+    }
+  }
+}
+```
+
+Supported environment variables:
+
+- `SANDBOX_NETWORK_MODE` -> `runtime_configs["network_mode"]`
+- `SANDBOX_READ_ONLY` -> `runtime_configs["read_only"]`
+- `SANDBOX_MEMORY` -> `runtime_configs["mem_limit"]`
+- `SANDBOX_MEM_LIMIT` -> `runtime_configs["mem_limit"]`
+- `SANDBOX_CPUS` -> normalized CPU runtime configs (`cpu_count` for whole numbers, `cpu_period` and `cpu_quota` for fractional values)
+- `SANDBOX_CPU_COUNT` -> `runtime_configs["cpu_count"]`
+- `SANDBOX_CAP_DROP` -> `runtime_configs["cap_drop"]` (comma-separated)
+- `SANDBOX_SECURITY_OPT` -> `runtime_configs["security_opt"]` (comma-separated)
+- `SANDBOX_PRIVILEGED` -> `runtime_configs["privileged"]`
+
+`SANDBOX_*` runtime config variables are not supported for the Kubernetes backend. Use `pod_manifest`
+for Kubernetes-specific resource and security controls.
+
 **Environment Variable Values:**
 Both `COMMIT_CONTAINER` and `KEEP_TEMPLATE` accept:
 - `"true"`, `"1"`, `"yes"`, `"on"` → `True`

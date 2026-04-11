@@ -840,6 +840,41 @@ For Kubernetes, you might need to set the `KUBECONFIG` environment variable to t
 }
 ```
 
+#### Runtime Config Environment Variables
+
+For Docker and Podman backends, the MCP server can translate `SANDBOX_*` environment variables into
+session `runtime_configs`.
+
+```json
+{
+  "mcpServers": {
+    "llm-sandbox": {
+      "command": "python3",
+      "args": ["-m", "llm_sandbox.mcp_server.server"],
+      "env": {
+        "BACKEND": "podman",
+        "DOCKER_HOST": "unix:///run/podman/podman.sock",
+        "SANDBOX_NETWORK_MODE": "none",
+        "SANDBOX_READ_ONLY": "true",
+        "SANDBOX_CAP_DROP": "ALL",
+        "SANDBOX_SECURITY_OPT": "no-new-privileges:true",
+        "SANDBOX_MEMORY": "4g",
+        "SANDBOX_CPU_COUNT": "1"
+      }
+    }
+  }
+}
+```
+
+Supported variables: `SANDBOX_NETWORK_MODE`, `SANDBOX_READ_ONLY`, `SANDBOX_MEMORY`, `SANDBOX_MEM_LIMIT`,
+`SANDBOX_CPUS`, `SANDBOX_CPU_COUNT`, `SANDBOX_CAP_DROP`, `SANDBOX_SECURITY_OPT`, and `SANDBOX_PRIVILEGED`.
+
+`SANDBOX_MEMORY` is normalized to the backend-safe `mem_limit` runtime config. `SANDBOX_CPUS` is normalized
+to backend-safe CPU limits, while `SANDBOX_CPU_COUNT` maps directly to `cpu_count`.
+
+These MCP runtime config variables are not supported for the Kubernetes backend. Use `pod_manifest`
+for Kubernetes resource and security settings instead.
+
 ### Available Tools
 
 The MCP server provides the following tools:
