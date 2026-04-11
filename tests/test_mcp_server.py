@@ -22,6 +22,7 @@ from llm_sandbox.mcp_server.server import (
     _parse_cpu_count_env,
     _parse_cpus_env,
     _supports_visualization,
+    _validate_backend_runtime_configs,
     execute_code,
     get_language_details,
     get_supported_languages,
@@ -317,6 +318,12 @@ class TestRuntimeConfigHelpers:
     def test_get_optional_list_env_empty_value_returns_none(self) -> None:
         """Test list parser ignores empty comma-separated values."""
         assert _get_optional_list_env("SANDBOX_CAP_DROP") is None
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_validate_backend_runtime_configs_rejects_kubernetes_runtime_configs(self) -> None:
+        """Test Kubernetes backend rejects parsed runtime configs even without raw env vars present."""
+        with pytest.raises(ValueError, match="not supported for the Kubernetes backend"):
+            _validate_backend_runtime_configs(SandboxBackend.KUBERNETES, {"mem_limit": "512m"})
 
 
 class TestSupportsVisualization:
