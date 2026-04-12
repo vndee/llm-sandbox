@@ -840,6 +840,46 @@ For Kubernetes, you might need to set the `KUBECONFIG` environment variable to t
 }
 ```
 
+#### Runtime Config Environment Variables
+
+For Docker, Podman, and Micromamba backends, the MCP server can translate `SANDBOX_*` environment
+variables into session `runtime_configs`.
+
+```json
+{
+  "mcpServers": {
+    "llm-sandbox": {
+      "command": "python3",
+      "args": ["-m", "llm_sandbox.mcp_server.server"],
+      "env": {
+        "BACKEND": "podman",
+        "DOCKER_HOST": "unix:///run/podman/podman.sock",
+        "SANDBOX_NETWORK_MODE": "none",
+        "SANDBOX_READ_ONLY": "true",
+        "SANDBOX_CAP_DROP": "ALL",
+        "SANDBOX_SECURITY_OPT": "no-new-privileges:true",
+        "SANDBOX_MEMORY": "4g",
+        "SANDBOX_CPU_COUNT": "1"
+      }
+    }
+  }
+}
+```
+
+Supported variables: `SANDBOX_NETWORK_MODE`, `SANDBOX_READ_ONLY`, `SANDBOX_MEMORY`, `SANDBOX_MEM_LIMIT`,
+`SANDBOX_CPUS`, `SANDBOX_CPU_COUNT`, `SANDBOX_CAP_DROP`, `SANDBOX_SECURITY_OPT`, and `SANDBOX_PRIVILEGED`.
+
+`SANDBOX_MEMORY` is normalized to the backend-safe `mem_limit` runtime config. `SANDBOX_CPUS` and
+`SANDBOX_CPU_COUNT` are normalized to Linux-compatible CPU quota settings.
+
+> Security note: prefer `SANDBOX_NETWORK_MODE=none`, `SANDBOX_READ_ONLY=true`,
+> `SANDBOX_CAP_DROP=ALL`, and restrictive `SANDBOX_SECURITY_OPT` values for hardened
+> sandboxes. Avoid `SANDBOX_PRIVILEGED=true` unless you explicitly need it, keep CPU
+> and memory limits minimal, and audit any combination that re-enables privileges.
+> `SANDBOX_*` settings do not apply to the Kubernetes backend in this MCP server.
+> If you need Kubernetes-specific resource or security controls, provide a custom
+> `pod_manifest` via a custom MCP wrapper or use the llm-sandbox Python API directly.
+
 ### Available Tools
 
 The MCP server provides the following tools:

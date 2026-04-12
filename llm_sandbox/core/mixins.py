@@ -6,7 +6,7 @@ import threading
 from abc import abstractmethod
 from contextlib import suppress
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -17,6 +17,7 @@ from llm_sandbox.exceptions import CommandEmptyError, NotOpenSessionError, Sandb
 CLEANUP_THREAD_TIMEOUT = 0.1
 
 
+@runtime_checkable
 class ContainerAPI(Protocol):
     """Protocol for container operations."""
 
