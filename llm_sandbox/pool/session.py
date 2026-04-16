@@ -261,7 +261,7 @@ class PooledSandboxSession:
                     default_timeout=self._default_timeout,
                     execution_timeout=self._execution_timeout,
                     session_timeout=self._session_timeout,
-                    pod_id=container_id,  # Connect to existing pooled pod
+                    container_id=container_id,  # Connect to existing pooled pod
                     skip_environment_setup=True,
                     encoding_errors=self._encoding_errors,
                     **session_kwargs,
