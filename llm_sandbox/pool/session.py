@@ -252,7 +252,7 @@ class PooledSandboxSession:
 
                 return SandboxKubernetesSession(
                     client=self._pool_manager.client,
-                    namespace=namespace,
+                    kube_namespace=namespace,
                     image=self._image,
                     lang=self._lang,
                     verbose=self._verbose,
