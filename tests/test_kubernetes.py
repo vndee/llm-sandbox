@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from kubernetes.client.exceptions import ApiException
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import DefaultImage, RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import ContainerError, NotOpenSessionError
 from llm_sandbox.kubernetes import KubernetesContainerAPI, SandboxKubernetesSession
@@ -36,6 +36,7 @@ class TestSandboxKubernetesSessionInit:
         assert session.config.verbose is False
         assert session.config.image is None  # Image is set during pod manifest creation
         assert session.config.workdir == "/sandbox"
+        assert session.config.security_profile == RuntimeSecurityProfile.COMPATIBILITY
         assert session.kube_namespace == "default"
         assert session.client == mock_client
         assert session.env_vars is None
@@ -74,6 +75,7 @@ class TestSandboxKubernetesSessionInit:
             env_vars=env_vars,
             workdir="/custom",
             security_policy=security_policy,
+            security_profile="strict",
         )
 
         assert session.config.image == "custom:latest"
@@ -83,6 +85,7 @@ class TestSandboxKubernetesSessionInit:
         assert session.env_vars == env_vars
         assert session.config.workdir == "/custom"
         assert session.config.security_policy == security_policy
+        assert session.config.security_profile == RuntimeSecurityProfile.STRICT
 
     @patch("kubernetes.config.load_kube_config")
     @patch("llm_sandbox.kubernetes.CoreV1Api")
@@ -1591,6 +1594,40 @@ class TestSandboxKubernetesSessionSecurity:
         assert "securityContext" in container
         assert container["securityContext"]["runAsUser"] == 0
         assert container["securityContext"]["runAsGroup"] == 0
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_security_profile_in_pod_manifest(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Strict profile should apply hardened Kubernetes defaults."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxKubernetesSession(security_profile=RuntimeSecurityProfile.STRICT)
+        manifest = session.pod_manifest
+
+        pod_security_context = manifest["spec"]["securityContext"]
+        assert pod_security_context["runAsUser"] == 1000
+        assert pod_security_context["runAsGroup"] == 1000
+        assert pod_security_context["runAsNonRoot"] is True
+        assert pod_security_context["fsGroup"] == 1000
+        assert pod_security_context["seccompProfile"] == {"type": "RuntimeDefault"}
+        assert manifest["spec"]["automountServiceAccountToken"] is False
+
+        container = manifest["spec"]["containers"][0]
+        assert container["securityContext"]["runAsUser"] == 1000
+        assert container["securityContext"]["runAsGroup"] == 1000
+        assert container["securityContext"]["runAsNonRoot"] is True
+        assert container["securityContext"]["allowPrivilegeEscalation"] is False
+        assert container["securityContext"]["readOnlyRootFilesystem"] is True
+        assert container["securityContext"]["capabilities"] == {"drop": ["ALL"]}
+        assert container["resources"]["limits"] == {"cpu": "1", "memory": "512Mi"}
+        assert {"name": "sandbox-tmp", "mountPath": "/tmp"} in container["volumeMounts"]
+        assert {"name": "sandbox-workdir", "mountPath": "/sandbox"} in container["volumeMounts"]
+        assert {"name": "sandbox-tmp", "emptyDir": {"sizeLimit": "256Mi"}} in manifest["spec"]["volumes"]
+        assert {"name": "sandbox-workdir", "emptyDir": {"sizeLimit": "256Mi"}} in manifest["spec"]["volumes"]
 
 
 class TestSandboxKubernetesSessionComplexScenarios:

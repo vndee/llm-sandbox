@@ -3,7 +3,7 @@ from typing import Any
 import docker
 from docker.types import Mount
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
 from llm_sandbox.security import SecurityPolicy
 
@@ -53,6 +53,7 @@ class MicromambaSession(SandboxDockerSession):
         session_timeout: float | None = None,
         container_id: str | None = None,
         skip_environment_setup: bool = False,
+        security_profile: RuntimeSecurityProfile | str = RuntimeSecurityProfile.COMPATIBILITY,
         **kwargs: Any,
     ) -> None:
         r"""Initialize a new Micromamba-enabled sandbox session.
@@ -93,6 +94,8 @@ class MicromambaSession(SandboxDockerSession):
                 Defaults to None.
             skip_environment_setup (bool, optional): Skip language-specific environment setup.
                 Defaults to False.
+            security_profile (RuntimeSecurityProfile | str, optional): Runtime hardening profile to use.
+                Defaults to RuntimeSecurityProfile.COMPATIBILITY.
             **kwargs: Additional keyword arguments.
 
         """
@@ -114,6 +117,7 @@ class MicromambaSession(SandboxDockerSession):
             session_timeout=session_timeout,
             container_id=container_id,
             skip_environment_setup=skip_environment_setup,
+            security_profile=security_profile,
             **kwargs,
         )
 

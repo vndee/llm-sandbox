@@ -21,6 +21,7 @@ LLM Sandbox follows an **advisory security model** for code analysis:
 - **Container isolation is the primary security boundary.** Code runs inside isolated containers, which limits the blast radius of any malicious code.
 - **Security policies are advisory.** The `SecurityPolicy` system provides pre-execution code analysis via `is_safe()`, but it is **not** automatically enforced by `run()`. You must explicitly check `is_safe()` and decide whether to proceed. This gives you full control over how violations are handled (logging, custom errors, partial execution, etc.).
 - **Container-level controls are enforced by the runtime.** Resource limits, network isolation, and filesystem restrictions configured through `runtime_configs` (Docker/Podman) or pod manifests (Kubernetes) are enforced by the container runtime itself.
+- **Runtime security profiles provide safer defaults.** Use `security_profile="strict"` when running untrusted code in prepared images. The strict profile runs containers as non-root, drops capabilities, disables privilege escalation, adds resource limits, and uses read-only root filesystems with writable temporary/workdir mounts where supported.
 
 For production deployments handling untrusted code, always combine all layers: use security policies to screen code, apply strict container resource limits, and restrict network access.
 
@@ -440,13 +441,9 @@ with SandboxSession(
     lang="python",
     # Code analysis layer
     security_policy=custom_policy,
-    # Container restriction layer (see Configuration Guide)
-    runtime_configs={
-        "mem_limit": "256m",
-        "cpu_count": 1,
-        "timeout": 30,
-        "user": "nobody:nogroup"
-    }
+    # Runtime hardening layer (see Configuration Guide)
+    security_profile="strict",
+    skip_environment_setup=True,
 ) as session:
     # Always check before executing
     is_safe, violations = session.is_safe(user_code)

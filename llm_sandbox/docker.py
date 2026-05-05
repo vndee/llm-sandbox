@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 import docker
 from docker.errors import ImageNotFound, NotFound
 
-from llm_sandbox.const import DefaultImage, EncodingErrorsType, SupportedLanguage
+from llm_sandbox.const import DefaultImage, EncodingErrorsType, RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import StreamCallback
@@ -105,6 +105,7 @@ class SandboxDockerSession(BaseSession):
         container_id: str | None = None,
         skip_environment_setup: bool = False,
         encoding_errors: EncodingErrorsType = "strict",
+        security_profile: RuntimeSecurityProfile | str = RuntimeSecurityProfile.COMPATIBILITY,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Docker session.
@@ -127,12 +128,14 @@ class SandboxDockerSession(BaseSession):
             container_id (str | None): ID of existing container to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
             encoding_errors (EncodingErrorsType): Error handling for decoding command output.
+            security_profile (RuntimeSecurityProfile | str): Runtime hardening profile to use.
             **kwargs: Additional keyword arguments.
 
         Returns:
             None
 
         """
+        runtime_security_profile = RuntimeSecurityProfile(security_profile)
         config = SessionConfig(
             image=image,
             dockerfile=dockerfile,
@@ -141,6 +144,7 @@ class SandboxDockerSession(BaseSession):
             workdir=workdir,
             runtime_configs=runtime_configs or {},
             security_policy=security_policy,
+            security_profile=runtime_security_profile,
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
@@ -179,6 +183,27 @@ class SandboxDockerSession(BaseSession):
                 existing_mounts.extend(mounts)
             else:
                 existing_mounts.append(mounts)
+
+    def _container_security_defaults(self) -> dict[str, Any]:
+        """Return backend container security defaults for the configured profile."""
+        if self.config.security_profile != RuntimeSecurityProfile.STRICT:
+            return {"user": "root"}
+
+        tmpfs = {"/tmp": "rw,nosuid,size=256m,mode=1777"}
+        workdir = self.config.workdir.rstrip("/") or "/"
+        if workdir != "/tmp" and not workdir.startswith("/tmp/"):
+            tmpfs[workdir] = "rw,nosuid,size=256m,mode=1777"
+
+        return {
+            "user": "1000:1000",
+            "network_mode": "none",
+            "cap_drop": ["ALL"],
+            "security_opt": ["no-new-privileges"],
+            "pids_limit": 256,
+            "mem_limit": "512m",
+            "read_only": True,
+            "tmpfs": tmpfs,
+        }
 
     def _ensure_directory_exists(self, path: str) -> None:
         r"""Ensure the directory exists.
@@ -374,7 +399,8 @@ class SandboxDockerSession(BaseSession):
             # Create new container
             self._prepare_image()
 
-            container_config = {"image": self.docker_image, "detach": True, "tty": True, "user": "root"}
+            container_config = {"image": self.docker_image, "detach": True, "tty": True}
+            container_config.update(self._container_security_defaults())
             container_config.update(self.config.runtime_configs)
 
             env = container_config.get("environment")

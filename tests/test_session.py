@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_sandbox.const import SandboxBackend, SupportedLanguage
+from llm_sandbox.const import RuntimeSecurityProfile, SandboxBackend, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.data import ExecutionResult, FileType, PlotOutput
 from llm_sandbox.exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
@@ -351,3 +351,15 @@ class TestSessionConfig:
         # Valid: container_id alone
         config4 = SessionConfig(container_id="test-container")
         assert config4.container_id == "test-container"
+
+    def test_security_profile_defaults_to_compatibility(self) -> None:
+        """Security profile should default to historical compatibility behavior."""
+        config = SessionConfig()
+
+        assert config.security_profile == RuntimeSecurityProfile.COMPATIBILITY
+
+    def test_security_profile_accepts_strict_string(self) -> None:
+        """Security profile should accept string values."""
+        config = SessionConfig(security_profile="strict")
+
+        assert config.security_profile == RuntimeSecurityProfile.STRICT

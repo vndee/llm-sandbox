@@ -14,6 +14,7 @@ session = SandboxSession(
     verbose=True,               # Enable verbose logging
     keep_template=False,        # Keep container image after session
     workdir="/sandbox",         # Working directory in container
+    security_profile="compatibility",  # Runtime hardening profile
 )
 ```
 
@@ -369,6 +370,26 @@ WORKDIR /sandbox
 **Important**: Runtime configurations work differently depending on the backend.
 
 > **Security Warning**: The `runtime_configs` parameter is passed directly to the container runtime without filtering. When accepting `runtime_configs` from untrusted sources, be aware that dangerous options such as `privileged: True`, `cap_add`, `network_mode: "host"`, or host volume mounts can weaken or eliminate container isolation. In applications where end users can influence container configuration, always validate and restrict the allowed keys before passing them to `runtime_configs`. See [Security Considerations for runtime_configs](#security-considerations-for-runtime_configs) below.
+
+### Runtime Security Profiles
+
+The `security_profile` parameter provides named runtime hardening defaults:
+
+- `compatibility` (default): preserves the historical runtime behavior, including root containers for Docker, Podman, and generated Kubernetes manifests.
+- `strict`: applies defense-in-depth runtime defaults for untrusted code. Docker and Podman containers run as UID/GID `1000`, disable networking, drop Linux capabilities, disable privilege escalation, set memory and PID limits, use a read-only root filesystem, and mount writable temporary/workdir filesystems. Generated Kubernetes manifests use non-root pod/container security contexts, dropped capabilities, `RuntimeDefault` seccomp, read-only root filesystems, resource limits, and emptyDir writable mounts.
+
+```python
+from llm_sandbox import SandboxBackend, SandboxSession
+
+with SandboxSession(
+    backend=SandboxBackend.DOCKER,
+    security_profile="strict",
+    skip_environment_setup=True,  # Recommended with network-disabled strict containers
+) as session:
+    result = session.run("print('strict runtime')")
+```
+
+`runtime_configs` are still applied after the selected Docker/Podman profile, so explicit runtime options can override the strict defaults. For Kubernetes, `security_profile="strict"` applies only to generated pod manifests; custom `pod_manifest` values remain under your control.
 
 ### Docker and Podman Backends
 
