@@ -6,6 +6,7 @@ from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportPlotError, PackageManagerError
 from llm_sandbox.language_handlers.artifact_detection import R_PLOT_DETECTION_CODE
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
+from llm_sandbox.security import validate_package_name
 
 from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
 
@@ -99,5 +100,7 @@ class RHandler(AbstractLanguageHandler):
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)
 
+        # Reject shell-metacharacters before interpolation (issue #162).
+        library = validate_package_name(library, "r")
         repo_url = _get_r_repo()
         return f"R -e \"install.packages('{library}', repos='{repo_url}')\""

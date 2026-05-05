@@ -24,6 +24,41 @@ LLM Sandbox follows an **advisory security model** for code analysis:
 
 For production deployments handling untrusted code, always combine all layers: use security policies to screen code, apply strict container resource limits, and restrict network access.
 
+## Library names: accepted formats and limitations
+
+Whenever you pass `libraries=[...]` to `session.run()`, `session.install()`, or a pool's pre-install list, each entry is validated against a per-language allowlist before the install command is built. The install command is assembled by interpolating into a shell string (e.g. `pip install {lib}`), so a value like `foo; rm -rf /` would otherwise execute inside the container before any container limits could intervene. The validator rejects identifiers that fall outside the canonical naming spec for the target ecosystem and raises `llm_sandbox.exceptions.ValidationError`.
+
+This is defence in depth on top of the container boundary, not a replacement for it.
+
+### What's accepted
+
+| Language | Accepted form |
+|----------|---------------|
+| `python` | PEP 508 name with optional `[extras]` and one or more PEP 440 specifiers (`==`, `>=`, `~=`, …). E.g. `requests`, `requests[security]`, `requests>=2.0,<3.0`. |
+| `javascript` / `node` | npm package name, optionally `@scope/name`, optionally `@version-or-tag`. E.g. `lodash`, `@types/node`, `axios@1.7.2`. |
+| `go` | Module path, optionally `@version` (semver, branch, or `vX.Y.Z-yyyymmddhhmmss-hash` pseudo-version). E.g. `github.com/spyzhov/ajson@v0.9.0`. |
+| `ruby` | Gem name, optionally `:version`. E.g. `rails`, `nokogiri:1.16.0`. |
+| `r` | CRAN name: must start with a letter, then letters/digits/dots only (no `_`, no `-`). E.g. `ggplot2`, `data.table`. |
+| `c` / `cpp` | Debian binary package name (per Policy §5.6.7): lowercase letters, digits, `.`, `+`, `-`. E.g. `libboost-all-dev`. |
+| `java` | Maven coordinates `group:artifact[:version]`. (The Java handler does not currently install at runtime, but the pattern is registered.) |
+
+For the exact regexes, see `PACKAGE_NAME_PATTERNS` in `llm_sandbox/security/package_validators.py`.
+
+### Known limitations
+
+The patterns are deliberately strict — false rejections are a one-line workaround for the caller, false acceptances are an injection. Concretely, the following forms are **not** accepted:
+
+- VCS install URLs: `git+https://github.com/x/y.git`, `https://github.com/x/y/archive/main.tar.gz`. Out of scope for now.
+- Local paths: `./mypkg`, `/tmp/wheels/foo.whl`.
+- Python: PEP 508 environment markers (`requests; python_version<'3.10'`) and direct URL references (`requests @ https://...`).
+- Go: replace directives — `go get` doesn't accept them on the command line either.
+
+If you need one of these, install it from inside the executed code (e.g. `subprocess.run(["pip", "install", "git+..."])`) where you control the call site, or extend the allowlist for your language.
+
+### Adding or extending a language
+
+Add a compiled regex to `PACKAGE_NAME_PATTERNS` in `llm_sandbox/security/package_validators.py`. Languages without an explicit entry fall back to a strict safe-charset check rather than free-pass.
+
 ## Security Policy System
 
 ### Overview
