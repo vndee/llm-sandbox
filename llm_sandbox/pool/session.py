@@ -303,6 +303,7 @@ class PooledSandboxSession:
         timeout: float | None = None,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool = False,
     ) -> ConsoleOutput:
         """Run code in the pooled container.
 
@@ -312,6 +313,8 @@ class PooledSandboxSession:
             timeout: Execution timeout
             on_stdout: Optional callback invoked with each decoded stdout chunk in real time.
             on_stderr: Optional callback invoked with each decoded stderr chunk in real time.
+            enforce_security_policy: When True, the configured security policy is
+                enforced before any container interaction. Defaults to False.
 
         Returns:
             ConsoleOutput with execution results
@@ -319,13 +322,45 @@ class PooledSandboxSession:
         Raises:
             NotOpenSessionError: If session is not open
             RuntimeError: If backend session is not initialized
+            SecurityPolicyViolation: If enforce_security_policy=True and the code
+                violates the configured security policy.
 
         """
         if not self._backend_session:
             raise SessionNotOpenError
 
         return self._backend_session.run(
-            code, libraries=libraries, timeout=timeout, on_stdout=on_stdout, on_stderr=on_stderr
+            code,
+            libraries=libraries,
+            timeout=timeout,
+            on_stdout=on_stdout,
+            on_stderr=on_stderr,
+            enforce_security_policy=enforce_security_policy,
+        )
+
+    def safe_run(
+        self,
+        code: str,
+        libraries: list | None = None,
+        timeout: float | None = None,
+        on_stdout: StreamCallback | None = None,
+        on_stderr: StreamCallback | None = None,
+    ) -> ConsoleOutput:
+        """Run code in the pooled container with the security policy enforced.
+
+        Thin wrapper over ``run(..., enforce_security_policy=True)``.
+
+        Raises:
+            SecurityPolicyViolation: If the code violates the configured policy.
+
+        """
+        return self.run(
+            code,
+            libraries=libraries,
+            timeout=timeout,
+            on_stdout=on_stdout,
+            on_stderr=on_stderr,
+            enforce_security_policy=True,
         )
 
     def execute_command(self, command: str, workdir: str | None = None) -> ConsoleOutput:
@@ -527,6 +562,7 @@ class ArtifactPooledSandboxSession:
         clear_plots: bool = False,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool = False,
     ) -> ExecutionResult:
         """Run code and extract artifacts.
 
@@ -537,9 +573,15 @@ class ArtifactPooledSandboxSession:
             clear_plots: Clear existing plots before running
             on_stdout: Optional callback invoked with each decoded stdout chunk in real time.
             on_stderr: Optional callback invoked with each decoded stderr chunk in real time.
+            enforce_security_policy: When True, enforce the configured security policy
+                before any container interaction. Defaults to False.
 
         Returns:
             ExecutionResult with plots
+
+        Raises:
+            SecurityPolicyViolation: If enforce_security_policy=True and the code
+                violates the configured security policy.
 
         """
         from llm_sandbox.data import ExecutionResult
@@ -547,6 +589,9 @@ class ArtifactPooledSandboxSession:
 
         # Get backend session
         backend_session = self._session.backend_session
+
+        if enforce_security_policy:
+            backend_session._enforce_security_policy(code)  # noqa: SLF001
 
         # Check if plotting is supported
         if self.enable_plotting and not backend_session.language_handler.is_support_plot_detection:
@@ -580,6 +625,33 @@ class ArtifactPooledSandboxSession:
             stdout=result.stdout,
             stderr=result.stderr,
             plots=plots,
+        )
+
+    def safe_run(
+        self,
+        code: str,
+        libraries: list | None = None,
+        timeout: float | None = None,
+        clear_plots: bool = False,
+        on_stdout: StreamCallback | None = None,
+        on_stderr: StreamCallback | None = None,
+    ) -> ExecutionResult:
+        """Run code in the pooled artifact session with security policy enforced.
+
+        Thin wrapper over ``run(..., enforce_security_policy=True)``.
+
+        Raises:
+            SecurityPolicyViolation: If the code violates the configured policy.
+
+        """
+        return self.run(
+            code,
+            libraries=libraries,
+            timeout=timeout,
+            clear_plots=clear_plots,
+            on_stdout=on_stdout,
+            on_stderr=on_stderr,
+            enforce_security_policy=True,
         )
 
     def _clear_plots_in_container(self) -> None:
