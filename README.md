@@ -77,11 +77,16 @@ pip install 'llm-sandbox[docker,k8s,podman]'
 ```
 
 ### Development Installation
+
+Dev dependencies live in the `dev` [uv dependency group](https://docs.astral.sh/uv/concepts/projects/dependencies/#dependency-groups), so install them with `uv` (or the `make install` shortcut):
+
 ```bash
 git clone https://github.com/vndee/llm-sandbox.git
 cd llm-sandbox
-pip install -e '.[dev]'
+make install   # uv sync + pre-commit install
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ## 🏃‍♂️ Quick Start
 
