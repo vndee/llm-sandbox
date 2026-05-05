@@ -4,7 +4,13 @@ import re
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportPlotError
 from llm_sandbox.language_handlers.artifact_detection import PYTHON_PLOT_DETECTION_CODE
-from llm_sandbox.language_handlers.base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
+from llm_sandbox.language_handlers.base import (
+    AbstractLanguageHandler,
+    LanguageConfig,
+    PlotDetectionConfig,
+    PlotLibrary,
+    quote_library_name,
+)
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
 
@@ -61,8 +67,10 @@ class PythonHandler(AbstractLanguageHandler):
 
         """
         if runtime_context and runtime_context.pip_executable_path and runtime_context.pip_cache_dir:
+            safe_library = quote_library_name(library)
             return (
-                f"{runtime_context.pip_executable_path} install {library} --cache-dir {runtime_context.pip_cache_dir}"
+                f"{runtime_context.pip_executable_path} install {safe_library} "
+                f"--cache-dir {runtime_context.pip_cache_dir}"
             )
 
         # Fall back to static config for backwards compatibility

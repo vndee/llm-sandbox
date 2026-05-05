@@ -6,7 +6,7 @@ from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
-from .base import AbstractLanguageHandler, LanguageConfig
+from .base import AbstractLanguageHandler, LanguageConfig, quote_library_name
 
 if TYPE_CHECKING:
     from .base import ContainerProtocol
@@ -56,13 +56,14 @@ class CppHandler(AbstractLanguageHandler):
             Command string to install the library
 
         """
+        safe_library = quote_library_name(library)
         if runtime_context and runtime_context.workdir:
             # Use dynamic workdir from runtime context
             workdir = runtime_context.workdir
-            return f"apt-get install {library} -o Dir::Cache={workdir}/apt-cache"
+            return f"apt-get install {safe_library} -o Dir::Cache={workdir}/apt-cache"
 
         # Fall back to /tmp for backwards compatibility
-        return f"apt-get install {library}"
+        return f"apt-get install {safe_library}"
 
     def run_with_artifacts(
         self,

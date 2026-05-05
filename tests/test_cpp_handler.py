@@ -204,6 +204,14 @@ class TestCppHandler:
 
         assert command == "apt-get install libboost-dev"
 
+    def test_get_library_installation_command_quotes_shell_metacharacters(self) -> None:
+        """Test C++ package specifiers are shell-quoted."""
+        handler = CppHandler()
+
+        command = handler.get_library_installation_command("libboost-dev; touch /tmp/pwned")
+
+        assert command == "apt-get install 'libboost-dev; touch /tmp/pwned'"
+
     def test_standard_library_headers(self) -> None:
         """Test standard library header imports."""
         handler = CppHandler()

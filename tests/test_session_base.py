@@ -18,6 +18,7 @@ from llm_sandbox.exceptions import (
     NotOpenSessionError,
     SandboxTimeoutError,
     SecurityViolationError,
+    ValidationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
@@ -346,6 +347,21 @@ class TestBaseSessionLibraryInstallation:
 
         with pytest.raises(SecurityViolationError):
             self.session.install(["os"])
+
+    @pytest.mark.parametrize("library", ["", "   ", "--index-url=https://example.com", "numpy\nwhoami"])
+    def test_install_rejects_invalid_library_names(self, library: str) -> None:
+        """Test install rejects package specifiers that cannot be safely shell-executed."""
+        with pytest.raises(ValidationError):
+            self.session.install([library])
+
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_install_strips_library_names_before_command_generation(self, mock_execute_commands: Mock) -> None:
+        """Test install normalizes library names before command generation."""
+        mock_execute_commands.return_value = ConsoleOutput(exit_code=0)
+
+        self.session.install([" numpy "])
+
+        mock_execute_commands.assert_called_once_with([("pip install numpy", self.session.config.workdir)])
 
     @patch.object(MockBaseSession, "execute_commands")
     def test_install_success(self, mock_execute_commands: Mock) -> None:

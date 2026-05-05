@@ -9,8 +9,14 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from llm_sandbox.data import FileType
-from llm_sandbox.exceptions import CommandFailedError, PackageManagerError
-from llm_sandbox.language_handlers.base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
+from llm_sandbox.exceptions import CommandFailedError, PackageManagerError, ValidationError
+from llm_sandbox.language_handlers.base import (
+    AbstractLanguageHandler,
+    LanguageConfig,
+    PlotDetectionConfig,
+    PlotLibrary,
+    validate_library_name,
+)
 
 
 class ConcreteLanguageHandler(AbstractLanguageHandler):
@@ -64,6 +70,26 @@ class TestMissingCoverage:
 
         with pytest.raises(PackageManagerError):
             handler.get_library_installation_command("numpy")
+
+    def test_library_installation_command_quotes_shell_metacharacters(self) -> None:
+        """Test package specifiers are shell-quoted before command construction."""
+        config = LanguageConfig(
+            name="test",
+            file_extension=".test",
+            execution_commands=["test {file}"],
+            package_manager="test-manager",
+        )
+        handler = ConcreteLanguageHandler(config)
+
+        command = handler.get_library_installation_command("numpy; touch /tmp/pwned")
+
+        assert command == "test-manager 'numpy; touch /tmp/pwned'"
+
+    @pytest.mark.parametrize("library", ["", "   ", "-r requirements.txt", "numpy\rwhoami"])
+    def test_validate_library_name_rejects_unsafe_input(self, library: str) -> None:
+        """Test invalid package specifiers are rejected."""
+        with pytest.raises(ValidationError):
+            validate_library_name(library)
 
     def test_no_plot_detection_line_212(self) -> None:
         """Test line 212: no plot detection."""

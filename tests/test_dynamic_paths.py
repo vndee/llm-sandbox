@@ -83,6 +83,23 @@ class TestPythonHandlerDynamicPaths:
 
         assert command == "pip install numpy"
 
+    def test_library_installation_quotes_shell_metacharacters(self) -> None:
+        """Test Python package specifiers are shell-quoted."""
+        handler = PythonHandler()
+        context = RuntimeContext(
+            workdir="/sandbox",
+            python_executable_path="/sandbox/.sandbox-venv/bin/python",
+            pip_executable_path="/sandbox/.sandbox-venv/bin/pip",
+            pip_cache_dir="/sandbox/.sandbox-pip-cache",
+        )
+
+        command = handler.get_library_installation_command("numpy; touch /tmp/pwned", runtime_context=context)
+
+        assert (
+            command == "/sandbox/.sandbox-venv/bin/pip install 'numpy; touch /tmp/pwned' "
+            "--cache-dir /sandbox/.sandbox-pip-cache"
+        )
+
     def test_multiple_workdir_configurations(self) -> None:
         """Test handler works with various workdir configurations."""
         handler = PythonHandler()

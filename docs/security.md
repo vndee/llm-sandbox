@@ -475,7 +475,13 @@ with SandboxSession(
     # Container limits provide defense-in-depth if code analysis misses something
 ```
 
-### 2. Use Language-Appropriate Restrictions
+### 2. Validate Package Inputs
+
+Library names passed to `run(..., libraries=[...])` and `install([...])` are validated before package-manager commands are built. Empty names, control characters, and option-like values such as `--index-url=...` are rejected, and accepted values are shell-quoted before execution.
+
+Still treat package names as untrusted input in your application. Prefer an allowlist when end users can request dependencies.
+
+### 3. Use Language-Appropriate Restrictions
 
 ```python
 # Python-focused restrictions
@@ -502,7 +508,7 @@ javascript_policy = SecurityPolicy(
 )
 ```
 
-### 3. Test Security Policies
+### 4. Test Security Policies
 
 ```python
 def test_security_policy(policy: SecurityPolicy, lang: str = "python"):
@@ -527,7 +533,7 @@ def test_security_policy(policy: SecurityPolicy, lang: str = "python"):
             assert is_safe == expected_safe, f"Failed for: {code}"
 ```
 
-### 4. Monitor and Log Security Events
+### 5. Monitor and Log Security Events
 
 ```python
 import logging
@@ -571,7 +577,7 @@ with SandboxSession(lang="python", security_policy=policy) as session:
         result = session.run(user_code)
 ```
 
-### 5. Handle Security Violations Gracefully
+### 6. Handle Security Violations Gracefully
 
 ```python
 class SecurityViolationError(Exception):

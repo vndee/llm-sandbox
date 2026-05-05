@@ -20,6 +20,7 @@ from llm_sandbox.exceptions import (
     SandboxTimeoutError,
     SecurityViolationError,
 )
+from llm_sandbox.language_handlers.base import validate_library_name
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
@@ -275,6 +276,8 @@ class BaseSession(
         """
         if not libraries:
             return
+
+        libraries = [validate_library_name(library) for library in libraries]
 
         if self.config.skip_environment_setup:
             # Log detailed guidance for users

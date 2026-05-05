@@ -1,13 +1,15 @@
+import json
 import logging
 import os
 import re
+import shlex
 
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.exceptions import LanguageNotSupportPlotError, PackageManagerError
 from llm_sandbox.language_handlers.artifact_detection import R_PLOT_DETECTION_CODE
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 
-from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
+from .base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary, validate_library_name
 
 
 def _get_r_repo() -> str:
@@ -100,4 +102,5 @@ class RHandler(AbstractLanguageHandler):
             raise PackageManagerError(self.config.name)
 
         repo_url = _get_r_repo()
-        return f"R -e \"install.packages('{library}', repos='{repo_url}')\""
+        expression = f"install.packages({json.dumps(validate_library_name(library))}, repos={json.dumps(repo_url)})"
+        return f"R -e {shlex.quote(expression)}"
