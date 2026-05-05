@@ -25,7 +25,7 @@ Documentation: https://vndee.github.io/llm-sandbox/
 
 ### 🛡️ Security First
 - **Isolated Execution**: Code runs in isolated containers with no access to host system
-- **Security Policies**: Define custom security policies to control code execution
+- **Security Policies**: Define custom advisory or enforced security checks for code execution
 - **Runtime Security Profiles**: Opt into stricter non-root container defaults for untrusted code
 - **Resource Limits**: Set CPU, memory, and execution time limits
 - **Network Isolation**: Control network access for sandboxed code

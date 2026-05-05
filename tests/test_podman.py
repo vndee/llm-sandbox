@@ -91,6 +91,7 @@ class TestSandboxPodmanSessionInit:
             workdir="/custom",
             security_policy=security_policy,
             security_profile="strict",
+            enforce_security_policy=True,
         )
 
         assert session.config.image == "custom:latest"
@@ -102,6 +103,7 @@ class TestSandboxPodmanSessionInit:
         assert session.config.workdir == "/custom"
         assert session.config.security_policy == security_policy
         assert session.config.security_profile == RuntimeSecurityProfile.STRICT
+        assert session.config.enforce_security_policy is True
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")

@@ -106,6 +106,7 @@ class SandboxDockerSession(BaseSession):
         skip_environment_setup: bool = False,
         encoding_errors: EncodingErrorsType = "strict",
         security_profile: RuntimeSecurityProfile | str = RuntimeSecurityProfile.COMPATIBILITY,
+        enforce_security_policy: bool = False,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Docker session.
@@ -129,6 +130,7 @@ class SandboxDockerSession(BaseSession):
             skip_environment_setup (bool): Skip language-specific environment setup.
             encoding_errors (EncodingErrorsType): Error handling for decoding command output.
             security_profile (RuntimeSecurityProfile | str): Runtime hardening profile to use.
+            enforce_security_policy (bool): Whether run() should block unsafe code before execution.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -144,6 +146,7 @@ class SandboxDockerSession(BaseSession):
             workdir=workdir,
             runtime_configs=runtime_configs or {},
             security_policy=security_policy,
+            enforce_security_policy=enforce_security_policy,
             security_profile=runtime_security_profile,
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,

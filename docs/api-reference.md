@@ -412,21 +412,16 @@ policy.add_pattern(SecurityPattern(
 with SandboxSession(
     lang="python",
     security_policy=policy,
+    enforce_security_policy=True,
     runtime_configs={
         "cpu_count": 2,
         "mem_limit": "512m",
         "timeout": 30
     }
 ) as session:
-    # Check code safety
     code = "import requests; requests.get('https://api.example.com')"
-    is_safe, violations = session.is_safe(code)
-
-    if is_safe:
-        result = session.run(code, libraries=["requests"])
-        print(result.stdout)
-    else:
-        print("Code failed security check")
+    result = session.run(code, libraries=["requests"])
+    print(result.stdout)
 
 # With artifact extraction
 with ArtifactSandboxSession(

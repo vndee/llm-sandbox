@@ -698,6 +698,24 @@ with SandboxSession(lang="python", security_policy=policy) as session:
     pass
 ```
 
+Security policy checks are advisory by default. Enable enforcement when `run()` should reject unsafe code automatically:
+
+```python
+from llm_sandbox.exceptions import SecurityViolationError
+
+with SandboxSession(
+    lang="python",
+    security_policy=policy,
+    enforce_security_policy=True,
+) as session:
+    try:
+        session.run("import subprocess\nsubprocess.run(['ls'])")
+    except SecurityViolationError:
+        print("Blocked by security policy")
+```
+
+You can also enforce a single execution with `session.run(code, enforce_security_policy=True)`.
+
 For more information, see the [Security Policies](security.md) page.
 
 ## Custom Client Configuration

@@ -16,10 +16,10 @@ Security in LLM Sandbox is implemented through multiple layers:
 
 ### Security Model
 
-LLM Sandbox follows an **advisory security model** for code analysis:
+LLM Sandbox follows an **advisory-by-default security model** for code analysis:
 
 - **Container isolation is the primary security boundary.** Code runs inside isolated containers, which limits the blast radius of any malicious code.
-- **Security policies are advisory.** The `SecurityPolicy` system provides pre-execution code analysis via `is_safe()`, but it is **not** automatically enforced by `run()`. You must explicitly check `is_safe()` and decide whether to proceed. This gives you full control over how violations are handled (logging, custom errors, partial execution, etc.).
+- **Security policies are advisory by default and enforceable by opt-in.** The `SecurityPolicy` system provides pre-execution code analysis via `is_safe()`. By default, you decide how to handle violations. Set `enforce_security_policy=True` on the session, or pass it to `run()`, to raise `SecurityViolationError` before unsafe code is copied or executed.
 - **Container-level controls are enforced by the runtime.** Resource limits, network isolation, and filesystem restrictions configured through `runtime_configs` (Docker/Podman) or pod manifests (Kubernetes) are enforced by the container runtime itself.
 - **Runtime security profiles provide safer defaults.** Use `security_profile="strict"` when running untrusted code in prepared images. The strict profile runs containers as non-root, drops capabilities, disables privilege escalation, adds resource limits, and uses read-only root filesystems with writable temporary/workdir mounts where supported.
 
@@ -36,7 +36,7 @@ The security policy system analyzes code **before execution** using regex patter
 - **Severity-based filtering** with configurable thresholds
 - **Comment filtering** to avoid false positives from documentation
 
-> **Important**: Security policies are an **advisory code analysis tool**, not an automatic enforcement layer. You **must** call `session.is_safe(code)` manually before `session.run(code)` and act on the result. Calling `session.run(code)` directly will execute the code regardless of any configured security policy. See [Basic Usage](#basic-usage) for the correct pattern.
+> **Important**: Security policies are **advisory by default** for backward compatibility. Use `session.is_safe(code)` for custom handling, or set `enforce_security_policy=True` when you want `run()` to block unsafe code automatically.
 
 ### Understanding Security Policies
 
@@ -171,7 +171,7 @@ When you specify a restricted module like `"os"`, the language handler automatic
 
 ### Basic Usage
 
-Security policies require a **manual check-then-execute** pattern. You must call `is_safe()` before `run()` — the policy is **not** automatically enforced.
+Security policies default to a **manual check-then-execute** pattern. Call `is_safe()` before `run()` when you want to log, audit, or present violations yourself.
 
 ```python
 from llm_sandbox import SandboxSession
@@ -197,7 +197,7 @@ policy = SecurityPolicy(
 with SandboxSession(lang="python", security_policy=policy) as session:
     code = "import os\nos.system('ls')"
 
-    # Step 1: Check if code is safe (REQUIRED — not automatic)
+    # Step 1: Check if code is safe
     is_safe, violations = session.is_safe(code)
 
     # Step 2: Only execute if safe
@@ -210,7 +210,32 @@ with SandboxSession(lang="python", security_policy=policy) as session:
             print(f"  - {violation.description} (Severity: {violation.severity.name})")
 ```
 
-> **Warning**: Calling `session.run(code)` without first checking `session.is_safe(code)` will execute the code regardless of the security policy. Always use the check-then-execute pattern shown above.
+### Enforced Usage
+
+Set `enforce_security_policy=True` when the session should raise before unsafe code runs:
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.exceptions import SecurityViolationError
+
+with SandboxSession(
+    lang="python",
+    security_policy=policy,
+    enforce_security_policy=True,
+) as session:
+    try:
+        result = session.run("import os\nos.system('ls')")
+    except SecurityViolationError as exc:
+        print(f"Blocked: {exc}")
+```
+
+You can also enforce one call without changing the session default:
+
+```python
+result = session.run(user_code, enforce_security_policy=True)
+```
+
+Session-level enforcement cannot be disabled by passing `False` to a single `run()` call.
 
 ### Custom Security Policies
 
@@ -441,15 +466,13 @@ with SandboxSession(
     lang="python",
     # Code analysis layer
     security_policy=custom_policy,
+    enforce_security_policy=True,
     # Runtime hardening layer (see Configuration Guide)
     security_profile="strict",
     skip_environment_setup=True,
 ) as session:
-    # Always check before executing
-    is_safe, violations = session.is_safe(user_code)
-    if is_safe:
-        result = session.run(user_code)
-    # Container limits provide defense-in-depth even if code analysis is bypassed
+    result = session.run(user_code)
+    # Container limits provide defense-in-depth if code analysis misses something
 ```
 
 ### 2. Use Language-Appropriate Restrictions

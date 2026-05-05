@@ -69,6 +69,11 @@ class SessionConfig(BaseModel):
         default=None,
         description="The security policy to use for the session.",
     )
+    enforce_security_policy: bool = Field(
+        default=False,
+        description="Whether run() should raise SecurityViolationError before execution when the "
+        "configured security_policy marks code unsafe.",
+    )
     security_profile: RuntimeSecurityProfile = Field(
         default=RuntimeSecurityProfile.COMPATIBILITY,
         description="Container runtime hardening profile. 'compatibility' preserves historical defaults; "
