@@ -1168,6 +1168,54 @@ class TestSandboxDockerSessionEdgeCases:
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_commit_container_uses_explicit_commit_image_tag(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Explicit commit_image_tag overrides the source image tag at commit time."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession(commit_image_tag="llm-sandbox-mcp/python:abc123")
+        mock_container = MagicMock()
+        mock_image = MagicMock()
+        # Source image still has its upstream tag.
+        mock_image.tags = ["python:3.11-bullseye"]
+
+        session.container = mock_container
+        session.docker_image = mock_image
+
+        session._commit_container()
+
+        # Commit must target the unique tag, never the source image tag.
+        mock_container.commit.assert_called_once_with(
+            repository="llm-sandbox-mcp/python", tag="abc123"
+        )
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_commit_container_explicit_tag_works_without_source_tags(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """commit_image_tag also rescues the no-source-tags case (e.g. dangling image)."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+
+        session = SandboxDockerSession(commit_image_tag="llm-sandbox-mcp/python:xyz")
+        mock_container = MagicMock()
+        mock_image = MagicMock()
+        mock_image.tags = []  # No upstream tag at all.
+
+        session.container = mock_container
+        session.docker_image = mock_image
+
+        session._commit_container()
+
+        mock_container.commit.assert_called_once_with(
+            repository="llm-sandbox-mcp/python", tag="xyz"
+        )
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
     def test_cleanup_image_with_containers_using_it(
         self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
     ) -> None:
