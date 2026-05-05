@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from pydantic_core import ValidationError
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import DefaultImage, RuntimeProfile, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ImagePullError, NotOpenSessionError
 from llm_sandbox.podman import PodmanImageNotFound, PodmanNotFound, SandboxPodmanSession
@@ -734,3 +734,100 @@ class TestSandboxPodmanSessionOwnership:
         session._ensure_ownership(["/tmp/test"])
 
         mock_container.exec_run.assert_not_called()
+
+
+class TestPodmanRuntimeProfile:
+    """Test the strict runtime profile applied to Podman container creation."""
+
+    def _make_client(self, mock_podman_from_env: MagicMock) -> MagicMock:
+        mock_client = MagicMock()
+        mock_podman_from_env.return_value = mock_client
+        mock_image = MagicMock()
+        mock_image.tags = [DefaultImage.PYTHON]
+        mock_client.images.get.return_value = mock_image
+        mock_client.containers.create.return_value = MagicMock()
+        return mock_client
+
+    @patch("llm_sandbox.podman.PodmanClient.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_compat_profile_keeps_root(
+        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
+    ) -> None:
+        """Default profile must keep historical user='root' kwarg."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_podman_from_env)
+
+        session = SandboxPodmanSession()
+        assert session.config.runtime_profile == RuntimeProfile.COMPAT
+
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "root"
+        assert "cap_drop" not in create_kwargs
+        assert "network_mode" not in create_kwargs
+
+    @patch("llm_sandbox.podman.PodmanClient.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_profile_applies_hardening_kwargs(
+        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
+    ) -> None:
+        """STRICT profile must apply non-root user, dropped caps, and resource limits."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_podman_from_env)
+
+        session = SandboxPodmanSession(runtime_profile=RuntimeProfile.STRICT)
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "1000:1000"
+        assert create_kwargs["cap_drop"] == ["ALL"]
+        assert create_kwargs["security_opt"] == ["no-new-privileges:true"]
+        assert create_kwargs["network_mode"] == "none"
+        assert create_kwargs["pids_limit"] == 512
+        # Podman normalises mem_limit to its '<n>m' form.
+        assert create_kwargs["mem_limit"] == "512m"
+
+    @patch("llm_sandbox.podman.PodmanClient.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_runtime_configs_override_profile_defaults(
+        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
+    ) -> None:
+        """User-supplied runtime_configs values must win over the strict profile defaults."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_podman_from_env)
+
+        session = SandboxPodmanSession(
+            runtime_profile=RuntimeProfile.STRICT,
+            runtime_configs={"user": "2000:2000", "pids_limit": 1024},
+        )
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "2000:2000"
+        assert create_kwargs["pids_limit"] == 1024
+        assert create_kwargs["cap_drop"] == ["ALL"]
+
+    @patch("llm_sandbox.podman.PodmanClient.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_runtime_configs_none_drops_profile_default(
+        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
+    ) -> None:
+        """Explicitly passing None for a strict-default key must omit the kwarg entirely."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_podman_from_env)
+
+        session = SandboxPodmanSession(
+            runtime_profile=RuntimeProfile.STRICT,
+            runtime_configs={"network_mode": None},
+        )
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert "network_mode" not in create_kwargs
+        assert create_kwargs["cap_drop"] == ["ALL"]
+        assert create_kwargs["user"] == "1000:1000"

@@ -64,6 +64,22 @@ class SandboxBackend(StrEnum):
     MICROMAMBA = "micromamba"
 
 
+class RuntimeProfile(StrEnum):
+    r"""Container runtime hardening profile.
+
+    ``COMPAT`` keeps the historical defaults (root user, no extra capability or
+    namespace restrictions) for maximum image compatibility. ``STRICT`` applies
+    a non-root, locked-down baseline suitable for executing untrusted/LLM-
+    generated code in production: dropped Linux capabilities, ``no-new-privileges``,
+    network-off, and modest pid/memory limits. Per-knob overrides supplied via
+    ``runtime_configs`` (Docker/Podman) or ``pod_manifest`` (Kubernetes) always
+    take precedence over the profile's defaults.
+    """
+
+    COMPAT = "compat"
+    STRICT = "strict"
+
+
 class SupportedLanguage(StrEnum):
     r"""Dataclass defining constants for supported programming languages.
 

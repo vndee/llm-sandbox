@@ -13,12 +13,13 @@ from kubernetes.client import CoreV1Api
 from kubernetes.client.exceptions import ApiException
 from kubernetes.stream import stream
 
-from llm_sandbox.const import DefaultImage, EncodingErrorsType, SupportedLanguage
+from llm_sandbox.const import DefaultImage, EncodingErrorsType, RuntimeProfile, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput, StreamCallback
 from llm_sandbox.exceptions import CommandEmptyError, ContainerError, NotOpenSessionError
 from llm_sandbox.k8s_utils import retry_k8s_api_call
+from llm_sandbox.runtime_profiles import strict_container_security_context, strict_pod_security_context
 from llm_sandbox.security import SecurityPolicy
 
 SH_SHELL = "/bin/sh"
@@ -350,6 +351,7 @@ class SandboxKubernetesSession(BaseSession):
         container_id: str | None = None,  # This will be pod_id for Kubernetes
         skip_environment_setup: bool = False,
         encoding_errors: EncodingErrorsType = "strict",
+        runtime_profile: RuntimeProfile | str = RuntimeProfile.COMPAT,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Kubernetes session.
@@ -370,6 +372,12 @@ class SandboxKubernetesSession(BaseSession):
             container_id (str | None): ID of existing pod to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
             encoding_errors (EncodingErrorsType): Error handling for decoding command output.
+            runtime_profile (RuntimeProfile | str): Hardening profile applied when no
+                ``pod_manifest`` is supplied. ``COMPAT`` (default) keeps the historical
+                root pod manifest. ``STRICT`` builds a non-root pod and container
+                ``securityContext`` with dropped capabilities, ``runAsNonRoot``, and the
+                ``RuntimeDefault`` seccomp profile. Network isolation is not applied to
+                pods by default; see the security docs for the NetworkPolicy guidance.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -388,6 +396,7 @@ class SandboxKubernetesSession(BaseSession):
             container_id=container_id,
             skip_environment_setup=skip_environment_setup,
             encoding_errors=encoding_errors,
+            runtime_profile=RuntimeProfile(runtime_profile),
         )
 
         super().__init__(config=config, **kwargs)
@@ -430,6 +439,13 @@ class SandboxKubernetesSession(BaseSession):
         """Generate a default Kubernetes Pod manifest."""
         image = self.config.image or DefaultImage.__dict__[self.config.lang.upper()]
 
+        if self.config.runtime_profile == RuntimeProfile.STRICT:
+            container_security_context = strict_container_security_context()
+            pod_security_context = strict_pod_security_context()
+        else:
+            container_security_context = {"runAsUser": 0, "runAsGroup": 0}
+            pod_security_context = {"runAsUser": 0, "runAsGroup": 0}
+
         pod_manifest = {
             "apiVersion": "v1",
             "kind": "Pod",
@@ -444,16 +460,10 @@ class SandboxKubernetesSession(BaseSession):
                         "name": "sandbox-container",
                         "image": image,
                         "tty": True,
-                        "securityContext": {
-                            "runAsUser": 0,
-                            "runAsGroup": 0,
-                        },
+                        "securityContext": container_security_context,
                     }
                 ],
-                "securityContext": {
-                    "runAsUser": 0,
-                    "runAsGroup": 0,
-                },
+                "securityContext": pod_security_context,
             },
         }
 
