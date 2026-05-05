@@ -233,6 +233,7 @@ class InteractiveSandboxSession(BaseSession):
         timeout: float | None = None,
         on_stdout: Callable[[str], None] | None = None,  # noqa: ARG002
         on_stderr: Callable[[str], None] | None = None,  # noqa: ARG002
+        enforce_security_policy: bool = False,
     ) -> ConsoleOutput:
         """Execute code in the persistent interpreter context.
 
@@ -242,6 +243,8 @@ class InteractiveSandboxSession(BaseSession):
             timeout: Maximum execution time in seconds
             on_stdout: Not used in interactive sessions (accepted for API compatibility)
             on_stderr: Not used in interactive sessions (accepted for API compatibility)
+            enforce_security_policy: When True, enforce the configured security policy
+                before any container interaction. Defaults to False.
 
         Returns:
             ConsoleOutput containing stdout, stderr, and exit code
@@ -250,8 +253,13 @@ class InteractiveSandboxSession(BaseSession):
             NotOpenSessionError: If the session is not open
             ContainerError: If the interactive runtime is not ready
             SandboxTimeoutError: If execution exceeds timeout
+            SecurityPolicyViolation: If enforce_security_policy=True and the code
+                violates the configured security policy.
 
         """
+        if enforce_security_policy:
+            self._enforce_security_policy(code)
+
         if not self.container or not self.is_open:
             raise NotOpenSessionError
 
