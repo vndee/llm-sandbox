@@ -18,6 +18,7 @@ from llm_sandbox.exceptions import (
     LibraryInstallationNotSupportedError,
     NotOpenSessionError,
     SandboxTimeoutError,
+    SecurityPolicyViolation,
     SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
@@ -237,6 +238,28 @@ class BaseSession(
         """
         return self._check_security_policy(code)
 
+    def _enforce_security_policy(self, code: str) -> None:
+        """Run the security policy and raise if violations are present.
+
+        This helper is invoked by ``run(..., enforce_security_policy=True)`` and
+        by ``safe_run`` *before* any container interaction so policy-blocked
+        code never pays the container-spinup cost. It reuses ``is_safe`` so the
+        scanning logic stays in a single place.
+
+        Raises:
+            SecurityPolicyViolation: If a security policy is configured and the
+                code matches any pattern (or restricted-module import) at or
+                above the configured severity threshold.
+
+        """
+        if not self.config.security_policy:
+            return
+
+        is_safe, violations = self.is_safe(code)
+        if not is_safe:
+            threshold = self.config.security_policy.severity_threshold
+            raise SecurityPolicyViolation(violations=violations, severity_threshold=threshold)
+
     def install(self, libraries: list[str] | None = None) -> None:
         r"""Install libraries into the sandbox environment.
 
@@ -443,6 +466,7 @@ class BaseSession(
         timeout: float | None = None,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool = False,
     ) -> ConsoleOutput:
         r"""Run the provided code within the sandbox session.
 
@@ -467,6 +491,13 @@ class BaseSession(
                 worker thread; ensure your callback is thread-safe.
             on_stderr (StreamCallback | None): Optional callback invoked with each decoded stderr
                 chunk as it arrives during execution. Same threading note as ``on_stdout``.
+            enforce_security_policy (bool, optional): When ``True``, the configured
+                ``SecurityPolicy`` is enforced *before* any container interaction. If the
+                code matches any pattern (or restricted-module import) at or above the
+                configured severity threshold, a ``SecurityPolicyViolation`` is raised and
+                the code is never executed. Defaults to ``False`` for backwards
+                compatibility — callers wanting first-class enforcement should set this to
+                ``True`` (or use the ``safe_run`` wrapper).
 
         Returns:
             ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
@@ -474,8 +505,13 @@ class BaseSession(
         Raises:
             NotOpenSessionError: If the session (container) is not currently open/running.
             CommandFailedError: If any of the execution commands fail.
+            SecurityPolicyViolation: If ``enforce_security_policy=True`` and the code
+                violates the configured security policy.
 
         """
+        if enforce_security_policy:
+            self._enforce_security_policy(code)
+
         if not self.container or not self.is_open:
             raise NotOpenSessionError
 
@@ -539,6 +575,33 @@ class BaseSession(
         except SandboxTimeoutError:
             self._handle_timeout()
             raise
+
+    def safe_run(
+        self,
+        code: str,
+        libraries: list | None = None,
+        timeout: float | None = None,
+        on_stdout: StreamCallback | None = None,
+        on_stderr: StreamCallback | None = None,
+    ) -> ConsoleOutput:
+        r"""Run code with the configured security policy enforced.
+
+        Thin wrapper over ``run(..., enforce_security_policy=True)`` for callers
+        that want the enforced path to be the default and discoverable.
+
+        Raises:
+            SecurityPolicyViolation: If the code violates the configured security
+                policy. Raised before any container interaction.
+
+        """
+        return self.run(
+            code,
+            libraries=libraries,
+            timeout=timeout,
+            on_stdout=on_stdout,
+            on_stderr=on_stderr,
+            enforce_security_policy=True,
+        )
 
     @abstractmethod
     def _handle_timeout(self) -> None:

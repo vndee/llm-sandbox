@@ -209,7 +209,50 @@ with SandboxSession(lang="python", security_policy=policy) as session:
             print(f"  - {violation.description} (Severity: {violation.severity.name})")
 ```
 
-> **Warning**: Calling `session.run(code)` without first checking `session.is_safe(code)` will execute the code regardless of the security policy. Always use the check-then-execute pattern shown above.
+> **Warning**: Calling `session.run(code)` without first checking `session.is_safe(code)` will execute the code regardless of the security policy. The check-then-execute pattern is easy to forget, especially when wiring a sandbox into a larger system. For production use, prefer the **enforced execution path** described below.
+
+### Enforcing the security policy
+
+The advisory check-then-execute pattern is easy to skip. For an enforced path that refuses to run code that violates the policy, pass `enforce_security_policy=True` to `run()`, or call the `safe_run()` wrapper. Either way the policy is evaluated **before any container interaction**, so policy-blocked code never pays the container-spinup cost.
+
+```python
+from llm_sandbox import SandboxSession
+from llm_sandbox.exceptions import SecurityPolicyViolation
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPolicy
+
+policy = SecurityPolicy(
+    severity_threshold=SecurityIssueSeverity.HIGH,
+    restricted_modules=[
+        RestrictedModule(
+            name="subprocess",
+            description="Process execution",
+            severity=SecurityIssueSeverity.HIGH,
+        ),
+    ],
+)
+
+with SandboxSession(lang="python", security_policy=policy) as session:
+    code = "import subprocess\nsubprocess.run(['ls'])"
+
+    try:
+        # Either form works - they are equivalent.
+        result = session.run(code, enforce_security_policy=True)
+        # result = session.safe_run(code)
+        print(result.stdout)
+    except SecurityPolicyViolation as exc:
+        print(f"Blocked at {exc.severity_threshold.name}:")
+        for v in exc.violations:
+            print(f"  - {v.description} ({v.severity.name})")
+```
+
+The exception is `llm_sandbox.exceptions.SecurityPolicyViolation` (a subclass of `SecurityViolationError`). It carries:
+
+- `violations`: a `list[SecurityPattern]` of every matched pattern, including patterns auto-generated from `RestrictedModule` entries. Each item has `pattern`, `description`, and `severity`.
+- `severity_threshold`: the `SecurityIssueSeverity` the policy was configured with at the time execution was blocked.
+
+`enforce_security_policy` defaults to `False`, so existing callers that already use the manual `is_safe()`-then-`run()` pattern keep working unchanged.
+
+**Recommended for production.** Wiring an LLM-driven agent into `safe_run()` (or `run(..., enforce_security_policy=True)`) means a forgotten `is_safe()` check never silently lets a bad payload through.
 
 ### Custom Security Policies
 

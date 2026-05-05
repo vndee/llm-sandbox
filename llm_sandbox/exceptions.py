@@ -1,5 +1,10 @@
 """Custom exceptions for LLM Sandbox."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
+
 
 class SandboxError(Exception):
     """Base exception for all sandbox related errors."""
@@ -143,6 +148,53 @@ class SecurityViolationError(SandboxError):
     def __init__(self, message: str) -> None:
         """Initialize the SecurityViolationError."""
         super().__init__(message)
+
+
+class SecurityPolicyViolation(SecurityViolationError):  # noqa: N818
+    """Raised by the enforced execution path when a security policy blocks code.
+
+    This exception is raised by ``run(..., enforce_security_policy=True)`` and
+    ``safe_run(...)`` when the configured ``SecurityPolicy`` flags violations
+    that meet the severity threshold. The exception carries structured details
+    so callers can log, inspect, or surface them to end users without having to
+    reparse a string message.
+
+    Attributes:
+        violations: The list of ``SecurityPattern`` objects that were matched
+            by the policy scan, in the order they were detected. Patterns
+            generated from ``RestrictedModule`` entries appear here as well,
+            so a single ``violations`` list covers both pattern matches and
+            restricted-module imports.
+        severity_threshold: The ``SecurityIssueSeverity`` value the policy was
+            configured with at the time execution was blocked. Useful for
+            logging, metrics, or rendering a "blocked at level X" message.
+
+    """
+
+    def __init__(
+        self,
+        violations: "list[SecurityPattern]",
+        severity_threshold: "SecurityIssueSeverity | None" = None,
+    ) -> None:
+        """Initialize the SecurityPolicyViolation."""
+        self.violations = violations
+        self.severity_threshold = severity_threshold
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        """Build a human-readable message that lists every offending item."""
+        if not self.violations:
+            return "Security policy violation: code blocked by enforced security policy"
+
+        threshold_part = ""
+        if self.severity_threshold is not None:
+            threshold_part = f" (threshold: {self.severity_threshold.name})"
+
+        items = [
+            f"  - [{v.severity.name}] {v.description} (pattern: {v.pattern})" for v in self.violations
+        ]
+        header = f"Security policy violation{threshold_part}: {len(self.violations)} issue(s) detected"
+        return header + "\n" + "\n".join(items)
 
 
 class SandboxTimeoutError(SandboxError):
