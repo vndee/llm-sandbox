@@ -33,13 +33,13 @@ def _get_backend() -> SandboxBackend:
 
 def _get_commit_container() -> bool:
     """Get the commit_container setting from environment variable."""
-    commit_container_env = os.environ.get("COMMIT_CONTAINER", "false").lower()
+    commit_container_env = os.environ.get("COMMIT_CONTAINER", "true").lower()
     return commit_container_env in ("true", "1", "yes", "on")
 
 
 def _get_keep_template() -> bool:
     """Get the keep_template setting from environment variable."""
-    keep_template_env = os.environ.get("KEEP_TEMPLATE", "false").lower()
+    keep_template_env = os.environ.get("KEEP_TEMPLATE", "true").lower()
     return keep_template_env in ("true", "1", "yes", "on")
 
 
