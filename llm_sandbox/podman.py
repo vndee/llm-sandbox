@@ -6,7 +6,7 @@ from podman import PodmanClient
 from podman.errors.exceptions import ImageNotFound as PodmanImageNotFound
 from podman.errors.exceptions import NotFound as PodmanNotFound
 
-from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
+from llm_sandbox.const import EncodingErrorsType, RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
 from llm_sandbox.exceptions import ContainerError, ImagePullError
@@ -73,6 +73,8 @@ class SandboxPodmanSession(SandboxDockerSession):
         container_id: str | None = None,
         skip_environment_setup: bool = False,
         encoding_errors: EncodingErrorsType = "strict",
+        security_profile: RuntimeSecurityProfile | str = RuntimeSecurityProfile.COMPATIBILITY,
+        enforce_security_policy: bool = False,
         **kwargs: dict[str, Any],
     ) -> None:
         r"""Initialize Podman session.
@@ -96,12 +98,15 @@ class SandboxPodmanSession(SandboxDockerSession):
             container_id (str | None): ID of existing container to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
             encoding_errors (EncodingErrorsType): Error handling for decoding command output.
+            security_profile (RuntimeSecurityProfile | str): Runtime hardening profile to use.
+            enforce_security_policy (bool): Whether run() should block unsafe code before execution.
             **kwargs: Additional keyword arguments.
 
         Returns:
             None
 
         """
+        runtime_security_profile = RuntimeSecurityProfile(security_profile)
         config = SessionConfig(
             image=image,
             dockerfile=dockerfile,
@@ -110,6 +115,8 @@ class SandboxPodmanSession(SandboxDockerSession):
             workdir=workdir or "/sandbox",
             runtime_configs=runtime_configs or {},
             security_policy=security_policy,
+            enforce_security_policy=enforce_security_policy,
+            security_profile=runtime_security_profile,
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,

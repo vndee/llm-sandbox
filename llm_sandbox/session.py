@@ -284,6 +284,7 @@ class ArtifactSandboxSession:
         workdir: str | None = "/sandbox",
         enable_plotting: bool = True,
         security_policy: SecurityPolicy | None = None,
+        enforce_security_policy: bool = False,
         container_id: str | None = None,
         **kwargs: Any,
     ) -> None:
@@ -307,6 +308,7 @@ class ArtifactSandboxSession:
             workdir (str, optional): Working directory inside the container
             enable_plotting (bool, optional): Whether to enable plot extraction
             security_policy (SecurityPolicy, optional): Security policy to enforce
+            enforce_security_policy (bool, optional): Whether run() should block unsafe code before execution
             container_id (str, optional): ID of existing container/pod to connect to
             **kwargs: Additional keyword arguments for specific backends (e.g., client for Podman)
 
@@ -472,6 +474,7 @@ class ArtifactSandboxSession:
                 workdir=workdir or "/sandbox",
                 enable_plotting=enable_plotting,
                 security_policy=security_policy,
+                enforce_security_policy=enforce_security_policy,
                 **kwargs,
             )
             self.enable_plotting = enable_plotting
@@ -491,6 +494,7 @@ class ArtifactSandboxSession:
                 runtime_configs=runtime_configs,
                 workdir=workdir,
                 security_policy=security_policy,
+                enforce_security_policy=enforce_security_policy,
                 container_id=container_id,
                 **kwargs,
             )
@@ -530,6 +534,7 @@ class ArtifactSandboxSession:
         clear_plots: bool = False,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool | None = None,
     ) -> ExecutionResult:
         """Run code in the sandbox session and extract any generated artifacts.
 
@@ -552,6 +557,7 @@ class ArtifactSandboxSession:
                 chunk as it arrives during execution. Note: callbacks execute in a worker thread.
             on_stderr (StreamCallback | None): Optional callback invoked with each decoded stderr
                 chunk as it arrives during execution. Note: callbacks execute in a worker thread.
+            enforce_security_policy (bool | None): Per-call opt-in for blocking unsafe code before execution.
 
         Returns:
             ExecutionResult: An object containing:
@@ -675,9 +681,12 @@ class ArtifactSandboxSession:
                 clear_plots=clear_plots,
                 on_stdout=on_stdout,
                 on_stderr=on_stderr,
+                enforce_security_policy=enforce_security_policy,
             )
 
         # Non-pooled implementation
+        self._session.enforce_security_policy(code, enforce_security_policy)  # type: ignore[union-attr]
+
         # Check if plotting is enabled and language supports it
         if self.enable_plotting and not self._session.language_handler.is_support_plot_detection:  # type: ignore[union-attr]
             raise LanguageNotSupportPlotError(self._session.language_handler.name)  # type: ignore[union-attr]

@@ -20,6 +20,7 @@ from llm_sandbox.exceptions import (
     SandboxTimeoutError,
     SecurityViolationError,
 )
+from llm_sandbox.language_handlers.base import validate_library_name
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
@@ -237,6 +238,25 @@ class BaseSession(
         """
         return self._check_security_policy(code)
 
+    def _should_enforce_security_policy(self, enforce_security_policy: bool | None = None) -> bool:
+        """Return whether security policy checks should block execution."""
+        return self.config.enforce_security_policy or bool(enforce_security_policy)
+
+    def enforce_security_policy(self, code: str, enforce_security_policy: bool | None = None) -> None:
+        """Raise if security policy enforcement is enabled and code is unsafe."""
+        if not self._should_enforce_security_policy(enforce_security_policy):
+            return
+
+        is_safe, violations = self._check_security_policy(code)
+        if is_safe:
+            return
+
+        violation_summary = "; ".join(
+            f"{violation.description} ({violation.severity.name})" for violation in violations
+        )
+        msg = f"Security policy blocked code execution: {violation_summary or 'unsafe code detected'}"
+        raise SecurityViolationError(msg)
+
     def install(self, libraries: list[str] | None = None) -> None:
         r"""Install libraries into the sandbox environment.
 
@@ -256,6 +276,8 @@ class BaseSession(
         """
         if not libraries:
             return
+
+        libraries = [validate_library_name(library) for library in libraries]
 
         if self.config.skip_environment_setup:
             # Log detailed guidance for users
@@ -443,6 +465,7 @@ class BaseSession(
         timeout: float | None = None,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool | None = None,
     ) -> ConsoleOutput:
         r"""Run the provided code within the sandbox session.
 
@@ -467,6 +490,9 @@ class BaseSession(
                 worker thread; ensure your callback is thread-safe.
             on_stderr (StreamCallback | None): Optional callback invoked with each decoded stderr
                 chunk as it arrives during execution. Same threading note as ``on_stdout``.
+            enforce_security_policy (bool | None): Per-call opt-in for blocking execution when the
+                configured security policy marks the code unsafe. A session configured with
+                enforce_security_policy=True cannot be downgraded by passing False.
 
         Returns:
             ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
@@ -480,6 +506,7 @@ class BaseSession(
             raise NotOpenSessionError
 
         self._check_session_timeout()
+        self.enforce_security_policy(code, enforce_security_policy)
         actual_timeout = timeout or self.config.get_execution_timeout()
 
         def _run_code() -> ConsoleOutput:

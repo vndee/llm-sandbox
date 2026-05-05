@@ -2,6 +2,7 @@ import base64
 import io
 import logging
 import re
+import shlex
 import tarfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -30,7 +31,37 @@ if TYPE_CHECKING:
             ...
 
 
-from llm_sandbox.exceptions import CommandFailedError, PackageManagerError
+from llm_sandbox.exceptions import CommandFailedError, PackageManagerError, ValidationError
+
+MAX_LIBRARY_NAME_LENGTH = 512
+
+
+def validate_library_name(library: str) -> str:
+    """Validate and normalize a package/library specifier before shell command construction."""
+    if not isinstance(library, str):
+        msg = f"Library name must be a string, got {type(library).__name__}"
+        raise ValidationError(msg)
+
+    normalized = library.strip()
+    if not normalized:
+        msg = "Library name cannot be empty"
+        raise ValidationError(msg)
+    if len(normalized) > MAX_LIBRARY_NAME_LENGTH:
+        msg = "Library name is too long"
+        raise ValidationError(msg)
+    if any(char in normalized for char in ("\x00", "\n", "\r")):
+        msg = "Library name cannot contain control characters"
+        raise ValidationError(msg)
+    if normalized.startswith("-"):
+        msg = "Library name cannot start with '-'"
+        raise ValidationError(msg)
+
+    return normalized
+
+
+def quote_library_name(library: str) -> str:
+    """Return a shell-safe package/library specifier."""
+    return shlex.quote(validate_library_name(library))
 
 
 class PlotLibrary(Enum):
@@ -113,7 +144,7 @@ class AbstractLanguageHandler(ABC):
         """
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)
-        return f"{self.config.package_manager} {library}"
+        return f"{self.config.package_manager} {quote_library_name(library)}"
 
     def inject_plot_detection_code(self, code: str) -> str:
         """Inject code to detect and capture plots.

@@ -64,6 +64,17 @@ class SandboxBackend(StrEnum):
     MICROMAMBA = "micromamba"
 
 
+class RuntimeSecurityProfile(StrEnum):
+    r"""Container runtime hardening profiles.
+
+    The compatibility profile preserves the historical runtime defaults. The
+    strict profile applies safer container defaults for untrusted code.
+    """
+
+    COMPATIBILITY = "compatibility"
+    STRICT = "strict"
+
+
 class SupportedLanguage(StrEnum):
     r"""Dataclass defining constants for supported programming languages.
 

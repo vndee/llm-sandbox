@@ -6,7 +6,7 @@ This guide will help you get up and running with LLM Sandbox in just a few minut
 
 Before you begin, ensure you have:
 
-- **Python 3.10 or higher** installed
+- **Python 3.10 through 3.13** installed
 - **Container runtime** (at least one of the following):
     - Docker Desktop or Docker Engine
     - Kubernetes cluster (local or remote)
@@ -47,7 +47,7 @@ For contributing or development:
 ```bash
 git clone https://github.com/vndee/llm-sandbox.git
 cd llm-sandbox
-pip install -e '.[dev]'
+make install
 ```
 
 ## Quick Start

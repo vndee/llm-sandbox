@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
+from llm_sandbox.const import EncodingErrorsType, RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -68,6 +68,16 @@ class SessionConfig(BaseModel):
     security_policy: SecurityPolicy | None = Field(
         default=None,
         description="The security policy to use for the session.",
+    )
+    enforce_security_policy: bool = Field(
+        default=False,
+        description="Whether run() should raise SecurityViolationError before execution when the "
+        "configured security_policy marks code unsafe.",
+    )
+    security_profile: RuntimeSecurityProfile = Field(
+        default=RuntimeSecurityProfile.COMPATIBILITY,
+        description="Container runtime hardening profile. 'compatibility' preserves historical defaults; "
+        "'strict' applies non-root and defense-in-depth runtime controls where supported.",
     )
     runtime_configs: dict = Field(
         default={},

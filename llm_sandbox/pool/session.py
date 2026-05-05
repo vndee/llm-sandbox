@@ -50,6 +50,7 @@ class PooledSandboxSession:
         stream: bool = False,
         workdir: str = "/sandbox",
         security_policy: SecurityPolicy | None = None,
+        enforce_security_policy: bool = False,
         default_timeout: float | None = None,
         execution_timeout: float | None = None,
         session_timeout: float | None = None,
@@ -64,6 +65,7 @@ class PooledSandboxSession:
             stream: Enable streaming output for command execution
             workdir: Working directory in container
             security_policy: Security policy to enforce
+            enforce_security_policy: Whether run() should block unsafe code before execution
             default_timeout: Default timeout for operations
             execution_timeout: Timeout for code execution
             session_timeout: Maximum session lifetime
@@ -107,6 +109,7 @@ class PooledSandboxSession:
         self._stream = stream
         self._workdir = workdir
         self._security_policy = security_policy
+        self._enforce_security_policy_enabled = enforce_security_policy
         self._default_timeout = default_timeout
         self._execution_timeout = execution_timeout
         self._session_timeout = session_timeout
@@ -229,6 +232,7 @@ class PooledSandboxSession:
                     stream=self._stream,
                     workdir=self._workdir,
                     security_policy=self._security_policy,
+                    enforce_security_policy=self._enforce_security_policy_enabled,
                     default_timeout=self._default_timeout,
                     execution_timeout=self._execution_timeout,
                     session_timeout=self._session_timeout,
@@ -258,6 +262,7 @@ class PooledSandboxSession:
                     verbose=self._verbose,
                     workdir=self._workdir,
                     security_policy=self._security_policy,
+                    enforce_security_policy=self._enforce_security_policy_enabled,
                     default_timeout=self._default_timeout,
                     execution_timeout=self._execution_timeout,
                     session_timeout=self._session_timeout,
@@ -283,6 +288,7 @@ class PooledSandboxSession:
                     stream=self._stream,
                     workdir=self._workdir,
                     security_policy=self._security_policy,
+                    enforce_security_policy=self._enforce_security_policy_enabled,
                     default_timeout=self._default_timeout,
                     execution_timeout=self._execution_timeout,
                     session_timeout=self._session_timeout,
@@ -303,6 +309,7 @@ class PooledSandboxSession:
         timeout: float | None = None,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool | None = None,
     ) -> ConsoleOutput:
         """Run code in the pooled container.
 
@@ -312,6 +319,7 @@ class PooledSandboxSession:
             timeout: Execution timeout
             on_stdout: Optional callback invoked with each decoded stdout chunk in real time.
             on_stderr: Optional callback invoked with each decoded stderr chunk in real time.
+            enforce_security_policy: Per-call opt-in for blocking unsafe code before execution.
 
         Returns:
             ConsoleOutput with execution results
@@ -325,7 +333,12 @@ class PooledSandboxSession:
             raise SessionNotOpenError
 
         return self._backend_session.run(
-            code, libraries=libraries, timeout=timeout, on_stdout=on_stdout, on_stderr=on_stderr
+            code,
+            libraries=libraries,
+            timeout=timeout,
+            on_stdout=on_stdout,
+            on_stderr=on_stderr,
+            enforce_security_policy=enforce_security_policy,
         )
 
     def execute_command(self, command: str, workdir: str | None = None) -> ConsoleOutput:
@@ -436,6 +449,7 @@ class ArtifactPooledSandboxSession:
         workdir: str = "/sandbox",
         enable_plotting: bool = True,
         security_policy: SecurityPolicy | None = None,
+        enforce_security_policy: bool = False,
         **kwargs: Any,
     ) -> None:
         """Create a new artifact pooled sandbox session.
@@ -447,6 +461,7 @@ class ArtifactPooledSandboxSession:
             workdir: Working directory
             enable_plotting: Enable plot extraction
             security_policy: Security policy
+            enforce_security_policy: Whether run() should block unsafe code before execution
             **kwargs: Additional arguments
 
         Examples:
@@ -496,6 +511,7 @@ class ArtifactPooledSandboxSession:
             stream=stream,
             workdir=workdir,
             security_policy=security_policy,
+            enforce_security_policy=enforce_security_policy,
             **kwargs,
         )
 
@@ -527,6 +543,7 @@ class ArtifactPooledSandboxSession:
         clear_plots: bool = False,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool | None = None,
     ) -> ExecutionResult:
         """Run code and extract artifacts.
 
@@ -537,6 +554,7 @@ class ArtifactPooledSandboxSession:
             clear_plots: Clear existing plots before running
             on_stdout: Optional callback invoked with each decoded stdout chunk in real time.
             on_stderr: Optional callback invoked with each decoded stderr chunk in real time.
+            enforce_security_policy: Per-call opt-in for blocking unsafe code before execution.
 
         Returns:
             ExecutionResult with plots
@@ -547,6 +565,7 @@ class ArtifactPooledSandboxSession:
 
         # Get backend session
         backend_session = self._session.backend_session
+        backend_session.enforce_security_policy(code, enforce_security_policy)
 
         # Check if plotting is supported
         if self.enable_plotting and not backend_session.language_handler.is_support_plot_detection:

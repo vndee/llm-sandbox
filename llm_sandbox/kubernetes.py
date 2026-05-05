@@ -13,7 +13,7 @@ from kubernetes.client import CoreV1Api
 from kubernetes.client.exceptions import ApiException
 from kubernetes.stream import stream
 
-from llm_sandbox.const import DefaultImage, EncodingErrorsType, SupportedLanguage
+from llm_sandbox.const import DefaultImage, EncodingErrorsType, RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput, StreamCallback
@@ -350,6 +350,8 @@ class SandboxKubernetesSession(BaseSession):
         container_id: str | None = None,  # This will be pod_id for Kubernetes
         skip_environment_setup: bool = False,
         encoding_errors: EncodingErrorsType = "strict",
+        security_profile: RuntimeSecurityProfile | str = RuntimeSecurityProfile.COMPATIBILITY,
+        enforce_security_policy: bool = False,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Kubernetes session.
@@ -370,18 +372,23 @@ class SandboxKubernetesSession(BaseSession):
             container_id (str | None): ID of existing pod to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
             encoding_errors (EncodingErrorsType): Error handling for decoding command output.
+            security_profile (RuntimeSecurityProfile | str): Runtime hardening profile to use.
+            enforce_security_policy (bool): Whether run() should block unsafe code before execution.
             **kwargs: Additional keyword arguments.
 
         Returns:
             None
 
         """
+        runtime_security_profile = RuntimeSecurityProfile(security_profile)
         config = SessionConfig(
             image=image,
             lang=SupportedLanguage(lang.upper()),
             verbose=verbose,
             workdir=workdir,
             security_policy=security_policy,
+            enforce_security_policy=enforce_security_policy,
+            security_profile=runtime_security_profile,
             default_timeout=default_timeout,
             execution_timeout=execution_timeout,
             session_timeout=session_timeout,
@@ -429,8 +436,9 @@ class SandboxKubernetesSession(BaseSession):
     def _default_pod_manifest(self) -> dict:
         """Generate a default Kubernetes Pod manifest."""
         image = self.config.image or DefaultImage.__dict__[self.config.lang.upper()]
+        security_contexts = self._pod_security_defaults()
 
-        pod_manifest = {
+        pod_manifest: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "Pod",
             "metadata": {
@@ -444,20 +452,31 @@ class SandboxKubernetesSession(BaseSession):
                         "name": "sandbox-container",
                         "image": image,
                         "tty": True,
-                        "securityContext": {
-                            "runAsUser": 0,
-                            "runAsGroup": 0,
-                        },
+                        "securityContext": security_contexts["container"],
                     }
                 ],
-                "securityContext": {
-                    "runAsUser": 0,
-                    "runAsGroup": 0,
-                },
+                "securityContext": security_contexts["pod"],
             },
         }
 
-        containers = pod_manifest["spec"]["containers"]  # type: ignore[index]
+        if self.config.security_profile == RuntimeSecurityProfile.STRICT:
+            pod_manifest["spec"].update(
+                {
+                    "automountServiceAccountToken": False,
+                    "volumes": self._strict_pod_volumes(),
+                }
+            )
+            pod_manifest["spec"]["containers"][0].update(
+                {
+                    "resources": {
+                        "requests": {"cpu": "100m", "memory": "128Mi"},
+                        "limits": {"cpu": "1", "memory": "512Mi"},
+                    },
+                    "volumeMounts": self._strict_pod_volume_mounts(),
+                }
+            )
+
+        containers = pod_manifest["spec"]["containers"]
         env_list: list[dict[str, str]] = []
         if self.env_vars:
             env_list.extend({"name": key, "value": value} for key, value in self.env_vars.items())
@@ -466,6 +485,48 @@ class SandboxKubernetesSession(BaseSession):
             env_list.insert(0, {"name": "PYTHONUNBUFFERED", "value": "1"})
         containers[0]["env"] = env_list
         return pod_manifest
+
+    def _pod_security_defaults(self) -> dict[str, dict[str, Any]]:
+        """Return pod and container security contexts for the configured profile."""
+        if self.config.security_profile != RuntimeSecurityProfile.STRICT:
+            root_context = {
+                "runAsUser": 0,
+                "runAsGroup": 0,
+            }
+            return {"pod": root_context.copy(), "container": root_context.copy()}
+
+        pod_context = {
+            "runAsUser": 1000,
+            "runAsGroup": 1000,
+            "runAsNonRoot": True,
+            "fsGroup": 1000,
+            "seccompProfile": {"type": "RuntimeDefault"},
+        }
+        container_context = {
+            "runAsUser": 1000,
+            "runAsGroup": 1000,
+            "runAsNonRoot": True,
+            "allowPrivilegeEscalation": False,
+            "readOnlyRootFilesystem": True,
+            "capabilities": {"drop": ["ALL"]},
+        }
+        return {"pod": pod_context, "container": container_context}
+
+    def _strict_pod_volume_mounts(self) -> list[dict[str, str]]:
+        """Return writable mounts needed when the strict profile uses a read-only root filesystem."""
+        mounts = [{"name": "sandbox-tmp", "mountPath": "/tmp"}]
+        workdir = self.config.workdir.rstrip("/") or "/"
+        if workdir != "/tmp" and not workdir.startswith("/tmp/"):
+            mounts.append({"name": "sandbox-workdir", "mountPath": workdir})
+        return mounts
+
+    def _strict_pod_volumes(self) -> list[dict[str, Any]]:
+        """Return emptyDir volumes for strict profile writable paths."""
+        volumes: list[dict[str, Any]] = [{"name": "sandbox-tmp", "emptyDir": {"sizeLimit": "256Mi"}}]
+        workdir = self.config.workdir.rstrip("/") or "/"
+        if workdir != "/tmp" and not workdir.startswith("/tmp/"):
+            volumes.append({"name": "sandbox-workdir", "emptyDir": {"sizeLimit": "256Mi"}})
+        return volumes
 
     def _reconfigure_with_pod_manifest(self) -> None:
         """Reconfigure session attributes based on the pod manifest."""

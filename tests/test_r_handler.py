@@ -289,7 +289,15 @@ class TestRHandler:
 
         command = handler.get_library_installation_command("ggplot2")
 
-        assert command == "R -e \"install.packages('ggplot2', repos='https://cran.rstudio.com/')\""
+        assert command == 'R -e \'install.packages("ggplot2", repos="https://cran.rstudio.com/")\''
+
+    def test_get_library_installation_command_escapes_r_expression(self) -> None:
+        """Test R package names are escaped inside the R expression."""
+        handler = RHandler()
+
+        command = handler.get_library_installation_command("ggplot2'); system('id') #")
+
+        assert command == "R -e 'install.packages(\"ggplot2'\"'\"'); system('\"'\"'id'\"'\"') #\", repos=\"https://cran.rstudio.com/\")'"
 
     def test_get_library_installation_command_no_package_manager(self) -> None:
         """Test get_library_installation_command when package manager is None (line 88)."""
@@ -509,7 +517,7 @@ class TestRHandler:
         os.environ["R_REPO"] = custom_repo
         try:
             command = handler.get_library_installation_command("ggplot2")
-            assert command == f"R -e \"install.packages('ggplot2', repos='{custom_repo}')\""
+            assert command == f'R -e \'install.packages("ggplot2", repos="{custom_repo}")\''
         finally:
             # Restore old value
             if old_value is not None:

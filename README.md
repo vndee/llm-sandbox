@@ -25,7 +25,8 @@ Documentation: https://vndee.github.io/llm-sandbox/
 
 ### 🛡️ Security First
 - **Isolated Execution**: Code runs in isolated containers with no access to host system
-- **Security Policies**: Define custom security policies to control code execution
+- **Security Policies**: Define custom advisory or enforced security checks for code execution
+- **Runtime Security Profiles**: Opt into stricter non-root container defaults for untrusted code
 - **Resource Limits**: Set CPU, memory, and execution time limits
 - **Network Isolation**: Control network access for sandboxed code
 
@@ -56,6 +57,8 @@ Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, L
 
 ## 📦 Installation
 
+LLM Sandbox supports Python 3.10 through 3.13.
+
 ### Basic Installation
 ```bash
 pip install llm-sandbox
@@ -80,7 +83,7 @@ pip install 'llm-sandbox[docker,k8s,podman]'
 ```bash
 git clone https://github.com/vndee/llm-sandbox.git
 cd llm-sandbox
-pip install -e '.[dev]'
+make install
 ```
 
 ## 🏃‍♂️ Quick Start

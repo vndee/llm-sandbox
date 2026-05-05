@@ -18,6 +18,7 @@ from llm_sandbox.exceptions import (
     NotOpenSessionError,
     SandboxTimeoutError,
     SecurityViolationError,
+    ValidationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
@@ -346,6 +347,21 @@ class TestBaseSessionLibraryInstallation:
 
         with pytest.raises(SecurityViolationError):
             self.session.install(["os"])
+
+    @pytest.mark.parametrize("library", ["", "   ", "--index-url=https://example.com", "numpy\nwhoami"])
+    def test_install_rejects_invalid_library_names(self, library: str) -> None:
+        """Test install rejects package specifiers that cannot be safely shell-executed."""
+        with pytest.raises(ValidationError):
+            self.session.install([library])
+
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_install_strips_library_names_before_command_generation(self, mock_execute_commands: Mock) -> None:
+        """Test install normalizes library names before command generation."""
+        mock_execute_commands.return_value = ConsoleOutput(exit_code=0)
+
+        self.session.install([" numpy "])
+
+        mock_execute_commands.assert_called_once_with([("pip install numpy", self.session.config.workdir)])
 
     @patch.object(MockBaseSession, "execute_commands")
     def test_install_success(self, mock_execute_commands: Mock) -> None:
@@ -737,6 +753,101 @@ class TestBaseSessionCodeExecution:
 
         with pytest.raises(NotOpenSessionError):
             self.session.run("print('hello')")
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch.object(MockBaseSession, "install")
+    @patch.object(MockBaseSession, "copy_to_runtime")
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_run_enforces_security_policy_from_config(
+        self, mock_execute_commands: Mock, mock_copy_to_runtime: Mock, mock_install: Mock, mock_tempfile: MagicMock
+    ) -> None:
+        """run() should block unsafe code when enforcement is enabled in config."""
+        pattern = SecurityPattern(
+            pattern="dangerous", description="Dangerous code", severity=SecurityIssueSeverity.HIGH
+        )
+        policy = SecurityPolicy(patterns=[pattern], severity_threshold=SecurityIssueSeverity.MEDIUM)
+        config = SessionConfig(security_policy=policy, enforce_security_policy=True)
+        session = MockBaseSession(config)
+        session.container = Mock()
+        session.is_open = True
+
+        with pytest.raises(SecurityViolationError, match="Security policy blocked code execution"):
+            session.run("dangerous code")
+
+        mock_tempfile.assert_not_called()
+        mock_install.assert_not_called()
+        mock_copy_to_runtime.assert_not_called()
+        mock_execute_commands.assert_not_called()
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch.object(MockBaseSession, "install")
+    @patch.object(MockBaseSession, "copy_to_runtime")
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_run_enforces_security_policy_per_call(
+        self, mock_execute_commands: Mock, mock_copy_to_runtime: Mock, mock_install: Mock, mock_tempfile: MagicMock
+    ) -> None:
+        """run() should support per-call security policy enforcement."""
+        pattern = SecurityPattern(
+            pattern="dangerous", description="Dangerous code", severity=SecurityIssueSeverity.HIGH
+        )
+        policy = SecurityPolicy(patterns=[pattern], severity_threshold=SecurityIssueSeverity.MEDIUM)
+        config = SessionConfig(security_policy=policy)
+        session = MockBaseSession(config)
+        session.container = Mock()
+        session.is_open = True
+
+        with pytest.raises(SecurityViolationError, match="Dangerous code"):
+            session.run("dangerous code", enforce_security_policy=True)
+
+        mock_tempfile.assert_not_called()
+        mock_install.assert_not_called()
+        mock_copy_to_runtime.assert_not_called()
+        mock_execute_commands.assert_not_called()
+
+    def test_config_enforcement_cannot_be_disabled_per_call(self) -> None:
+        """Per-call False should not bypass session-level enforcement."""
+        pattern = SecurityPattern(
+            pattern="dangerous", description="Dangerous code", severity=SecurityIssueSeverity.HIGH
+        )
+        policy = SecurityPolicy(patterns=[pattern], severity_threshold=SecurityIssueSeverity.MEDIUM)
+        config = SessionConfig(security_policy=policy, enforce_security_policy=True)
+        session = MockBaseSession(config)
+        session.container = Mock()
+        session.is_open = True
+
+        with pytest.raises(SecurityViolationError, match="Dangerous code"):
+            session.run("dangerous code", enforce_security_policy=False)
+
+    @patch("tempfile.NamedTemporaryFile")
+    @patch.object(MockBaseSession, "install")
+    @patch.object(MockBaseSession, "copy_to_runtime")
+    @patch.object(MockBaseSession, "execute_commands")
+    def test_run_keeps_security_policy_advisory_by_default(
+        self, mock_execute_commands: Mock, mock_copy_to_runtime: Mock, mock_install: Mock, mock_tempfile: MagicMock
+    ) -> None:
+        """Existing advisory behavior should remain the default."""
+        pattern = SecurityPattern(
+            pattern="dangerous", description="Dangerous code", severity=SecurityIssueSeverity.HIGH
+        )
+        policy = SecurityPolicy(patterns=[pattern], severity_threshold=SecurityIssueSeverity.MEDIUM)
+        config = SessionConfig(security_policy=policy)
+        session = MockBaseSession(config)
+        session.container = Mock()
+        session.is_open = True
+
+        mock_file = Mock()
+        mock_file.name = "/tmp/code.py"
+        mock_file.write = Mock()
+        mock_file.seek = Mock()
+        mock_tempfile.return_value.__enter__.return_value = mock_file
+        mock_execute_commands.return_value = ConsoleOutput(exit_code=0, stdout="success")
+
+        result = session.run("dangerous code")
+
+        assert result.stdout == "success"
+        mock_install.assert_called_once_with(None)
+        mock_copy_to_runtime.assert_called_once()
+        mock_execute_commands.assert_called_once()
 
     @patch("tempfile.NamedTemporaryFile")
     @patch.object(MockBaseSession, "install")

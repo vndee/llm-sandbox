@@ -13,7 +13,7 @@ import pytest
 from docker.errors import ImageNotFound, NotFound
 from pydantic_core import ValidationError
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import DefaultImage, RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
 from llm_sandbox.exceptions import (
@@ -48,6 +48,7 @@ class TestSandboxDockerSessionInit:
         assert session.commit_container is False
         assert session.stream is False
         assert session.config.workdir == "/sandbox"
+        assert session.config.security_profile == RuntimeSecurityProfile.COMPATIBILITY
         assert session.client == mock_client
         mock_docker_from_env.assert_called_once()
 
@@ -83,6 +84,8 @@ class TestSandboxDockerSessionInit:
             stream=False,
             workdir="/custom",
             security_policy=security_policy,
+            security_profile="strict",
+            enforce_security_policy=True,
         )
 
         assert session.config.image == "custom:latest"
@@ -93,6 +96,8 @@ class TestSandboxDockerSessionInit:
         assert session.stream is False
         assert session.config.workdir == "/custom"
         assert session.config.security_policy == security_policy
+        assert session.config.security_profile == RuntimeSecurityProfile.STRICT
+        assert session.config.enforce_security_policy is True
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -148,6 +153,70 @@ class TestSandboxDockerSessionOpen:
         mock_env_setup.assert_called_once()
         assert session.container == mock_container
         assert session.docker_image == mock_image
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_open_with_strict_security_profile(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Strict profile should apply hardened Docker creation defaults."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+
+        mock_image = MagicMock()
+        mock_image.tags = [DefaultImage.PYTHON]
+        mock_client.images.get.return_value = mock_image
+        mock_client.containers.create.return_value = MagicMock()
+
+        session = SandboxDockerSession(security_profile=RuntimeSecurityProfile.STRICT)
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "1000:1000"
+        assert create_kwargs["network_mode"] == "none"
+        assert create_kwargs["cap_drop"] == ["ALL"]
+        assert create_kwargs["security_opt"] == ["no-new-privileges"]
+        assert create_kwargs["pids_limit"] == 256
+        assert create_kwargs["mem_limit"] == "512m"
+        assert create_kwargs["read_only"] is True
+        assert "/tmp" in create_kwargs["tmpfs"]
+        assert "/sandbox" in create_kwargs["tmpfs"]
+        assert create_kwargs["environment"] == {"PYTHONUNBUFFERED": "1"}
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_security_profile_allows_runtime_config_overrides(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Explicit runtime configs should override strict profile defaults."""
+        mock_handler = MagicMock()
+        mock_create_handler.return_value = mock_handler
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+
+        mock_image = MagicMock()
+        mock_image.tags = [DefaultImage.PYTHON]
+        mock_client.images.get.return_value = mock_image
+        mock_client.containers.create.return_value = MagicMock()
+
+        session = SandboxDockerSession(
+            security_profile="strict",
+            runtime_configs={
+                "user": "root",
+                "network_mode": "bridge",
+                "tmpfs": {"/workspace": "rw,size=64m"},
+            },
+        )
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "root"
+        assert create_kwargs["network_mode"] == "bridge"
+        assert create_kwargs["tmpfs"] == {"/workspace": "rw,size=64m"}
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from pydantic_core import ValidationError
 
-from llm_sandbox.const import SupportedLanguage
+from llm_sandbox.const import RuntimeSecurityProfile, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ImagePullError, NotOpenSessionError
 from llm_sandbox.podman import PodmanImageNotFound, PodmanNotFound, SandboxPodmanSession
@@ -54,6 +54,7 @@ class TestSandboxPodmanSessionInit:
         assert session.commit_container is False
         assert session.stream is False
         assert session.config.workdir == "/sandbox"
+        assert session.config.security_profile == RuntimeSecurityProfile.COMPATIBILITY
         assert session.client == mock_client
         mock_podman_from_env.assert_called_once()
 
@@ -89,6 +90,8 @@ class TestSandboxPodmanSessionInit:
             stream=False,
             workdir="/custom",
             security_policy=security_policy,
+            security_profile="strict",
+            enforce_security_policy=True,
         )
 
         assert session.config.image == "custom:latest"
@@ -99,6 +102,8 @@ class TestSandboxPodmanSessionInit:
         assert session.stream is False
         assert session.config.workdir == "/custom"
         assert session.config.security_policy == security_policy
+        assert session.config.security_profile == RuntimeSecurityProfile.STRICT
+        assert session.config.enforce_security_policy is True
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")

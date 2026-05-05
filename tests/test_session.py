@@ -6,10 +6,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_sandbox.const import SandboxBackend, SupportedLanguage
+from llm_sandbox.const import RuntimeSecurityProfile, SandboxBackend, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.data import ExecutionResult, FileType, PlotOutput
-from llm_sandbox.exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
+from llm_sandbox.exceptions import (
+    LanguageNotSupportPlotError,
+    MissingDependencyError,
+    SecurityViolationError,
+    UnsupportedBackendError,
+)
 from llm_sandbox.session import ArtifactSandboxSession, SandboxSession, create_session
 
 
@@ -126,6 +131,7 @@ class TestArtifactSandboxSession:
             runtime_configs=None,
             workdir="/sandbox",
             security_policy=None,
+            enforce_security_policy=False,
             container_id=None,
         )
 
@@ -153,6 +159,7 @@ class TestArtifactSandboxSession:
             runtime_configs=None,
             workdir="/sandbox",
             security_policy=None,
+            enforce_security_policy=False,
             container_id=None,
         )
 
@@ -231,6 +238,22 @@ class TestArtifactSandboxSession:
             on_stdout=None,
             on_stderr=None,
         )
+
+    @patch("llm_sandbox.session.create_session")
+    def test_run_enforces_security_policy_before_artifact_execution(self, mock_create_session: MagicMock) -> None:
+        """Artifact session should block before delegating to artifact extraction."""
+        mock_session = MagicMock()
+        mock_session.enforce_security_policy.side_effect = SecurityViolationError("blocked")
+        mock_session.language_handler = MagicMock()
+        mock_create_session.return_value = mock_session
+
+        artifact_session = ArtifactSandboxSession(enable_plotting=False)
+
+        with pytest.raises(SecurityViolationError, match="blocked"):
+            artifact_session.run("dangerous code")
+
+        mock_session.enforce_security_policy.assert_called_once_with("dangerous code", None)
+        mock_session.language_handler.run_with_artifacts.assert_not_called()
 
     @patch("llm_sandbox.session.create_session")
     def test_run_with_plotting_enabled_supported_language(self, mock_create_session: MagicMock) -> None:
@@ -351,3 +374,27 @@ class TestSessionConfig:
         # Valid: container_id alone
         config4 = SessionConfig(container_id="test-container")
         assert config4.container_id == "test-container"
+
+    def test_security_profile_defaults_to_compatibility(self) -> None:
+        """Security profile should default to historical compatibility behavior."""
+        config = SessionConfig()
+
+        assert config.security_profile == RuntimeSecurityProfile.COMPATIBILITY
+
+    def test_security_profile_accepts_strict_string(self) -> None:
+        """Security profile should accept string values."""
+        config = SessionConfig(security_profile="strict")
+
+        assert config.security_profile == RuntimeSecurityProfile.STRICT
+
+    def test_enforce_security_policy_defaults_to_false(self) -> None:
+        """Security policy enforcement should remain opt-in."""
+        config = SessionConfig()
+
+        assert config.enforce_security_policy is False
+
+    def test_enforce_security_policy_accepts_true(self) -> None:
+        """Security policy enforcement can be enabled in config."""
+        config = SessionConfig(enforce_security_policy=True)
+
+        assert config.enforce_security_policy is True
