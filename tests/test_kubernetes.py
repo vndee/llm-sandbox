@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from kubernetes.client.exceptions import ApiException
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import DefaultImage, RuntimeProfile, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import ContainerError, NotOpenSessionError
 from llm_sandbox.kubernetes import KubernetesContainerAPI, SandboxKubernetesSession
@@ -2521,3 +2521,87 @@ class TestKubernetesStreamingCallbacks:
         env_dict = {e["name"]: e["value"] for e in env_list}
         assert env_dict["PYTHONUNBUFFERED"] == "0"
         assert sum(1 for e in env_list if e["name"] == "PYTHONUNBUFFERED") == 1
+
+
+class TestKubernetesRuntimeProfile:
+    """Test the strict runtime profile applied to default Kubernetes pod manifests."""
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_compat_profile_is_default_and_keeps_root_security_context(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """Default profile must keep historical runAsUser=0 securityContext (no behavior change)."""
+        mock_create_handler.return_value = MagicMock()
+
+        session = SandboxKubernetesSession()
+        assert session.config.runtime_profile == RuntimeProfile.COMPAT
+
+        manifest = session.pod_manifest
+        assert manifest["spec"]["securityContext"] == {"runAsUser": 0, "runAsGroup": 0}
+        container_sc = manifest["spec"]["containers"][0]["securityContext"]
+        assert container_sc == {"runAsUser": 0, "runAsGroup": 0}
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_profile_builds_non_root_security_context(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """STRICT profile must produce a non-root, locked-down securityContext."""
+        mock_create_handler.return_value = MagicMock()
+
+        session = SandboxKubernetesSession(runtime_profile=RuntimeProfile.STRICT)
+        manifest = session.pod_manifest
+
+        pod_sc = manifest["spec"]["securityContext"]
+        assert pod_sc["runAsUser"] == 1000
+        assert pod_sc["runAsGroup"] == 1000
+        assert pod_sc["runAsNonRoot"] is True
+        assert pod_sc["fsGroup"] == 1000
+        assert pod_sc["seccompProfile"] == {"type": "RuntimeDefault"}
+
+        container_sc = manifest["spec"]["containers"][0]["securityContext"]
+        assert container_sc["runAsUser"] == 1000
+        assert container_sc["runAsGroup"] == 1000
+        assert container_sc["runAsNonRoot"] is True
+        assert container_sc["allowPrivilegeEscalation"] is False
+        assert container_sc["capabilities"] == {"drop": ["ALL"]}
+        assert container_sc["seccompProfile"] == {"type": "RuntimeDefault"}
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_profile_accepts_string_value(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """The profile kwarg should accept the bare string 'strict'."""
+        mock_create_handler.return_value = MagicMock()
+
+        session = SandboxKubernetesSession(runtime_profile="strict")
+        assert session.config.runtime_profile == RuntimeProfile.STRICT
+        assert session.pod_manifest["spec"]["securityContext"]["runAsNonRoot"] is True
+
+    @patch("kubernetes.config.load_kube_config")
+    @patch("llm_sandbox.kubernetes.CoreV1Api")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_explicit_pod_manifest_bypasses_profile(
+        self, mock_create_handler: MagicMock, mock_core_v1_api: MagicMock, mock_load_config: MagicMock
+    ) -> None:
+        """When pod_manifest is supplied, the runtime profile must not silently mutate it."""
+        mock_create_handler.return_value = MagicMock()
+
+        custom_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": "x", "namespace": "default"},
+            "spec": {"containers": [{"name": "c", "image": "test:latest"}]},
+        }
+        session = SandboxKubernetesSession(
+            runtime_profile=RuntimeProfile.STRICT,
+            pod_manifest=custom_manifest,
+        )
+
+        assert "securityContext" not in session.pod_manifest["spec"]
+        assert "securityContext" not in session.pod_manifest["spec"]["containers"][0]

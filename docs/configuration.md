@@ -370,6 +370,27 @@ WORKDIR /sandbox
 
 > **Security Warning**: The `runtime_configs` parameter is passed directly to the container runtime without filtering. When accepting `runtime_configs` from untrusted sources, be aware that dangerous options such as `privileged: True`, `cap_add`, `network_mode: "host"`, or host volume mounts can weaken or eliminate container isolation. In applications where end users can influence container configuration, always validate and restrict the allowed keys before passing them to `runtime_configs`. See [Security Considerations for runtime_configs](#security-considerations-for-runtime_configs) below.
 
+### Runtime Profile
+
+Each session also accepts a `runtime_profile` keyword that selects a hardening baseline for the underlying container runtime. The default is `RuntimeProfile.COMPAT`, which preserves the historical root-by-default behavior. Set `runtime_profile=RuntimeProfile.STRICT` for production sandboxes that execute untrusted or LLM-generated code:
+
+```python
+from llm_sandbox import RuntimeProfile, SandboxSession
+
+with SandboxSession(
+    lang="python",
+    runtime_profile=RuntimeProfile.STRICT,
+) as session:
+    session.run("print('hello from a non-root sandbox')")
+```
+
+The strict profile applies:
+
+- Docker / Podman: `user="1000:1000"`, `cap_drop=["ALL"]`, `security_opt=["no-new-privileges:true"]`, `network_mode="none"`, `pids_limit=512`, `mem_limit="512m"`.
+- Kubernetes: a non-root pod and container `securityContext` with `runAsNonRoot=true`, `allowPrivilegeEscalation=false`, dropped capabilities, and the `RuntimeDefault` seccomp profile.
+
+Per-knob overrides supplied via `runtime_configs` always win, and passing `None` for any key removes that hardening knob entirely (useful for images that need a working network or larger memory). See the [Runtime profiles section in the security guide](security.md#runtime-profiles) for the full table, the Kubernetes `NetworkPolicy` caveat, and the recommendation for production deployments.
+
 ### Docker and Podman Backends
 
 For Docker and Podman backends, runtime configuration options are passed as **extra arguments** to the respective Python libraries (`docker-py` and `podman-py`). These are used to configure container creation and execution parameters.

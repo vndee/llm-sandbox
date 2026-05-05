@@ -13,7 +13,7 @@ import pytest
 from docker.errors import ImageNotFound, NotFound
 from pydantic_core import ValidationError
 
-from llm_sandbox.const import DefaultImage, SupportedLanguage
+from llm_sandbox.const import DefaultImage, RuntimeProfile, SupportedLanguage
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.docker import DockerContainerAPI, SandboxDockerSession
 from llm_sandbox.exceptions import (
@@ -1779,3 +1779,120 @@ class TestPythonUnbufferedEnvInjection:
         create_kwargs = mock_client.containers.create.call_args[1]
         env = create_kwargs["environment"]
         assert env == ["PYTHONUNBUFFERED=0"]
+
+
+class TestRuntimeProfile:
+    """Test the strict runtime profile applied to Docker container creation."""
+
+    def _make_client(self, mock_docker_from_env: MagicMock) -> MagicMock:
+        mock_client = MagicMock()
+        mock_docker_from_env.return_value = mock_client
+        mock_image = MagicMock()
+        mock_image.tags = [DefaultImage.PYTHON]
+        mock_client.images.get.return_value = mock_image
+        mock_client.containers.create.return_value = MagicMock()
+        return mock_client
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_compat_profile_is_default_and_keeps_root(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Default profile must keep historical user='root' kwargs (no behavior change)."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_docker_from_env)
+
+        session = SandboxDockerSession()
+        assert session.config.runtime_profile == RuntimeProfile.COMPAT
+
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "root"
+        for hardening_key in ("cap_drop", "security_opt", "network_mode", "pids_limit", "mem_limit"):
+            assert hardening_key not in create_kwargs
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_profile_applies_hardening_kwargs(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """STRICT profile must apply non-root user, dropped caps, and resource limits."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_docker_from_env)
+
+        session = SandboxDockerSession(runtime_profile=RuntimeProfile.STRICT)
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "1000:1000"
+        assert create_kwargs["cap_drop"] == ["ALL"]
+        assert create_kwargs["security_opt"] == ["no-new-privileges:true"]
+        assert create_kwargs["network_mode"] == "none"
+        assert create_kwargs["pids_limit"] == 512
+        assert create_kwargs["mem_limit"] == "512m"
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_profile_accepts_string_value(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """The profile kwarg should accept the bare string 'strict' for ergonomic callers."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_docker_from_env)
+
+        session = SandboxDockerSession(runtime_profile="strict")
+        assert session.config.runtime_profile == RuntimeProfile.STRICT
+
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "1000:1000"
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_runtime_configs_override_profile_defaults(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """User-supplied runtime_configs values must win over the strict profile defaults."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_docker_from_env)
+
+        session = SandboxDockerSession(
+            runtime_profile=RuntimeProfile.STRICT,
+            runtime_configs={"user": "2000:2000", "mem_limit": "1g"},
+        )
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert create_kwargs["user"] == "2000:2000"
+        assert create_kwargs["mem_limit"] == "1g"
+        assert create_kwargs["cap_drop"] == ["ALL"]
+        assert create_kwargs["network_mode"] == "none"
+
+    @patch("llm_sandbox.docker.docker.from_env")
+    @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
+    def test_strict_runtime_configs_none_drops_profile_default(
+        self, mock_create_handler: MagicMock, mock_docker_from_env: MagicMock
+    ) -> None:
+        """Explicitly passing None for a strict-default key must omit the kwarg entirely."""
+        mock_create_handler.return_value = MagicMock()
+        mock_client = self._make_client(mock_docker_from_env)
+
+        session = SandboxDockerSession(
+            runtime_profile=RuntimeProfile.STRICT,
+            runtime_configs={"pids_limit": None, "network_mode": None},
+        )
+        with patch.object(session, "environment_setup"):
+            session.open()
+
+        create_kwargs = mock_client.containers.create.call_args[1]
+        assert "pids_limit" not in create_kwargs
+        assert "network_mode" not in create_kwargs
+        # Other strict defaults remain.
+        assert create_kwargs["cap_drop"] == ["ALL"]
+        assert create_kwargs["user"] == "1000:1000"

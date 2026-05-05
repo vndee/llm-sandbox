@@ -24,6 +24,64 @@ LLM Sandbox follows an **advisory security model** for code analysis:
 
 For production deployments handling untrusted code, always combine all layers: use security policies to screen code, apply strict container resource limits, and restrict network access.
 
+## Runtime profiles
+
+Each session accepts a `runtime_profile` argument that selects a hardening baseline for the underlying container runtime. Two profiles ship today:
+
+- `RuntimeProfile.COMPAT` (default) keeps the historical configuration: containers run as `root`, no extra capability or namespace restrictions are applied, and the Kubernetes pod manifest sets `runAsUser: 0` / `runAsGroup: 0`. This is the most permissive option and is preserved as the default for backward compatibility.
+- `RuntimeProfile.STRICT` is recommended for production deployments that execute untrusted or LLM-generated code. It applies a non-root, locked-down baseline:
+
+  | Backend | Defaults applied by `STRICT` |
+  | --- | --- |
+  | Docker / Podman | `user="1000:1000"`, `cap_drop=["ALL"]`, `security_opt=["no-new-privileges:true"]`, `network_mode="none"`, `pids_limit=512`, `mem_limit="512m"` |
+  | Kubernetes | Pod `securityContext`: `runAsUser=1000`, `runAsGroup=1000`, `runAsNonRoot=true`, `fsGroup=1000`, `seccompProfile.type=RuntimeDefault`. Container `securityContext` adds `allowPrivilegeEscalation=false`, `capabilities.drop=["ALL"]`. |
+
+Example:
+
+```python
+from llm_sandbox import RuntimeProfile, SandboxSession
+
+with SandboxSession(lang="python", runtime_profile=RuntimeProfile.STRICT) as sess:
+    print(sess.run("import os; print(os.getuid())").stdout)  # 1000
+```
+
+### Compatibility escape hatch
+
+The strict profile is a baseline, not a straitjacket. Any value supplied via `runtime_configs` (Docker/Podman) or `pod_manifest` (Kubernetes) takes precedence over the profile's defaults, so images that need a different UID, more memory, or outbound network access can still opt in:
+
+```python
+SandboxSession(
+    runtime_profile=RuntimeProfile.STRICT,
+    runtime_configs={
+        "user": "2000:2000",      # different non-root UID
+        "mem_limit": "2g",        # raise the memory cap
+        "pids_limit": None,       # opt out of the pids cap entirely
+    },
+)
+```
+
+Passing `None` for any key in `STRICT_DOCKER_DEFAULTS` removes that hardening knob from the merged result. For images that genuinely require root (for example, packages installed at session start), keep the default `RuntimeProfile.COMPAT` or pass `runtime_profile="compat"` explicitly.
+
+### Recommendation
+
+For production sandboxes that execute untrusted code, opt in to `RuntimeProfile.STRICT`. The default may flip to `STRICT` in a future major release; using the explicit value today insulates you from that change and documents the security posture in code.
+
+### Kubernetes network isolation caveat
+
+The Kubernetes profile **does not** create a `NetworkPolicy` object. Pods do not gain network isolation automatically: depending on the cluster's CNI, pods can reach the apiserver, other namespaces, and arbitrary external endpoints unless a `NetworkPolicy` (or service mesh policy) is applied. For untrusted workloads, ship a default-deny `NetworkPolicy` for the sandbox namespace alongside the strict profile. A minimal example:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-default-deny
+  namespace: sandbox
+spec:
+  podSelector:
+    matchLabels: {app: sandbox}
+  policyTypes: [Ingress, Egress]
+```
+
 ## Security Policy System
 
 ### Overview

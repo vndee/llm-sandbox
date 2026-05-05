@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, Any
 import docker
 from docker.errors import ImageNotFound, NotFound
 
-from llm_sandbox.const import DefaultImage, EncodingErrorsType, SupportedLanguage
+from llm_sandbox.const import DefaultImage, EncodingErrorsType, RuntimeProfile, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import StreamCallback
 from llm_sandbox.exceptions import ContainerError, ImagePullError, NotOpenSessionError
+from llm_sandbox.runtime_profiles import apply_strict_runtime_configs
 from llm_sandbox.security import SecurityPolicy
 
 if TYPE_CHECKING:
@@ -105,6 +106,7 @@ class SandboxDockerSession(BaseSession):
         container_id: str | None = None,
         skip_environment_setup: bool = False,
         encoding_errors: EncodingErrorsType = "strict",
+        runtime_profile: RuntimeProfile | str = RuntimeProfile.COMPAT,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Docker session.
@@ -127,6 +129,11 @@ class SandboxDockerSession(BaseSession):
             container_id (str | None): ID of existing container to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
             encoding_errors (EncodingErrorsType): Error handling for decoding command output.
+            runtime_profile (RuntimeProfile | str): Hardening profile. ``COMPAT`` (default)
+                preserves the historical root-by-default behavior; ``STRICT`` applies a
+                non-root user, dropped capabilities, ``no-new-privileges``, network-off,
+                and pid/memory limits. Individual knobs can still be overridden (or
+                disabled with ``None``) via ``runtime_configs``.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -147,6 +154,7 @@ class SandboxDockerSession(BaseSession):
             container_id=container_id,
             skip_environment_setup=skip_environment_setup,
             encoding_errors=encoding_errors,
+            runtime_profile=RuntimeProfile(runtime_profile),
         )
 
         super().__init__(config=config, **kwargs)
@@ -190,7 +198,7 @@ class SandboxDockerSession(BaseSession):
         mkdir_result = self.container_api.execute_command(self.container, f"mkdir -p {shlex.quote(path)}")
         if mkdir_result[0] != 0:
             stdout_output, stderr_output = self._process_non_stream_output(mkdir_result[1])
-            error_msg = stderr_output if stderr_output else stdout_output
+            error_msg = stderr_output or stdout_output
             self._log(f"Failed to create directory {path}: {error_msg}", "error")
 
     def _ensure_ownership(self, paths: list[str]) -> None:
@@ -374,8 +382,12 @@ class SandboxDockerSession(BaseSession):
             # Create new container
             self._prepare_image()
 
-            container_config = {"image": self.docker_image, "detach": True, "tty": True, "user": "root"}
-            container_config.update(self.config.runtime_configs)
+            container_config: dict[str, Any] = {"image": self.docker_image, "detach": True, "tty": True}
+            if self.config.runtime_profile == RuntimeProfile.STRICT:
+                container_config.update(apply_strict_runtime_configs(self.config.runtime_configs))
+            else:
+                container_config["user"] = "root"
+                container_config.update(self.config.runtime_configs)
 
             env = container_config.get("environment")
             if isinstance(env, dict):
