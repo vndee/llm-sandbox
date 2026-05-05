@@ -68,6 +68,7 @@ nav:
       - Container Pooling: container-pooling.md
       - Security: security.md
       - Container Backends: backends.md
+      - Custom Images: custom-images.md
       - Supported Languages: languages.md
       - Interactive Sessions: interactive-sessions.md
       - LLM Integrations: integrations.md
