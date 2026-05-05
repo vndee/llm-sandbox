@@ -82,7 +82,7 @@ pip install 'llm-sandbox[docker,k8s,podman]'
 ```bash
 git clone https://github.com/vndee/llm-sandbox.git
 cd llm-sandbox
-pip install -e '.[dev]'
+make install
 ```
 
 ## 🏃‍♂️ Quick Start

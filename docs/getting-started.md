@@ -47,7 +47,7 @@ For contributing or development:
 ```bash
 git clone https://github.com/vndee/llm-sandbox.git
 cd llm-sandbox
-pip install -e '.[dev]'
+make install
 ```
 
 ## Quick Start

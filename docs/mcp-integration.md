@@ -301,10 +301,10 @@ For development and testing of the MCP server:
 
 ```bash
 # Install in development mode
-pip install -e '.[mcp-docker]'
+uv sync --extra mcp-docker
 
 # Run the MCP server directly
-python -m llm_sandbox.mcp_server.server
+uv run python -m llm_sandbox.mcp_server.server
 
 # Test with MCP client tools
 # Follow MCP client documentation for testing

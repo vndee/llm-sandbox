@@ -1127,14 +1127,14 @@ Complete working examples are available in the repository:
 
 For detailed API documentation, see:
 
-- [`ContainerPoolManager`](api-reference.md#llm_sandbox.pool.base.ContainerPoolManager) - Base pool manager class
-- [`PoolConfig`](api-reference.md#llm_sandbox.pool.config.PoolConfig) - Pool configuration
-- [`PooledSandboxSession`](api-reference.md#llm_sandbox.pool.session.PooledSandboxSession) - Pooled session class
-- [`create_pool_manager()`](api-reference.md#llm_sandbox.pool.factory.create_pool_manager) - Factory function
+- [`ContainerPoolManager`](api-reference.md#containerpoolmanager) - Base pool manager class
+- [`PoolConfig`](api-reference.md#poolconfig) - Pool configuration
+- [`PooledSandboxSession`](api-reference.md#pooledsandboxsession) - Pooled session class
+- [`create_pool_manager()`](api-reference.md#create_pool_manager) - Factory function
 
 ## Related Documentation
 
 - [Configuration Guide](configuration.md) - General session configuration
 - [Container Backends](backends.md) - Docker, Kubernetes, and Podman setup
 - [Security](security.md) - Security considerations for pooled containers
-- [Performance Optimization](configuration.md#performance-optimization) - Additional optimization tips
+- [Container Pooling Configuration](configuration.md#container-pooling-configuration) - Additional optimization tips
