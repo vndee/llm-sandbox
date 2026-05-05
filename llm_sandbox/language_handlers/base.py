@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from llm_sandbox.data import FileType, PlotOutput
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
+from llm_sandbox.security import validate_package_name
 
 if TYPE_CHECKING:
 
@@ -113,6 +114,8 @@ class AbstractLanguageHandler(ABC):
         """
         if not self.config.package_manager:
             raise PackageManagerError(self.config.name)
+        # Reject shell-metacharacters before interpolation (issue #162).
+        library = validate_package_name(library, self.config.name.lower())
         return f"{self.config.package_manager} {library}"
 
     def inject_plot_detection_code(self, code: str) -> str:

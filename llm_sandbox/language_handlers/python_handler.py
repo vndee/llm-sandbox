@@ -6,6 +6,7 @@ from llm_sandbox.exceptions import LanguageNotSupportPlotError
 from llm_sandbox.language_handlers.artifact_detection import PYTHON_PLOT_DETECTION_CODE
 from llm_sandbox.language_handlers.base import AbstractLanguageHandler, LanguageConfig, PlotDetectionConfig, PlotLibrary
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
+from llm_sandbox.security import validate_package_name
 
 
 class PythonHandler(AbstractLanguageHandler):
@@ -60,6 +61,9 @@ class PythonHandler(AbstractLanguageHandler):
             Command string to install the library
 
         """
+        # Reject anything outside the PEP 508 / PEP 440 charset before it
+        # reaches the shell (issue #162).
+        library = validate_package_name(library, "python")
         if runtime_context and runtime_context.pip_executable_path and runtime_context.pip_cache_dir:
             return (
                 f"{runtime_context.pip_executable_path} install {library} --cache-dir {runtime_context.pip_cache_dir}"
