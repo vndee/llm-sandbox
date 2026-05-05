@@ -162,15 +162,29 @@ If you encounter connection issues with your backend, you may need to specify ad
 - `DOCKER_HOST`: Specify the Docker daemon socket (default: `unix:///var/run/docker.sock`)
 - `KUBECONFIG`: Path to your Kubernetes configuration file
 - `BACKEND`: Choose your container backend (`docker`, `podman`, or `kubernetes`)
-- `COMMIT_CONTAINER`: Control whether container changes are saved to the image (default: `true`)
-- `KEEP_TEMPLATE`: Control whether template containers are preserved (default: `true`)
+- `COMMIT_CONTAINER`: Control whether container changes are saved to the image (default: `false`)
+- `KEEP_TEMPLATE`: Control whether template images are preserved between sessions (default: `true`)
 - `NAMESPACE`: Specify Kubernetes namespace for pod creation (default: `default`)
 
-### Container Behavior Control
+### Persistence and security
 
-The MCP server provides fine-grained control over container behavior through environment variables:
+The MCP server runs code that an AI client supplied, which means the code is effectively
+attacker-controlled from the sandbox's point of view. Persisting state from one request
+into the next can carry side effects of one request into another, so the defaults are
+chosen to make persistence opt-in:
 
-**Prevent Container Image Changes:**
+- `COMMIT_CONTAINER` defaults to `false`. When you opt in, the server commits to a
+  unique tag of the form `llm-sandbox-mcp/<lang>:<short-hex>` instead of overwriting
+  the source image's tag. The pristine source image (e.g. `python:3.11-bullseye`) is
+  never modified, so a poisoned commit cannot silently land in a future session that
+  pulls the source tag.
+- `KEEP_TEMPLATE` defaults to `true`. The template image here is the upstream base
+  image, not container state, so reusing it between requests is safe and avoids
+  re-pulling on every call. If you would rather pay the pull cost for stricter
+  hygiene, set `KEEP_TEMPLATE=false`.
+
+If you want commit support, opt in explicitly:
+
 ```json
 {
   "mcpServers": {
@@ -179,14 +193,15 @@ The MCP server provides fine-grained control over container behavior through env
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
         "BACKEND": "docker",
-        "COMMIT_CONTAINER": "false"
+        "COMMIT_CONTAINER": "true"
       }
     }
   }
 }
 ```
 
-**Prevent Template Container Preservation:**
+To also drop the template image after each session:
+
 ```json
 {
   "mcpServers": {
@@ -202,22 +217,8 @@ The MCP server provides fine-grained control over container behavior through env
 }
 ```
 
-**Both Settings for Minimal Container Footprint:**
-```json
-{
-  "mcpServers": {
-    "llm-sandbox": {
-      "command": "python3",
-      "args": ["-m", "llm_sandbox.mcp_server.server"],
-      "env": {
-        "BACKEND": "docker",
-        "COMMIT_CONTAINER": "false",
-        "KEEP_TEMPLATE": "false"
-      }
-    }
-  }
-}
-```
+The Kubernetes and Podman backends ignore the unique-tag commit logic; only Docker
+and Micromamba support `commit_image_tag` in this version.
 
 ### Runtime Configuration via Environment Variables
 
@@ -271,10 +272,11 @@ Both `COMMIT_CONTAINER` and `KEEP_TEMPLATE` accept:
 - `"false"`, `"0"`, `"no"`, `"off"` → `False`
 
 **Use Cases:**
-- `COMMIT_CONTAINER=false`: Prevent Docker images from growing over time, useful in CI/CD or automated environments
-- `KEEP_TEMPLATE=false`: Clean up template containers automatically, reduces Docker container clutter
+- `COMMIT_CONTAINER=true`: Persist incremental container state across MCP requests
+  (e.g. shared package installs). Commits land on a unique tag, never on the source image.
+- `KEEP_TEMPLATE=false`: Drop the template image after every session. Slower (re-pulls
+  on each call) but leaves nothing behind on disk.
 - `NAMESPACE="custom-namespace"`: Organize Kubernetes pods in specific namespaces for multi-tenant environments
-- Both disabled: Minimal resource usage, ideal for ephemeral environments
 
 ## Available Tools
 

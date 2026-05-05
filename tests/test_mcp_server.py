@@ -13,6 +13,7 @@ from llm_sandbox.data import ExecutionResult, FileType, PlotOutput
 from llm_sandbox.exceptions import MissingDependencyError
 from llm_sandbox.mcp_server.const import LANGUAGE_RESOURCES
 from llm_sandbox.mcp_server.server import (
+    _build_commit_image_tag,
     _get_backend,
     _get_commit_container,
     _get_keep_template,
@@ -123,9 +124,9 @@ class TestGetCommitContainer:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_get_commit_container_default(self) -> None:
-        """Test getting commit_container=True when no environment variable is set."""
+        """Test commit_container defaults to False when no environment variable is set."""
         result = _get_commit_container()
-        assert result is True
+        assert result is False
 
 
 class TestGetKeepTemplate:
@@ -403,7 +404,7 @@ class TestExecuteCode:
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
-        mock_get_commit_container.return_value = True
+        mock_get_commit_container.return_value = False
         mock_get_keep_template.return_value = True
         mock_get_kube_namespace.return_value = "default"
 
@@ -426,7 +427,7 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="python",
             keep_template=True,
-            commit_container=True,
+            commit_container=False,
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
@@ -463,7 +464,7 @@ class TestExecuteCode:
         """Test runtime configs from env are passed into sandbox sessions."""
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
-        mock_get_commit_container.return_value = True
+        mock_get_commit_container.return_value = False
         mock_get_keep_template.return_value = True
         mock_get_kube_namespace.return_value = "default"
 
@@ -477,7 +478,7 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="python",
             keep_template=True,
-            commit_container=True,
+            commit_container=False,
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
@@ -509,7 +510,7 @@ class TestExecuteCode:
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
-        mock_get_commit_container.return_value = True
+        mock_get_commit_container.return_value = False
         mock_get_keep_template.return_value = True
         mock_get_kube_namespace.return_value = "default"
 
@@ -544,7 +545,7 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="python",
             keep_template=True,
-            commit_container=True,
+            commit_container=False,
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
@@ -568,7 +569,7 @@ class TestExecuteCode:
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
-        mock_get_commit_container.return_value = True
+        mock_get_commit_container.return_value = False
         mock_get_keep_template.return_value = True
         mock_get_kube_namespace.return_value = "default"
 
@@ -597,7 +598,7 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="python",
             keep_template=True,
-            commit_container=True,
+            commit_container=False,
             verbose=False,
             backend=mock_backend,
             session_timeout=60,
@@ -621,7 +622,7 @@ class TestExecuteCode:
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
-        mock_get_commit_container.return_value = True
+        mock_get_commit_container.return_value = False
         mock_get_keep_template.return_value = True
         mock_get_kube_namespace.return_value = "default"
 
@@ -643,7 +644,7 @@ class TestExecuteCode:
         mock_session_cls.assert_called_once_with(
             lang="javascript",
             keep_template=True,
-            commit_container=True,
+            commit_container=False,
             verbose=False,
             backend=mock_backend,
             session_timeout=30,
@@ -667,7 +668,7 @@ class TestExecuteCode:
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
-        mock_get_commit_container.return_value = True
+        mock_get_commit_container.return_value = False
         mock_get_keep_template.return_value = True
         mock_get_kube_namespace.return_value = "default"
 
@@ -701,7 +702,7 @@ class TestExecuteCode:
         # Setup
         mock_backend = SandboxBackend.DOCKER
         mock_get_backend.return_value = mock_backend
-        mock_get_commit_container.return_value = True
+        mock_get_commit_container.return_value = False
         mock_get_keep_template.return_value = True
         mock_get_kube_namespace.return_value = "default"
 
@@ -761,6 +762,126 @@ class TestExecuteCode:
         result_data = json.loads(result[0].text)
         assert result_data["exit_code"] == 1
         assert "not supported for backend 'kubernetes'" in result_data["stderr"]
+
+    @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
+    @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
+    def test_execute_code_opt_in_commit_passes_unique_tag(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
+        """When commit is opted in, a unique commit_image_tag is passed (never the source tag)."""
+        mock_get_backend.return_value = SandboxBackend.DOCKER
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_cls.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session.run.return_value = ExecutionResult(exit_code=0, stdout="OK", stderr="")
+
+        _ = execute_code("print('Hello')", "python")
+
+        kwargs = mock_session_cls.call_args.kwargs
+        assert kwargs["commit_container"] is True
+        commit_tag = kwargs["commit_image_tag"]
+        assert commit_tag.startswith("llm-sandbox-mcp/python:")
+        # Exactly one ":" separator and a non-empty unique suffix.
+        repo, _, suffix = commit_tag.partition(":")
+        assert repo == "llm-sandbox-mcp/python"
+        assert len(suffix) >= 8
+        # Must not collide with any common upstream source tag.
+        assert "bullseye" not in commit_tag
+        assert "latest" not in commit_tag
+
+    @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
+    @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
+    def test_execute_code_opt_in_commit_unique_tag_is_per_call(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
+        """Every opt-in commit produces a fresh unique tag, so requests can't bleed into each other."""
+        mock_get_backend.return_value = SandboxBackend.DOCKER
+        mock_get_commit_container.return_value = True
+        mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_cls.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session.run.return_value = ExecutionResult(exit_code=0, stdout="OK", stderr="")
+
+        _ = execute_code("print('a')", "python")
+        _ = execute_code("print('b')", "python")
+
+        first_tag = mock_session_cls.call_args_list[0].kwargs["commit_image_tag"]
+        second_tag = mock_session_cls.call_args_list[1].kwargs["commit_image_tag"]
+        assert first_tag != second_tag
+
+    @patch("llm_sandbox.mcp_server.server._get_backend")
+    @patch("llm_sandbox.mcp_server.server._get_commit_container")
+    @patch("llm_sandbox.mcp_server.server._get_keep_template")
+    @patch("llm_sandbox.mcp_server.server._get_kube_namespace")
+    @patch("llm_sandbox.mcp_server.server.ArtifactSandboxSession")
+    def test_execute_code_no_commit_omits_commit_image_tag(
+        self,
+        mock_session_cls: MagicMock,
+        mock_get_kube_namespace: MagicMock,
+        mock_get_keep_template: MagicMock,
+        mock_get_commit_container: MagicMock,
+        mock_get_backend: MagicMock,
+    ) -> None:
+        """Default (commit disabled) path must not pass commit_image_tag."""
+        mock_get_backend.return_value = SandboxBackend.DOCKER
+        mock_get_commit_container.return_value = False
+        mock_get_keep_template.return_value = True
+        mock_get_kube_namespace.return_value = "default"
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_cls.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session.run.return_value = ExecutionResult(exit_code=0, stdout="OK", stderr="")
+
+        _ = execute_code("print('Hello')", "python")
+
+        kwargs = mock_session_cls.call_args.kwargs
+        assert kwargs["commit_container"] is False
+        assert "commit_image_tag" not in kwargs
+
+
+class TestBuildCommitImageTag:
+    """Test _build_commit_image_tag helper."""
+
+    def test_build_commit_image_tag_format(self) -> None:
+        """Tag uses dedicated MCP repository plus a hex suffix."""
+        tag = _build_commit_image_tag("python")
+        repo, _, suffix = tag.partition(":")
+        assert repo == "llm-sandbox-mcp/python"
+        assert len(suffix) >= 8
+        assert all(c in "0123456789abcdef" for c in suffix)
+
+    def test_build_commit_image_tag_lowercases_language(self) -> None:
+        """Repository segment is lowercase to match Docker tag rules."""
+        tag = _build_commit_image_tag("PYTHON")
+        assert tag.startswith("llm-sandbox-mcp/python:")
+
+    def test_build_commit_image_tag_unique_per_call(self) -> None:
+        """Two calls produce different tags."""
+        assert _build_commit_image_tag("python") != _build_commit_image_tag("python")
 
 
 class TestGetSupportedLanguages:

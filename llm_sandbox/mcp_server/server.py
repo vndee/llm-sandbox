@@ -6,6 +6,7 @@ A Model Context Protocol server that provides secure code execution capabilities
 import json
 import logging
 import os
+import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -53,15 +54,37 @@ def _get_backend() -> SandboxBackend:
 
 
 def _get_commit_container() -> bool:
-    """Get the commit_container setting from environment variable."""
-    commit_container_env = os.environ.get("COMMIT_CONTAINER", "true").lower()
+    """Get the commit_container setting from environment variable.
+
+    Defaults to ``False`` because MCP clients pass attacker-controlled code into the
+    sandbox; persisting container state to the source image by default would let one
+    request's side effects bleed into later sessions.
+    """
+    commit_container_env = os.environ.get("COMMIT_CONTAINER", "false").lower()
     return commit_container_env in _TRUE_ENV_VALUES
 
 
 def _get_keep_template() -> bool:
-    """Get the keep_template setting from environment variable."""
+    """Get the keep_template setting from environment variable.
+
+    Defaults to ``True``: the template image is the pristine upstream base image
+    (e.g. ``python:3.11-bullseye``). It contains no untrusted state, and reusing it
+    between MCP requests avoids re-pulling on every call. Untrusted state is gated
+    separately by ``COMMIT_CONTAINER``.
+    """
     keep_template_env = os.environ.get("KEEP_TEMPLATE", "true").lower()
     return keep_template_env in _TRUE_ENV_VALUES
+
+
+def _build_commit_image_tag(language: str) -> str:
+    """Build a unique opt-in commit tag so commits never overwrite the source image.
+
+    Format: ``llm-sandbox-mcp/<language>:<short-uuid>``. A fresh tag per session means
+    one request's persisted state can never silently land in another session that
+    happened to reuse the same base image.
+    """
+    short = uuid.uuid4().hex[:12]
+    return f"llm-sandbox-mcp/{language.lower()}:{short}"
 
 
 def _get_kube_namespace() -> str:
@@ -249,15 +272,18 @@ def execute_code(
         use_artifact_session = _supports_visualization(language)
         session_cls = ArtifactSandboxSession if use_artifact_session else SandboxSession
 
+        commit_container = _get_commit_container()
         session_kwargs: dict[str, Any] = {
             "lang": language,
             "keep_template": _get_keep_template(),
-            "commit_container": _get_commit_container(),
+            "commit_container": commit_container,
             "verbose": False,
             "backend": backend,
             "session_timeout": timeout,
             "kube_namespace": _get_kube_namespace(),
         }
+        if commit_container and backend in {SandboxBackend.DOCKER, SandboxBackend.MICROMAMBA}:
+            session_kwargs["commit_image_tag"] = _build_commit_image_tag(language)
         if runtime_configs:
             session_kwargs["runtime_configs"] = runtime_configs
 
