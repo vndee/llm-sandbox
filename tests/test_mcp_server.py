@@ -118,9 +118,9 @@ class TestGetCommitContainer:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_get_commit_container_default(self) -> None:
-        """Test getting commit_container=True when no environment variable is set."""
+        """Test getting commit_container=False when no environment variable is set."""
         result = _get_commit_container()
-        assert result is True
+        assert result is False
 
 
 class TestGetKeepTemplate:
@@ -176,9 +176,9 @@ class TestGetKeepTemplate:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_get_keep_template_default(self) -> None:
-        """Test getting keep_template=True when no environment variable is set."""
+        """Test getting keep_template=False when no environment variable is set."""
         result = _get_keep_template()
-        assert result is True
+        assert result is False
 
 
 class TestGetKubeNamespace:

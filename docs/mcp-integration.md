@@ -162,15 +162,17 @@ If you encounter connection issues with your backend, you may need to specify ad
 - `DOCKER_HOST`: Specify the Docker daemon socket (default: `unix:///var/run/docker.sock`)
 - `KUBECONFIG`: Path to your Kubernetes configuration file
 - `BACKEND`: Choose your container backend (`docker`, `podman`, or `kubernetes`)
-- `COMMIT_CONTAINER`: Control whether container changes are saved to the image (default: `true`)
-- `KEEP_TEMPLATE`: Control whether template containers are preserved (default: `true`)
+- `COMMIT_CONTAINER`: Control whether container changes are saved to the image (default: `false`)
+- `KEEP_TEMPLATE`: Control whether template containers are preserved (default: `false`)
 - `NAMESPACE`: Specify Kubernetes namespace for pod creation (default: `default`)
 
 ### Container Behavior Control
 
 The MCP server provides fine-grained control over container behavior through environment variables:
 
-**Prevent Container Image Changes:**
+By default, the MCP server uses ephemeral containers and does not commit container changes back to images or preserve template containers. This avoids persisting state created by code supplied through an MCP client.
+
+**Allow Container Image Changes:**
 ```json
 {
   "mcpServers": {
@@ -179,14 +181,14 @@ The MCP server provides fine-grained control over container behavior through env
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
         "BACKEND": "docker",
-        "COMMIT_CONTAINER": "false"
+        "COMMIT_CONTAINER": "true"
       }
     }
   }
 }
 ```
 
-**Prevent Template Container Preservation:**
+**Preserve Template Containers:**
 ```json
 {
   "mcpServers": {
@@ -195,14 +197,14 @@ The MCP server provides fine-grained control over container behavior through env
       "args": ["-m", "llm_sandbox.mcp_server.server"],
       "env": {
         "BACKEND": "docker",
-        "KEEP_TEMPLATE": "false"
+        "KEEP_TEMPLATE": "true"
       }
     }
   }
 }
 ```
 
-**Both Settings for Minimal Container Footprint:**
+**Explicit Ephemeral Settings:**
 ```json
 {
   "mcpServers": {
@@ -225,8 +227,8 @@ Both `COMMIT_CONTAINER` and `KEEP_TEMPLATE` accept:
 - `"false"`, `"0"`, `"no"`, `"off"` → `False`
 
 **Use Cases:**
-- `COMMIT_CONTAINER=false`: Prevent Docker images from growing over time, useful in CI/CD or automated environments
-- `KEEP_TEMPLATE=false`: Clean up template containers automatically, reduces Docker container clutter
+- `COMMIT_CONTAINER=true`: Persist container changes back to the image when you intentionally want reusable state
+- `KEEP_TEMPLATE=true`: Preserve template containers when startup speed is more important than cleanup
 - `NAMESPACE="custom-namespace"`: Organize Kubernetes pods in specific namespaces for multi-tenant environments
 - Both disabled: Minimal resource usage, ideal for ephemeral environments
 
