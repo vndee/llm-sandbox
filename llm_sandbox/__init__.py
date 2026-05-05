@@ -1,6 +1,6 @@
 """LLM Sandbox - A lightweight and portable LLM sandbox runtime."""
 
-from .const import DefaultImage, SandboxBackend, SupportedLanguage
+from .const import DefaultImage, RuntimeProfile, SandboxBackend, SupportedLanguage
 from .core.config import SessionConfig
 from .data import ConsoleOutput, ExecutionResult, FileType, PlotOutput, StreamCallback
 from .exceptions import ContainerError, ResourceError, SandboxError, SecurityError, ValidationError
@@ -19,6 +19,7 @@ __all__ = [
     "KernelType",
     "PlotOutput",
     "ResourceError",
+    "RuntimeProfile",
     "SandboxBackend",
     "SandboxError",
     "SandboxSession",
