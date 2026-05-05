@@ -56,6 +56,8 @@ Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, L
 
 ## 📦 Installation
 
+LLM Sandbox supports Python 3.10 through 3.13.
+
 ### Basic Installation
 ```bash
 pip install llm-sandbox
