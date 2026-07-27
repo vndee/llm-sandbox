@@ -13,7 +13,7 @@ import types
 from pathlib import Path
 from typing import Any
 
-from tenki_sandbox import Client, Sandbox
+from tenki_sandbox import Client, CommandResult, Sandbox
 from tenki_sandbox import SandboxError as TenkiError
 
 from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
@@ -23,7 +23,33 @@ from llm_sandbox.data import StreamCallback
 from llm_sandbox.exceptions import ContainerError, ExtraArgumentsError
 from llm_sandbox.security import SecurityPolicy
 
-PAUSED_STATES = {"PAUSED", "PAUSING"}
+
+def _exit_code_of(result: CommandResult) -> int:
+    """Return a non-zero exit code whenever a command did not actually succeed.
+
+    Returns:
+        int: 0 only if the command genuinely succeeded.
+
+    """
+    if result.ok:
+        return 0
+    return result.exit_code or 128
+
+
+def _failure_detail(result: Any) -> str:
+    """Summarise why a command failed, beyond what its exit code conveys.
+
+    Returns:
+        str: A short ``[tenki: ...]`` note, or an empty string if the command was fine
+            or the SDK reported no extra detail.
+
+    """
+    if getattr(result, "ok", True):
+        return ""
+
+    fields = ("signal", "reason", "errno")
+    present = [f"{name}={getattr(result, name, None)}" for name in fields if getattr(result, name, None)]
+    return f"[tenki: {', '.join(present)}]" if present else ""
 
 
 class TenkiContainerAPI:
@@ -64,14 +90,24 @@ class TenkiContainerAPI:
 
         """
         result = container.shell(command, cwd=kwargs.get("workdir"))
-        return result.exit_code or 0, result
+        return _exit_code_of(result), result
 
     def copy_to_container(self, container: Sandbox, src: str, dest: str, **_kwargs: Any) -> None:
-        """Upload a host file into the sandbox."""
-        container.fs.upload(src, dest)
+        """Upload a host file or directory into the sandbox."""
+        src_path = Path(src)
+        if src_path.is_file():
+            container.fs.upload(src, dest)
+            return
+
+        for path in src_path.rglob("*"):
+            if not path.is_file():
+                continue
+            remote = f"{dest.rstrip('/')}/{path.relative_to(src_path).as_posix()}"
+            container.shell(f"mkdir -p {shlex.quote(str(Path(remote).parent))}")
+            container.fs.upload(str(path), remote)
 
     def copy_from_container(self, container: Sandbox, src: str, **_kwargs: Any) -> tuple[bytes, dict]:
-        """Download a file from the sandbox as a tar archive.
+        """Download a file or directory from the sandbox as a tar archive.
 
         Returns:
             tuple[bytes, dict]: The tar bytes and a stat dict (``size`` 0 if not found).
@@ -79,28 +115,52 @@ class TenkiContainerAPI:
         """
         try:
             info = container.fs.stat(src)
-            if info.is_dir:
-                return b"", {"size": 0}
-            data = container.fs.read_bytes(src)
         except TenkiError:
             return b"", {"size": 0}
 
         name = Path(src).name
         tar_stream = io.BytesIO()
+        total_size = 0
+
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
-            member = tarfile.TarInfo(name=name)
-            member.size = len(data)
-            member.mode = info.mode & 0o7777
-            member.mtime = info.modified_unix_ns // 1_000_000_000
-            tar.addfile(member, io.BytesIO(data))
+            if info.is_dir:
+                for remote_path, file_info in self._iter_remote_files(container, src):
+                    data = container.fs.read_bytes(remote_path)
+                    rel = Path(remote_path).relative_to(src).as_posix()
+                    member = tarfile.TarInfo(name=f"{name}/{rel}")
+                    member.size = len(data)
+                    member.mode = file_info.mode & 0o7777
+                    member.mtime = file_info.modified_unix_ns // 1_000_000_000
+                    tar.addfile(member, io.BytesIO(data))
+                    total_size += file_info.size
+            else:
+                data = container.fs.read_bytes(src)
+                member = tarfile.TarInfo(name=name)
+                member.size = len(data)
+                member.mode = info.mode & 0o7777
+                member.mtime = info.modified_unix_ns // 1_000_000_000
+                tar.addfile(member, io.BytesIO(data))
+                total_size = info.size
 
         return tar_stream.getvalue(), {
             "name": name,
-            "size": info.size,
-            "mtime": member.mtime,
-            "mode": member.mode,
+            "size": total_size,
+            "mtime": info.modified_unix_ns // 1_000_000_000,
+            "mode": info.mode & 0o7777,
             "linkTarget": "",
         }
+
+    @staticmethod
+    def _iter_remote_files(container: Sandbox, root: str) -> list[tuple[str, Any]]:
+        """List every file under a guest directory as ``(absolute_path, FileInfo)``."""
+        files: list[tuple[str, Any]] = []
+        for entry in container.fs.list(root):
+            full = f"{root.rstrip('/')}/{Path(entry.path).name}"
+            if entry.is_dir:
+                files.extend(TenkiContainerAPI._iter_remote_files(container, full))
+            else:
+                files.append((full, entry))
+        return files
 
 
 class SandboxTenkiSession(BaseSession):
@@ -284,10 +344,11 @@ class SandboxTenkiSession(BaseSession):
             "else echo 'no python or python3 on PATH' >&2; exit 127; fi; fi; python -V"
         )
         result = self.container.shell(python_bootstrap_command, privileged=True)
-        if result.exit_code:
+        if not result.ok:
+            reason = " ".join(filter(None, [self._decode(result.stderr).strip(), _failure_detail(result)]))
             msg = (
                 "The Tenki sandbox image has no Python interpreter "
-                f"({self._decode(result.stderr).strip()}). Pass an image that ships Python via "
+                f"({reason}). Pass an image that ships Python via "
                 "image=..., or set skip_environment_setup=True and manage the runtime yourself."
             )
             self._log(msg, "error")
@@ -381,7 +442,7 @@ class SandboxTenkiSession(BaseSession):
         try:
             container = self._get_client().get(container_id)
 
-            if container.state in PAUSED_STATES:
+            if container.state in {"PAUSED", "PAUSING"}:
                 self._log(f"Tenki sandbox {container_id} is paused, resuming...")
                 container.resume()
 
@@ -407,9 +468,6 @@ class SandboxTenkiSession(BaseSession):
 
     def _ensure_ownership(self, paths: list[str]) -> None:
         r"""Ensure ownership of the given paths inside the sandbox.
-
-        No-op unless a non-root ``user`` is configured in ``runtime_configs``, since a
-        Tenki sandbox is single-tenant and runs as one user by default.
 
         Args:
             paths (list[str]): The paths to ensure ownership of.
@@ -438,7 +496,14 @@ class SandboxTenkiSession(BaseSession):
             tuple[str, str]: The decoded stdout and stderr.
 
         """
-        return self._decode(getattr(output, "stdout", None)), self._decode(getattr(output, "stderr", None))
+        stdout = self._decode(getattr(output, "stdout", None))
+        stderr = self._decode(getattr(output, "stderr", None))
+
+        detail = _failure_detail(output)
+        if detail:
+            stderr = f"{stderr.rstrip()}\n{detail}" if stderr.strip() else detail
+
+        return stdout, stderr
 
     def _process_stream_output(
         self,
