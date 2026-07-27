@@ -103,6 +103,9 @@ pip install 'llm-sandbox[k8s]'
 
 # For Podman support
 pip install 'llm-sandbox[podman]'
+
+# For Tenki support (cloud microVMs)
+pip install 'llm-sandbox[tenki]'
 ```
 
 ## Why LLM Sandbox?
