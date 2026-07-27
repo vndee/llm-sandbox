@@ -70,6 +70,24 @@ class TestBackendSelection:
         assert session == mock_session_instance
         mock_micromamba_session.assert_called_once_with(lang="python", environment="data_science")
 
+    @patch("llm_sandbox.session.find_spec")
+    @patch("llm_sandbox.tenki.SandboxTenkiSession")
+    def test_create_tenki_session(self, mock_tenki_session: MagicMock, mock_find_spec: MagicMock) -> None:
+        """Test creating Tenki session."""
+        mock_find_spec.return_value = MagicMock()  # tenki-sandbox available
+        mock_session_instance = MagicMock()
+        mock_tenki_session.return_value = mock_session_instance
+
+        session = create_session(
+            backend=SandboxBackend.TENKI,
+            lang="python",
+            image="tenki/python:3.11",
+            auth_token="test-token",  # noqa: S106
+        )
+
+        assert session == mock_session_instance
+        mock_tenki_session.assert_called_once_with(lang="python", image="tenki/python:3.11", auth_token="test-token")  # noqa: S106
+
     def test_create_session_unsupported_backend(self) -> None:
         """Test creating session with unsupported backend."""
         with pytest.raises(UnsupportedBackendError):
@@ -107,6 +125,14 @@ class TestBackendSelection:
         with pytest.raises(MissingDependencyError, match="Docker backend requires 'docker' package"):
             create_session(backend=SandboxBackend.MICROMAMBA)
 
+    @patch("llm_sandbox.session.find_spec")
+    def test_create_session_missing_tenki_dependency(self, mock_find_spec: MagicMock) -> None:
+        """Test creating session when Tenki dependency is missing."""
+        mock_find_spec.return_value = None  # tenki-sandbox not available
+
+        with pytest.raises(MissingDependencyError, match="Tenki backend requires 'tenki-sandbox' package"):
+            create_session(backend=SandboxBackend.TENKI)
+
 
 class TestBackendCommonInterface:
     """Test that all backends implement the common interface correctly."""
@@ -121,6 +147,7 @@ class TestBackendCommonInterface:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.TENKI,
         ]
 
         required_methods = [
@@ -150,6 +177,8 @@ class TestBackendCommonInterface:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.TENKI:
+                patch_path = "llm_sandbox.tenki.SandboxTenkiSession"
 
             with patch(patch_path, return_value=mock_session_instance):
                 session = create_session(backend=backend)
@@ -175,6 +204,7 @@ class TestBackendCommonInterface:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.TENKI,
         ]
 
         for backend in backends_to_test:
@@ -188,6 +218,8 @@ class TestBackendCommonInterface:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.TENKI:
+                patch_path = "llm_sandbox.tenki.SandboxTenkiSession"
 
             with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                 _ = create_session(backend=backend, **common_params)
@@ -314,6 +346,7 @@ class TestBackendConsistency:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.TENKI,
         ]
 
         for backend in backends:
@@ -327,6 +360,8 @@ class TestBackendConsistency:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.TENKI:
+                patch_path = "llm_sandbox.tenki.SandboxTenkiSession"
 
             with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                 _ = create_session(backend=backend, lang=SupportedLanguage.PYTHON)
@@ -347,6 +382,7 @@ class TestBackendConsistency:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.TENKI,
         ]
 
         for backend in backends:
@@ -360,6 +396,8 @@ class TestBackendConsistency:
                 patch_path = "llm_sandbox.podman.SandboxPodmanSession"
             elif backend == SandboxBackend.MICROMAMBA:
                 patch_path = "llm_sandbox.micromamba.MicromambaSession"
+            elif backend == SandboxBackend.TENKI:
+                patch_path = "llm_sandbox.tenki.SandboxTenkiSession"
 
             with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                 _ = create_session(backend=backend, security_policy=security_policy)
@@ -379,6 +417,7 @@ class TestBackendConsistency:
             SandboxBackend.KUBERNETES,
             SandboxBackend.PODMAN,
             SandboxBackend.MICROMAMBA,
+            SandboxBackend.TENKI,
         ]
 
         for verbose_setting in [True, False]:
@@ -393,6 +432,8 @@ class TestBackendConsistency:
                     patch_path = "llm_sandbox.podman.SandboxPodmanSession"
                 elif backend == SandboxBackend.MICROMAMBA:
                     patch_path = "llm_sandbox.micromamba.MicromambaSession"
+                elif backend == SandboxBackend.TENKI:
+                    patch_path = "llm_sandbox.tenki.SandboxTenkiSession"
 
                 with patch(patch_path, return_value=mock_session_instance) as mock_session_class:
                     _ = create_session(backend=backend, verbose=verbose_setting)
