@@ -5,9 +5,11 @@ local container runtime, exposing the same session API as the Docker/Kubernetes/
 backends.
 """
 
+import contextlib
 import io
 import shlex
 import tarfile
+import types
 from pathlib import Path
 from typing import Any
 
@@ -211,54 +213,63 @@ class SandboxTenkiSession(BaseSession):
         r"""Open the Tenki session.
 
         Raises:
-            ContainerError: If the sandbox cannot be created or attached to.
+            ContainerError: If the session is already open, or the sandbox cannot be
+                created, attached to, or prepared.
 
         """
+        if self.container is not None:
+            msg = "This session is already open; call close() before opening it again."
+            raise ContainerError(msg)
+
         super().open()
 
         self.container_api = TenkiContainerAPI(self._get_client())
 
-        if self.using_existing_container and self.config.container_id:
-            self._connect_to_existing_container(self.config.container_id)
-        else:
-            create_config: dict[str, Any] = dict(self.config.runtime_configs)
-            if self.config.image:
-                create_config["image"] = self.config.image
+        try:
+            if self.using_existing_container and self.config.container_id:
+                self._connect_to_existing_container(self.config.container_id)
+            else:
+                self._create_container()
 
-            env = dict(create_config.get("env") or {})
-            env.setdefault("PYTHONUNBUFFERED", "1")
-            create_config["env"] = env
+            needs_python = self.config.lang == SupportedLanguage.PYTHON and not self.using_existing_container
+            if needs_python:
+                self._ensure_python_interpreter()
 
-            try:
-                self.container = self.container_api.create_container(create_config)
-                self.container_api.start_container(self.container)
-            except Exception as e:
-                msg = f"Failed to create Tenki sandbox: {e}"
-                self._log(msg, "error")
-                raise ContainerError(msg) from e
+            self.environment_setup()
 
-            self._log(f"Created Tenki sandbox {self.container.id}")
+            if needs_python and not self.config.skip_environment_setup:
+                self._verify_python_environment()
+        except BaseException:
+            with contextlib.suppress(Exception):
+                self.close()
+            raise
 
-        if self._should_bootstrap_python():
-            self._ensure_python_interpreter()
+    def _create_container(self) -> None:
+        r"""Create a new Tenki sandbox and wait until it can run commands.
 
-        self.environment_setup()
-
-        if self._should_bootstrap_python():
-            self._verify_python_environment()
-
-    def _should_bootstrap_python(self) -> bool:
-        """Report whether this session builds a Python environment in the guest.
-
-        Returns:
-            bool: True when open() is responsible for the guest Python setup.
+        Raises:
+            ContainerError: If the sandbox cannot be created or never becomes ready.
 
         """
-        return (
-            self.config.lang == SupportedLanguage.PYTHON
-            and not self.using_existing_container
-            and not self.config.skip_environment_setup
-        )
+        create_config: dict[str, Any] = dict(self.config.runtime_configs)
+        if self.config.image:
+            create_config["image"] = self.config.image
+
+        env = dict(create_config.get("env") or {})
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        create_config["env"] = env
+
+        create_config["wait"] = False
+
+        try:
+            self.container = self.container_api.create_container(create_config)
+            self.container_api.start_container(self.container)
+        except Exception as e:
+            msg = f"Failed to create Tenki sandbox: {e}"
+            self._log(msg, "error")
+            raise ContainerError(msg) from e
+
+        self._log(f"Created Tenki sandbox {self.container.id}")
 
     def _ensure_python_interpreter(self) -> None:
         r"""Make a bare ``python`` available in the guest before the venv is built.
@@ -304,23 +315,30 @@ class SandboxTenkiSession(BaseSession):
             raise ContainerError(msg)
 
     def close(self) -> None:
-        r"""Close the Tenki session."""
+        r"""Close the Tenki session, releasing the sandbox.
+
+        Raises:
+            ContainerError: If the sandbox could not be terminated or detached. The
+                sandbox handle and client are both kept so close() can be retried;
+                until one succeeds the microVM is still running and still billed.
+
+        """
         super().close()
 
-        if not self.container:
-            return
+        if self.container:
+            try:
+                if self.using_existing_container:
+                    self.container.detach()
+                    self._log(f"Detached from existing Tenki sandbox {self.container.id}")
+                else:
+                    self.container_api.stop_container(self.container)
+                    self._log(f"Terminated Tenki sandbox {self.container.id}")
+            except Exception as e:
+                msg = f"Failed to release Tenki sandbox {self.container.id}: {e}"
+                self._log(msg, "error")
+                raise ContainerError(msg) from e
 
-        container, self.container = self.container, None
-
-        try:
-            if self.using_existing_container:
-                container.detach()
-                self._log(f"Detached from existing Tenki sandbox {container.id}")
-            else:
-                self.container_api.stop_container(container)
-                self._log(f"Terminated Tenki sandbox {container.id}")
-        except Exception as e:  # noqa: BLE001
-            self._log(f"Error cleaning up Tenki sandbox: {e}", "error")
+            self.container = None
 
         if self._owns_client and self._client:
             try:
@@ -329,12 +347,22 @@ class SandboxTenkiSession(BaseSession):
                 self._log(f"Error closing Tenki client: {e}", "error")
             self._client = None
 
-    def _handle_timeout(self) -> None:
-        """Handle Tenki timeout cleanup.
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Close the session, without letting cleanup mask an error from the block."""
+        if exc_type is None:
+            self.close()
+            return
 
-        The hung command runs inside the sandbox, so the session is torn down (or
-        detached, for an existing sandbox) to leave the backend in a usable state.
-        """
+        with contextlib.suppress(Exception):
+            self.close()
+
+    def _handle_timeout(self) -> None:
+        """Handle Tenki timeout cleanup."""
         try:
             self.close()
         except Exception as e:  # noqa: BLE001
@@ -367,10 +395,6 @@ class SandboxTenkiSession(BaseSession):
 
     def _ensure_directory_exists(self, path: str) -> None:
         r"""Ensure a directory exists inside the sandbox.
-
-        Uses ``mkdir -p`` over exec rather than ``fs.mkdir``: the guest filesystem API
-        rejects paths that are not strictly below the sandbox workdir — including the
-        workdir itself, which is exactly what copying into ``workdir`` asks for.
 
         Args:
             path (str): The path to create.
@@ -423,9 +447,6 @@ class SandboxTenkiSession(BaseSession):
         on_stderr: StreamCallback | None = None,
     ) -> tuple[str, str]:
         """Process Tenki output for streaming consumers.
-
-        Tenki exec is request/response, so the callbacks are invoked once with the
-        complete stdout and stderr rather than incrementally.
 
         Args:
             output: The ``CommandResult`` returned by the Tenki SDK.
