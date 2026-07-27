@@ -35,6 +35,9 @@ def _check_dependency(backend: SandboxBackend) -> None:
     if backend == SandboxBackend.PODMAN and not find_spec("podman"):
         msg = "Podman backend requires 'podman' package. Install it with: pip install llm-sandbox[podman]"
         raise MissingDependencyError(msg)
+    if backend == SandboxBackend.TENKI and not find_spec("tenki_sandbox"):
+        msg = "Tenki backend requires 'tenki-sandbox' package. Install it with: pip install llm-sandbox[tenki]"
+        raise MissingDependencyError(msg)
 
 
 def create_session(
@@ -55,6 +58,7 @@ def create_session(
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
+            - SandboxBackend.TENKI
         pool (ContainerPoolManager | None): Pool manager to use for container pooling.
             If provided, containers are acquired from the pool instead of being created new.
             Create a pool manager using `create_pool_manager()` from llm_sandbox.pool.
@@ -262,6 +266,10 @@ def create_session(
             from .micromamba import MicromambaSession
 
             return MicromambaSession(*args, **kwargs)
+        case SandboxBackend.TENKI:
+            from .tenki import SandboxTenkiSession
+
+            return SandboxTenkiSession(*args, **kwargs)
         case _:
             raise UnsupportedBackendError(backend=backend)
 
