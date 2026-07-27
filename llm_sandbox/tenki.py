@@ -5,6 +5,7 @@ local container runtime, exposing the same session API as the Docker/Kubernetes/
 backends.
 """
 
+import base64
 import contextlib
 import io
 import shlex
@@ -20,7 +21,7 @@ from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import StreamCallback
-from llm_sandbox.exceptions import ContainerError, ExtraArgumentsError
+from llm_sandbox.exceptions import ContainerError, ExtraArgumentsError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -48,8 +49,41 @@ def _failure_detail(result: Any) -> str:
         return ""
 
     fields = ("signal", "reason", "errno")
-    present = [f"{name}={getattr(result, name, None)}" for name in fields if getattr(result, name, None)]
+    present = [f"{name}={value}" for name in fields if (value := getattr(result, name, None))]
     return f"[tenki: {', '.join(present)}]" if present else ""
+
+
+def _archive_via_shell(container: Sandbox, src: str) -> tuple[bytes, dict]:
+    """Archive a guest path with ``tar`` when the FS API cannot serve it."""
+    if not container.shell(f"test -e {shlex.quote(src)}").ok:
+        return b"", {"size": 0}
+
+    parent = Path(src).parent.as_posix() or "/"
+    name = Path(src).name
+    result = container.shell(f"tar -cf - -C {shlex.quote(parent)} {shlex.quote(name)} | base64 | tr -d '\\n'")
+    if not result.ok or not result.stdout:
+        return b"", {"size": 0}
+
+    data = base64.b64decode(result.stdout)
+    return data, {
+        "name": name,
+        "size": len(data),
+        "mtime": 0,
+        "mode": 0o644,
+        "linkTarget": "",
+    }
+
+
+def _iter_remote_files(container: Sandbox, root: str) -> list[tuple[str, Any]]:
+    """List every file under a guest directory as ``(absolute_path, FileInfo)``."""
+    files: list[tuple[str, Any]] = []
+    for entry in container.fs.list(root):
+        full = f"{root.rstrip('/')}/{Path(entry.path).name}"
+        if entry.is_dir:
+            files.extend(_iter_remote_files(container, full))
+        else:
+            files.append((full, entry))
+    return files
 
 
 class TenkiContainerAPI:
@@ -116,31 +150,29 @@ class TenkiContainerAPI:
         try:
             info = container.fs.stat(src)
         except TenkiError:
-            return b"", {"size": 0}
+            return _archive_via_shell(container, src)
 
         name = Path(src).name
+        if info.is_dir:
+            entries = [
+                (f"{name}/{Path(path).relative_to(src).as_posix()}", path, entry)
+                for path, entry in _iter_remote_files(container, src)
+            ]
+        else:
+            entries = [(name, src, info)]
+
         tar_stream = io.BytesIO()
         total_size = 0
 
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
-            if info.is_dir:
-                for remote_path, file_info in self._iter_remote_files(container, src):
-                    data = container.fs.read_bytes(remote_path)
-                    rel = Path(remote_path).relative_to(src).as_posix()
-                    member = tarfile.TarInfo(name=f"{name}/{rel}")
-                    member.size = len(data)
-                    member.mode = file_info.mode & 0o7777
-                    member.mtime = file_info.modified_unix_ns // 1_000_000_000
-                    tar.addfile(member, io.BytesIO(data))
-                    total_size += file_info.size
-            else:
-                data = container.fs.read_bytes(src)
-                member = tarfile.TarInfo(name=name)
+            for member_name, remote_path, file_info in entries:
+                data = container.fs.read_bytes(remote_path)
+                member = tarfile.TarInfo(name=member_name)
                 member.size = len(data)
-                member.mode = info.mode & 0o7777
-                member.mtime = info.modified_unix_ns // 1_000_000_000
+                member.mode = file_info.mode & 0o7777
+                member.mtime = file_info.modified_unix_ns // 1_000_000_000
                 tar.addfile(member, io.BytesIO(data))
-                total_size = info.size
+                total_size += file_info.size
 
         return tar_stream.getvalue(), {
             "name": name,
@@ -149,18 +181,6 @@ class TenkiContainerAPI:
             "mode": info.mode & 0o7777,
             "linkTarget": "",
         }
-
-    @staticmethod
-    def _iter_remote_files(container: Sandbox, root: str) -> list[tuple[str, Any]]:
-        """List every file under a guest directory as ``(absolute_path, FileInfo)``."""
-        files: list[tuple[str, Any]] = []
-        for entry in container.fs.list(root):
-            full = f"{root.rstrip('/')}/{Path(entry.path).name}"
-            if entry.is_dir:
-                files.extend(TenkiContainerAPI._iter_remote_files(container, full))
-            else:
-                files.append((full, entry))
-        return files
 
 
 class SandboxTenkiSession(BaseSession):
@@ -422,6 +442,18 @@ class SandboxTenkiSession(BaseSession):
         with contextlib.suppress(Exception):
             self.close()
 
+    def get_archive(self, path: str) -> tuple[bytes, dict]:
+        """Get an archive of a path from the Tenki sandbox.
+
+        Returns:
+            tuple[bytes, dict]: Tar archive bytes and a stat dict.
+
+        """
+        if not self.container:
+            raise NotOpenSessionError
+
+        return self.container_api.copy_from_container(self.container, path)
+
     def _handle_timeout(self) -> None:
         """Handle Tenki timeout cleanup."""
         try:
@@ -467,16 +499,12 @@ class SandboxTenkiSession(BaseSession):
             self._log(f"Failed to create directory {path}: {stderr_output or stdout_output}", "error")
 
     def _ensure_ownership(self, paths: list[str]) -> None:
-        r"""Ensure ownership of the given paths inside the sandbox.
+        r"""No-op: a Tenki sandbox is single-tenant and runs everything as one user.
 
         Args:
-            paths (list[str]): The paths to ensure ownership of.
+            paths (list[str]): Unused; kept to satisfy the FileOperationsMixin hook.
 
         """
-        user = self.config.runtime_configs.get("user") if self.config.runtime_configs else None
-        if user and user != "root":
-            quoted_paths = " ".join(shlex.quote(p) for p in paths)
-            self.container.shell(f"chown -R {shlex.quote(user)} {quoted_paths}", privileged=True)
 
     def _decode(self, data: bytes | None) -> str:
         """Decode command output bytes using the session's encoding error mode.
