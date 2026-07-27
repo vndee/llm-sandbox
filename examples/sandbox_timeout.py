@@ -365,6 +365,7 @@ def main() -> None:
         "docker": SandboxBackend.DOCKER,
         "podman": SandboxBackend.PODMAN,
         "kubernetes": SandboxBackend.KUBERNETES,
+        "tenki": SandboxBackend.TENKI,
     }
 
     if backend_arg != "all" and backend_arg not in backends_to_test:

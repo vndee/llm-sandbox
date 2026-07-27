@@ -298,3 +298,23 @@ with ArtifactSandboxSession(
         plot_path = Path("plots/podman") / f"{i + 1:06d}.{plot.format.value}"
         with plot_path.open("wb") as f:
             f.write(base64.b64decode(plot.content_base64))
+
+with ArtifactSandboxSession(
+    lang="python",
+    verbose=True,
+    backend=SandboxBackend.TENKI,
+    workdir="/home/tenki",
+    runtime_configs={"allow_outbound": True},
+) as session:
+    result = session.run(
+        code,
+        libraries=["matplotlib", "seaborn", "pandas", "numpy", "plotly"],
+    )
+    logger.info("Captured %d plots", len(result.plots))
+
+    Path("plots/tenki").mkdir(exist_ok=True)
+
+    for i, plot in enumerate(result.plots):
+        plot_path = Path("plots/tenki") / f"{i + 1:06d}.{plot.format.value}"
+        with plot_path.open("wb") as f:
+            f.write(base64.b64decode(plot.content_base64))
