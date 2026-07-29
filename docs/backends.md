@@ -13,9 +13,10 @@ Supported backends:
 | **Podman** | Rootless security | No (rootless) | Limited | High |
 | **Tenki** | Cloud microVMs, no local runtime | No | Managed | High |
 
-!!! note "Working directory differs on Tenki"
-    Docker, Kubernetes, Podman and Micromamba all default `workdir` to `/sandbox`.
-    Tenki defaults to `/home/tenki`. See [Tenki Backend](#tenki-backend).
+> [!IMPORTANT]
+>  Working directory differs on Tenki
+>  Docker, Kubernetes, Podman and Micromamba all default `workdir` to `/sandbox`.
+>  Tenki defaults to `/home/tenki`. See [Tenki Backend](#tenki-backend).
 
 ## Docker Backend
 
@@ -797,19 +798,10 @@ session.run("open('/sandbox/data.csv').read()")
 session.run("import os; print(os.getcwd())")
 ```
 
-Two things follow from this:
-
-- **The guest filesystem API only serves paths below the workdir.** Reads from elsewhere
-  (for example `/tmp/sandbox_plots`, used for plot capture) fall back to `tar` over the
-  shell automatically. You don't have to do anything, but it is slower for large files.
-- **Overriding `workdir` to a path outside your home directory usually fails.** The guest
-  runs as a non-root user, so `workdir="/sandbox"` cannot be created. Use a subdirectory of
-  `/home/tenki` if you need a custom location.
-
 ### Runtime Configuration
 
 `runtime_configs` is passed straight through to the Tenki SDK's `Client.create()`, so use
-**Tenki's** parameter names — Docker's names are not translated and will raise `TypeError`:
+**Tenki's** parameter names:
 
 ```python
 with SandboxSession(
@@ -866,11 +858,34 @@ Note that `libraries=[...]` is unavailable in this mode — bake dependencies in
 
 ### Tenki Best Practices
 
-1. **Always use a context manager.** Sandboxes are billed while running; `with` guarantees
-   termination even when your code raises.
+1. **Always use a context manager.** Sandboxes are billed while running, and `with` calls
+   `close()` however the block exits.
 2. **Set `allow_outbound=False`** unless the code genuinely needs network access.
 3. **Prebuild images** with your dependencies rather than installing per session.
 4. **Don't hardcode `/sandbox`** — see the working directory section above.
+
+> [!WARNING]
+>  Cleanup is best-effort, not guaranteed
+>  `with` is not a promise that the sandbox was released, so a caller that cares about the
+>  bill should be prepared to retry or terminate the sandbox manually.
+
+Construct the session first if you want to retry, since `as session` is never bound when
+`open()` fails:
+
+```python
+session = SandboxSession(backend=SandboxBackend.TENKI, lang="python")
+try:
+    with session:
+        session.run("print('hello')")
+except ContainerError:
+    if session.container:      # release failed; the microVM is still billing
+        session.close()        # retry once
+    raise
+```
+
+A process that exits before retrying leaves the sandbox running. Set
+`idle_timeout_minutes` or `max_duration` in `runtime_configs` if you need a backstop that
+does not depend on your process staying alive.
 
 ### Limitations
 

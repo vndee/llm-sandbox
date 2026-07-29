@@ -7,10 +7,17 @@ This guide will help you get up and running with LLM Sandbox in just a few minut
 Before you begin, ensure you have:
 
 - **Python 3.10 or higher** installed
-- **Container runtime** (at least one of the following):
-    - Docker Desktop or Docker Engine
-    - Kubernetes cluster (local or remote)
-    - Podman
+- **An execution backend** — what this requires depends on which one you pick:
+
+| Backend | Prerequisite |
+|---------|--------------|
+| **Docker** | Docker Desktop or Docker Engine running locally |
+| **Kubernetes** | A cluster (local or remote) and a working kubeconfig |
+| **Podman** | Podman running locally |
+| **Tenki** | A [Tenki](https://tenki.cloud) account and `TENKI_AUTH_TOKEN` — **no local runtime needed** |
+
+Tenki runs code in cloud microVMs, so it is the option to choose if you would rather not
+install or manage a container runtime at all. See [Tenki Backend](backends.md#tenki-backend).
 
 ## Installation
 
@@ -897,6 +904,13 @@ podman --version
 
 # Check Kubernetes
 kubectl version
+```
+
+Not applicable to Tenki, which needs no local runtime. If Tenki fails to start a sandbox,
+check your credentials instead:
+
+```bash
+echo "${TENKI_AUTH_TOKEN:-${TENKI_API_KEY:-unset}}"
 ```
 
 ### Permission Errors
