@@ -14,7 +14,7 @@ import types
 from pathlib import Path
 from typing import Any
 
-from tenki_sandbox import Client, CommandResult, Sandbox
+from tenki_sandbox import Client, CommandResult, Sandbox, SessionNotFoundError, SessionTerminatedError
 from tenki_sandbox import SandboxError as TenkiError
 
 from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
@@ -319,9 +319,16 @@ class SandboxTenkiSession(BaseSession):
 
             if needs_python and not self.config.skip_environment_setup:
                 self._verify_python_environment()
-        except BaseException:
-            with contextlib.suppress(Exception):
+        except BaseException as setup_error:
+            try:
                 self.close()
+            except Exception as cleanup_error:  # noqa: BLE001 - must not displace setup_error
+                self._log(
+                    f"Tenki sandbox {getattr(self.container, 'id', 'unknown')} is STILL RUNNING: "
+                    f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly..",
+                    "error",
+                )
+                setup_error.__context__ = cleanup_error
             raise
 
     def _create_container(self) -> None:
@@ -414,6 +421,8 @@ class SandboxTenkiSession(BaseSession):
                 else:
                     self.container_api.stop_container(self.container)
                     self._log(f"Terminated Tenki sandbox {self.container.id}")
+            except (SessionNotFoundError, SessionTerminatedError) as e:
+                self._log(f"Tenki sandbox {self.container.id} was already gone ({e})")
             except Exception as e:
                 msg = f"Failed to release Tenki sandbox {self.container.id}: {e}"
                 self._log(msg, "error")
