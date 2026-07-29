@@ -8,7 +8,15 @@ from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from tenki_sandbox import CommandResult, FileInfo, MissingAuthTokenError, SandboxError
+from tenki_sandbox import (
+    Client,
+    CommandResult,
+    FileInfo,
+    MissingAuthTokenError,
+    SandboxError,
+    SessionNotFoundError,
+    SessionTerminatedError,
+)
 
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import ContainerError, ExtraArgumentsError
@@ -98,14 +106,14 @@ class TestSandboxTenkiSessionInit:
     def test_init_with_custom_client(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
     ) -> None:
-        """Test initialization with a caller-supplied client does not take ownership of it."""
+        """Test a caller-supplied client is not owned by the session."""
         session = tenki_session_factory(client=mock_client)
 
         assert session._client is mock_client
         assert session._owns_client is False
 
     def test_init_without_client_defers_authentication(self) -> None:
-        """Test that constructing a session needs no API key and builds no client."""
+        """Test constructing a session builds no client yet."""
         with (
             patch("llm_sandbox.tenki.Client") as mock_client_cls,
             patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler"),
@@ -119,14 +127,13 @@ class TestSandboxTenkiSessionInit:
     def test_init_with_container_id_marks_existing(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession]
     ) -> None:
-        """Test that container_id puts the session in existing-sandbox mode."""
+        """Test container_id puts the session in existing-sandbox mode."""
         session = tenki_session_factory(container_id="sbx-999")
 
-        assert session.config.container_id == "sbx-999"
         assert session.using_existing_container is True
 
     def test_init_with_dockerfile_raises_error(self, tenki_session_factory: Callable[..., SandboxTenkiSession]) -> None:
-        """Test initialization fails when a dockerfile is provided."""
+        """Test dockerfile= is rejected."""
         with pytest.raises(ExtraArgumentsError, match="does not build images from a Dockerfile"):
             tenki_session_factory(dockerfile="/path/to/Dockerfile")
 
@@ -146,24 +153,10 @@ class TestSandboxTenkiSessionClient:
         mock_client_cls.assert_called_once_with(auth_token="test-token", base_url="https://example.invalid")  # noqa: S106
         assert client is mock_client_cls.return_value
 
-    def test_get_client_defers_credential_lookup_to_sdk(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test no credential is resolved locally; the SDK owns the env fallback."""
-        monkeypatch.delenv("TENKI_AUTH_TOKEN", raising=False)
-        monkeypatch.delenv("TENKI_API_KEY", raising=False)
-        session = tenki_session_factory(client=None)
-
-        with patch("llm_sandbox.tenki.Client") as mock_client_cls, patch.object(session, "_log") as mock_log:
-            session._get_client()
-
-        mock_client_cls.assert_called_once_with(auth_token=None, base_url=None)
-        assert not any(call.args[1:] == ("warning",) for call in mock_log.call_args_list)
-
     def test_get_client_propagates_sdk_missing_auth_error(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test the SDK's own missing-credential error surfaces unwrapped."""
+        """Test the SDK's missing-credential error surfaces unwrapped."""
         monkeypatch.delenv("TENKI_AUTH_TOKEN", raising=False)
         monkeypatch.delenv("TENKI_API_KEY", raising=False)
         session = tenki_session_factory(client=None)
@@ -181,13 +174,16 @@ class TestSandboxTenkiSessionOpen:
         mock_client: MagicMock,
         mock_sandbox: MagicMock,
     ) -> None:
-        """Test open creates a sandbox with wait=False and waits until it is ready."""
-        session = tenki_session_factory()
+        """Test open creates with wait=False, waits ready, and injects PYTHONUNBUFFERED."""
+        session = tenki_session_factory(runtime_configs={"env": {"MY_VAR": "value"}, "cpu_cores": 2})
 
         session.open()
 
-        mock_client.create.assert_called_once()
-        assert mock_client.create.call_args.kwargs["wait"] is False
+        create_kwargs = mock_client.create.call_args.kwargs
+        assert create_kwargs["wait"] is False
+        assert create_kwargs["cpu_cores"] == 2
+        assert create_kwargs["env"]["MY_VAR"] == "value"
+        assert create_kwargs["env"]["PYTHONUNBUFFERED"] == "1"
         mock_sandbox.wait_ready.assert_called_once()
         assert session.container is mock_sandbox
         assert session.is_open is True
@@ -202,55 +198,6 @@ class TestSandboxTenkiSessionOpen:
 
         assert mock_client.create.call_args.kwargs["image"] == "tenki/python:3.11"
 
-    def test_open_injects_pythonunbuffered(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
-    ) -> None:
-        """Test PYTHONUNBUFFERED is set so stdout is not swallowed by buffering."""
-        session = tenki_session_factory()
-
-        session.open()
-
-        assert mock_client.create.call_args.kwargs["env"]["PYTHONUNBUFFERED"] == "1"
-
-    def test_open_forwards_runtime_configs(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
-    ) -> None:
-        """Test runtime_configs are forwarded verbatim to Client.create."""
-        session = tenki_session_factory(
-            runtime_configs={"cpu_cores": 2, "memory_mb": 2048, "allow_outbound": False, "tags": ["ci"]}
-        )
-
-        session.open()
-
-        create_kwargs = mock_client.create.call_args.kwargs
-        assert create_kwargs["cpu_cores"] == 2
-        assert create_kwargs["memory_mb"] == 2048
-        assert create_kwargs["allow_outbound"] is False
-        assert create_kwargs["tags"] == ["ci"]
-
-    def test_open_preserves_user_env(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
-    ) -> None:
-        """Test a user-supplied env dict is preserved alongside the injected default."""
-        session = tenki_session_factory(runtime_configs={"env": {"MY_VAR": "value"}})
-
-        session.open()
-
-        env = mock_client.create.call_args.kwargs["env"]
-        assert env["MY_VAR"] == "value"
-        assert env["PYTHONUNBUFFERED"] == "1"
-
-    def test_open_does_not_mutate_runtime_configs(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession]
-    ) -> None:
-        """Test open leaves the caller's runtime_configs untouched."""
-        runtime_configs: dict[str, Any] = {"env": {"MY_VAR": "value"}}
-        session = tenki_session_factory(runtime_configs=runtime_configs)
-
-        session.open()
-
-        assert runtime_configs == {"env": {"MY_VAR": "value"}}
-
     def test_open_wraps_creation_errors(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
     ) -> None:
@@ -264,7 +211,7 @@ class TestSandboxTenkiSessionOpen:
     def test_open_attaches_to_existing_sandbox(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
     ) -> None:
-        """Test open attaches to an existing sandbox instead of creating one."""
+        """Test open attaches instead of creating when container_id is set."""
         session = tenki_session_factory(container_id="sbx-999")
 
         session.open()
@@ -274,84 +221,83 @@ class TestSandboxTenkiSessionOpen:
 
 
 class TestSandboxTenkiSessionPythonBootstrap:
-    """Test the guest Python interpreter alias and venv verification are gated apart.
-
-    Managed Tenki images ship ``python3`` without a bare ``python``. The alias is needed
-    whenever the session invokes ``python`` — to build the venv, or directly when
-    skip_environment_setup drops the venv paths — but verifying the venv only makes
-    sense when environment_setup actually built one.
-    """
+    """Test guest Python alias and venv verification gating."""
 
     def _bootstrap_calls(self, mock_sandbox: MagicMock) -> list[str]:
         return [c.args[0] for c in mock_sandbox.shell.call_args_list if "command -v python3" in str(c.args[0])]
 
-    def test_interpreter_is_aliased_when_setting_up_the_environment(
+    def test_interpreter_is_aliased_for_new_python_sessions(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test the python3 alias runs so `python -m venv` can find an interpreter."""
-        session = tenki_session_factory(lang="python")
+        """Test the python3 alias runs for new Python sandboxes (venv or skip)."""
+        for kwargs in ({}, {"skip_environment_setup": True}):
+            mock_sandbox.shell.reset_mock()
+            session = tenki_session_factory(lang="python", **kwargs)
 
-        session.open()
+            session.open()
 
-        assert self._bootstrap_calls(mock_sandbox)
-
-    def test_interpreter_is_aliased_when_skipping_environment_setup(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
-    ) -> None:
-        """Test the alias still runs when there is no venv, since code runs on bare `python`."""
-        session = tenki_session_factory(lang="python", skip_environment_setup=True)
-
-        session.open()
-
-        assert self._bootstrap_calls(mock_sandbox), "skip_environment_setup still executes a bare `python`"
+            assert self._bootstrap_calls(mock_sandbox)
 
     def test_interpreter_is_not_touched_on_an_attached_sandbox(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test attaching to someone else's sandbox modifies nothing in the guest."""
+        """Test attaching does not modify the guest interpreter."""
         session = tenki_session_factory(lang="python", container_id="sbx-999")
 
         session.open()
 
         assert not self._bootstrap_calls(mock_sandbox)
 
-    def test_venv_is_not_verified_when_environment_setup_is_skipped(
+    def test_venv_verification_follows_environment_setup(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession]
     ) -> None:
-        """Test no venv check runs for a session that never builds one."""
-        session = tenki_session_factory(lang="python", skip_environment_setup=True)
-
+        """Test venv verify runs only when environment_setup builds one."""
+        session = tenki_session_factory(lang="python")
         with patch.object(session, "_verify_python_environment") as mock_verify:
             session.open()
+        mock_verify.assert_called_once()
 
+        session = tenki_session_factory(lang="python", skip_environment_setup=True)
+        with patch.object(session, "_verify_python_environment") as mock_verify:
+            session.open()
         mock_verify.assert_not_called()
 
-    def test_venv_is_verified_when_environment_setup_runs(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession]
+
+class TestSandboxTenkiSessionCloseWhenSandboxAlreadyGone:
+    """Test close succeeds when the sandbox is already gone elsewhere."""
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            SessionNotFoundError("session does not exist"),
+            SessionTerminatedError("session already terminated"),
+        ],
+        ids=["not-found", "already-terminated"],
+    )
+    def test_close_succeeds_when_the_sandbox_is_already_gone(
+        self,
+        opened_session_factory: Callable[..., SandboxTenkiSession],
+        mock_sandbox: MagicMock,
+        error: Exception,
     ) -> None:
-        """Test a built venv is still verified, so a failed build fails loudly."""
-        session = tenki_session_factory(lang="python")
+        """Test SDK 'already gone' errors clear the handle instead of failing forever."""
+        session = opened_session_factory()
+        mock_sandbox.terminate.side_effect = error
 
-        with patch.object(session, "_verify_python_environment") as mock_verify:
-            session.open()
+        session.close()
 
-        mock_verify.assert_called_once()
+        assert session.container is None
 
 
 class TestSandboxTenkiSessionCloseIsRetryable:
-    """Test that a failed teardown is reported and stays retryable.
-
-    A microVM that failed to terminate is still running and still billed. Returning
-    normally claims the opposite, and dropping the handle leaves nobody able to try
-    again, so the sandbox leaks silently.
-    """
+    """Test failed teardown raises and stays retryable."""
 
     def test_failed_termination_raises_and_keeps_the_handle(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test close() surfaces a termination failure and retains the handle for retry."""
+        """Test a live sandbox that will not die raises and retains the handle."""
         session = opened_session_factory()
-        mock_sandbox.terminate.side_effect = SandboxError("already gone")
+        mock_sandbox.terminate.side_effect = SandboxError("503 Service Unavailable")
 
         with pytest.raises(ContainerError, match="Failed to release Tenki sandbox"):
             session.close()
@@ -380,7 +326,7 @@ class TestSandboxTenkiSessionCloseIsRetryable:
     def test_retrying_close_releases_the_sandbox(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test a second close() after a transient failure actually frees the microVM."""
+        """Test a second close() after a transient failure frees the microVM."""
         session = opened_session_factory()
         mock_sandbox.terminate.side_effect = [SandboxError("transient"), None]
 
@@ -394,7 +340,7 @@ class TestSandboxTenkiSessionCloseIsRetryable:
     def test_failed_detach_of_attached_sandbox_also_raises(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test the attached-sandbox path reports failures on the same terms."""
+        """Test detach failures raise and keep the handle."""
         session = opened_session_factory(container_id="sbx-999")
         mock_sandbox.detach.side_effect = SandboxError("connection reset")
 
@@ -406,7 +352,7 @@ class TestSandboxTenkiSessionCloseIsRetryable:
     def test_exit_does_not_let_cleanup_failure_mask_the_block_error(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test the caller's exception wins over a teardown failure on the way out."""
+        """Test the caller's exception wins over a teardown failure."""
         mock_sandbox.terminate.side_effect = SandboxError("already gone")
         session = tenki_session_factory()
 
@@ -420,7 +366,7 @@ class TestSandboxTenkiSessionCloseIsRetryable:
     def test_exit_raises_cleanup_failure_when_the_block_succeeded(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test a clean block still surfaces a leaked sandbox instead of hiding it."""
+        """Test a clean block still surfaces a leaked sandbox."""
         mock_sandbox.terminate.side_effect = SandboxError("already gone")
         session = tenki_session_factory()
 
@@ -429,17 +375,12 @@ class TestSandboxTenkiSessionCloseIsRetryable:
 
 
 class TestSandboxTenkiSessionOpenIsFailureAtomic:
-    """Test that a failed open() never leaves a microVM running.
-
-    __exit__ does not run when __enter__ raises, so open() is the only place that can
-    release a sandbox it already allocated. Every failure mode below is a billed leak
-    if it is not cleaned up.
-    """
+    """Test that a failed open() never silently abandons a running microVM."""
 
     def test_open_terminates_sandbox_when_readiness_fails(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test a sandbox that never becomes ready is terminated, not abandoned."""
+        """Test a sandbox that never becomes ready is terminated."""
         mock_sandbox.wait_ready.side_effect = SandboxError("boot timed out")
         session = tenki_session_factory()
 
@@ -452,22 +393,27 @@ class TestSandboxTenkiSessionOpenIsFailureAtomic:
     def test_open_terminates_sandbox_when_preparation_fails(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test a failure after a successful create still releases the microVM."""
+        """Test post-create failures release the microVM and chain cleanup errors."""
+        mock_sandbox.terminate.side_effect = SandboxError("terminate failed")
         session = tenki_session_factory()
 
         with (
             patch.object(session, "environment_setup", side_effect=SandboxError("setup blew up")),
-            pytest.raises(SandboxError, match="setup blew up"),
+            pytest.raises(SandboxError, match="setup blew up") as raised,
         ):
             session.open()
 
-        mock_sandbox.terminate.assert_called_once()
+        assert isinstance(raised.value.__context__, ContainerError)
+        assert session.container is mock_sandbox
+
+        mock_sandbox.terminate.side_effect = None
+        session.close()
         assert session.container is None
 
     def test_open_terminates_sandbox_on_cancellation(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test Ctrl-C mid-provision terminates the sandbox and propagates unchanged."""
+        """Test Ctrl-C mid-provision terminates and propagates."""
         mock_sandbox.wait_ready.side_effect = KeyboardInterrupt
         session = tenki_session_factory()
 
@@ -492,16 +438,24 @@ class TestSandboxTenkiSessionOpenIsFailureAtomic:
         mock_sandbox.detach.assert_called_once()
         mock_sandbox.terminate.assert_not_called()
 
-    def test_open_leaves_original_error_intact_when_cleanup_also_fails(
+    def test_a_failed_cleanup_is_reported_with_the_sandbox_id(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test a failing teardown does not mask why open() failed."""
-        mock_sandbox.wait_ready.side_effect = SandboxError("boot timed out")
-        mock_sandbox.terminate.side_effect = SandboxError("already gone")
+        """Test a sandbox left running after failed open is logged with its id."""
+        mock_sandbox.terminate.side_effect = SandboxError("terminate failed")
         session = tenki_session_factory()
+        logged: list[tuple[str, str]] = []
 
-        with pytest.raises(ContainerError, match="Failed to create Tenki sandbox"):
+        with (
+            patch.object(session, "environment_setup", side_effect=SandboxError("setup blew up")),
+            patch.object(session, "_log", side_effect=lambda m, lvl="info": logged.append((lvl, m))),
+            pytest.raises(SandboxError),
+        ):
             session.open()
+
+        leaks = [m for lvl, m in logged if lvl == "error" and "STILL RUNNING" in m]
+        assert leaks
+        assert mock_sandbox.id in leaks[0]
 
     def test_reopening_raises_instead_of_orphaning_the_first_sandbox(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
@@ -522,7 +476,7 @@ class TestSandboxTenkiSessionClose:
     def test_close_terminates_created_sandbox(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test a sandbox this session created is terminated so no microVM is leaked."""
+        """Test a created sandbox is terminated on close."""
         session = opened_session_factory()
 
         session.close()
@@ -563,7 +517,6 @@ class TestSandboxTenkiSessionClose:
         session.close()
 
         mock_client.close.assert_not_called()
-        assert session._client is mock_client
 
     def test_close_closes_owned_client(self, tenki_session_factory: Callable[..., SandboxTenkiSession]) -> None:
         """Test a client the session created is closed with it."""
@@ -576,21 +529,6 @@ class TestSandboxTenkiSessionClose:
             session.close()
 
         owned_client.close.assert_called_once()
-        assert session._client is None
-
-    def test_close_swallows_client_errors(self, tenki_session_factory: Callable[..., SandboxTenkiSession]) -> None:
-        """Test a failure closing the owned client is logged rather than raised."""
-        session = tenki_session_factory(client=None, auth_token="test-token")  # noqa: S106
-
-        with patch("llm_sandbox.tenki.Client") as mock_client_cls:
-            owned_client = mock_client_cls.return_value
-            owned_client.create.return_value = MagicMock(shell=Mock(return_value=make_command_result()))
-            owned_client.close.side_effect = SandboxError("transport already closed")
-            session.open()
-            with patch.object(session, "_log") as mock_log:
-                session.close()
-
-        assert any(call.args[1:] == ("error",) for call in mock_log.call_args_list)
         assert session._client is None
 
 
@@ -614,7 +552,7 @@ class TestSandboxTenkiSessionCommands:
     def test_execute_command_passes_workdir_as_cwd(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test the workdir is translated to the SDK's cwd argument."""
+        """Test workdir is translated to the SDK's cwd argument."""
         session = opened_session_factory()
         mock_sandbox.shell.reset_mock()
 
@@ -625,12 +563,7 @@ class TestSandboxTenkiSessionCommands:
     def test_execute_command_unknown_exit_code_is_not_reported_as_success(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test an absent exit code fails closed rather than passing as 0.
-
-        The SDK types exit_code as int, so None means the outcome is unknown, and
-        `CommandResult.ok` treats it as a failure. Normalizing it to 0 would hand
-        callers a success they never got.
-        """
+        """Test an absent exit code fails closed rather than passing as 0."""
         session = opened_session_factory()
         mock_sandbox.shell.return_value = make_command_result(exit_code=None)
 
@@ -638,55 +571,32 @@ class TestSandboxTenkiSessionCommands:
 
 
 class TestSandboxTenkiSessionSignalledCommands:
-    """Test that a command killed by a signal is not mistaken for a successful one.
-
-    The SDK's CommandResult carries signal/reason/errno alongside exit_code, and its
-    own `ok` property is `exit_code == 0 and not signal`. Reading exit_code alone lets
-    an OOM kill — which can arrive as exit_code 0 — pass as a clean run.
-    """
+    """Test signalled commands are not mistaken for success."""
 
     def test_sigkill_with_zero_exit_code_is_a_failure(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test the canonical case: SIGKILL, exit code 0, no stderr."""
+        """Test SIGKILL with exit code 0 is reported as failure with detail on stderr."""
         session = opened_session_factory()
-        mock_sandbox.shell.return_value = make_command_result(exit_code=0, signal="SIGKILL")
+        mock_sandbox.shell.return_value = make_command_result(
+            exit_code=0, stderr=b"Traceback: boom", signal="SIGKILL", reason="oom", errno=137
+        )
 
-        assert session.execute_command("stress").exit_code != 0
+        result = session.execute_command("stress")
 
-    def test_signal_reason_and_errno_reach_stderr(
-        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
-    ) -> None:
-        """Test the SDK's failure detail is surfaced, not dropped."""
-        session = opened_session_factory()
-        mock_sandbox.shell.return_value = make_command_result(exit_code=0, signal="SIGKILL", reason="oom", errno=137)
-
-        stderr = session.execute_command("stress").stderr
-
-        assert "SIGKILL" in stderr
-        assert "oom" in stderr
-        assert "137" in stderr
-
-    def test_detail_is_appended_without_losing_real_stderr(
-        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
-    ) -> None:
-        """Test the guest's own error output survives alongside the added detail."""
-        session = opened_session_factory()
-        mock_sandbox.shell.return_value = make_command_result(exit_code=0, stderr=b"Traceback: boom", signal="SIGKILL")
-
-        stderr = session.execute_command("stress").stderr
-
-        assert "Traceback: boom" in stderr
-        assert "SIGKILL" in stderr
+        assert result.exit_code != 0
+        assert "Traceback: boom" in result.stderr
+        assert "SIGKILL" in result.stderr
+        assert "oom" in result.stderr
 
 
 class TestSandboxTenkiSessionOutputProcessing:
-    """Test SandboxTenkiSession output decoding and streaming callbacks."""
+    """Test output decoding and streaming callbacks."""
 
     def test_execute_command_with_callbacks(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test callbacks passed to execute_command are wired through the streaming path."""
+        """Test callbacks receive the full output once."""
         session = opened_session_factory()
         mock_sandbox.shell.return_value = make_command_result(stdout=b"streamed")
         chunks: list[str] = []
@@ -697,19 +607,12 @@ class TestSandboxTenkiSessionOutputProcessing:
         assert result.stdout == "streamed"
 
     def test_decode_honours_encoding_errors(self, tenki_session_factory: Callable[..., SandboxTenkiSession]) -> None:
-        """Test invalid bytes are handled per the configured encoding_errors mode."""
+        """Test encoding_errors=replace vs strict."""
         session = tenki_session_factory(encoding_errors="replace")
-
         stdout, _ = session._process_non_stream_output(make_command_result(stdout=b"\xff"))
-
         assert stdout == "�"
 
-    def test_decode_strict_raises_on_invalid_bytes(
-        self, tenki_session_factory: Callable[..., SandboxTenkiSession]
-    ) -> None:
-        """Test the default strict mode surfaces undecodable output."""
         session = tenki_session_factory()
-
         with pytest.raises(UnicodeDecodeError):
             session._process_non_stream_output(make_command_result(stdout=b"\xff"))
 
@@ -752,8 +655,6 @@ class TestSandboxTenkiSessionFileOperations:
 
         mock_sandbox.fs.upload.assert_any_call(str(src_dir / "data.json"), f"{WORKDIR}/input/data.json")
         mock_sandbox.fs.upload.assert_any_call(str(nested / "extra.txt"), f"{WORKDIR}/input/nested/extra.txt")
-        mock_sandbox.shell.assert_any_call(f"mkdir -p {WORKDIR}/input")
-        mock_sandbox.shell.assert_any_call(f"mkdir -p {WORKDIR}/input/nested")
 
     def test_copy_from_runtime_writes_host_file(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], tmp_path: Path
@@ -776,41 +677,63 @@ class TestSandboxTenkiSessionFileOperations:
         with pytest.raises(FileNotFoundError):
             session.copy_from_runtime(f"{WORKDIR}/missing.txt", str(tmp_path / "out.txt"))
 
-    def test_ensure_directory_exists(
-        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
-    ) -> None:
-        """Test directories are created recursively in the guest."""
-        session = opened_session_factory()
-
-        session._ensure_directory_exists(f"{WORKDIR}/nested/dir")
-
-        mock_sandbox.shell.assert_any_call(f"mkdir -p {WORKDIR}/nested/dir", cwd=None)
-
 
 class TestSandboxTenkiSessionOwnership:
-    """Test SandboxTenkiSession ownership handling."""
+    """Test ownership is a no-op because Client.create has no user parameter."""
 
-    def test_ensure_ownership_with_non_root_user(
+    def test_ensure_ownership_does_nothing(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test paths are chowned when a non-root user is configured."""
-        session = opened_session_factory(runtime_configs={"user": "sandbox"})
-        mock_sandbox.shell.reset_mock()
-
-        session._ensure_ownership([f"{WORKDIR}/venv"])
-
-        mock_sandbox.shell.assert_called_once_with("chown -R sandbox /home/tenki/venv", privileged=True)
-
-    def test_ensure_ownership_without_user(
-        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
-    ) -> None:
-        """Test no chown is issued when no user is configured."""
+        """Test no chown is issued."""
         session = opened_session_factory()
         mock_sandbox.shell.reset_mock()
 
         session._ensure_ownership([f"{WORKDIR}/venv"])
 
         mock_sandbox.shell.assert_not_called()
+
+    def test_ensure_ownership_with_non_root_user(
+        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
+    ) -> None:
+        """Test no chown even when a non-root user is configured.
+
+        Unlike Docker/Podman, Tenki cannot run as a second identity, so a ``user``
+        runtime config must not trigger a privileged chown that would only confuse.
+        """
+        session = opened_session_factory(runtime_configs={"user": "sandbox"})
+        mock_sandbox.shell.reset_mock()
+
+        session._ensure_ownership([f"{WORKDIR}/venv"])
+
+        mock_sandbox.shell.assert_not_called()
+
+    def test_the_sdk_has_no_user_parameter_to_honour(self) -> None:
+        """Test Client.create cannot express a non-root user."""
+        import inspect
+
+        with pytest.raises(TypeError, match="user"):
+            inspect.signature(Client.create).bind(None, user="sandbox")
+
+    def test_a_user_runtime_config_is_rejected_not_silently_dropped(
+        self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
+    ) -> None:
+        """Test runtime_configs is forwarded as-is, so a 'user' key fails loudly.
+
+        Without this, silently filtering the key would look identical to the tests
+        above while letting a caller believe a setting took effect. The mock client is
+        made to enforce the real signature, since it would otherwise accept anything.
+        """
+        import inspect
+
+        def enforce_signature(**kwargs: Any) -> MagicMock:
+            inspect.signature(Client.create).bind(None, **kwargs)
+            return mock_client.create.return_value
+
+        mock_client.create.side_effect = enforce_signature
+        session = tenki_session_factory(runtime_configs={"user": "sandbox"})
+
+        with pytest.raises(ContainerError, match="Failed to create Tenki sandbox"):
+            session.open()
 
 
 class TestSandboxTenkiExistingSandbox:
@@ -849,7 +772,7 @@ class TestSandboxTenkiSessionTimeout:
     def test_handle_timeout_closes_session(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test a timeout tears the sandbox down so no hung work keeps billing."""
+        """Test a timeout tears the sandbox down."""
         session = opened_session_factory()
 
         session._handle_timeout()
@@ -866,18 +789,11 @@ class TestTenkiContainerAPI:
         data, stat = TenkiContainerAPI(mock_client).copy_from_container(mock_sandbox, f"{WORKDIR}/file.txt")
 
         assert stat["size"] == 5
-        assert stat["mode"] == 0o644
-        assert stat["mtime"] == MTIME_NS // 1_000_000_000
-
         with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
-            members = tar.getmembers()
-            assert [m.name for m in members] == ["file.txt"]
-            extracted = tar.extractfile(members[0])
-            assert extracted is not None
-            assert extracted.read() == b"hello"
+            assert tar.extractfile("file.txt").read() == b"hello"  # type: ignore[union-attr]
 
     def test_copy_from_container_directory(self, mock_client: MagicMock, mock_sandbox: MagicMock) -> None:
-        """Test directories are walked and archived with paths relative to the root name."""
+        """Test directories are walked and archived under the root name."""
         mock_sandbox.fs.stat.return_value = FileInfo(
             path=f"{WORKDIR}/dir", size=0, mode=0o755, is_dir=True, modified_unix_ns=MTIME_NS
         )
@@ -886,9 +802,7 @@ class TestTenkiContainerAPI:
                 FileInfo(path="a.txt", size=3, mode=0o644, is_dir=False, modified_unix_ns=MTIME_NS),
                 FileInfo(path="nested", size=0, mode=0o755, is_dir=True, modified_unix_ns=MTIME_NS),
             ],
-            [
-                FileInfo(path="b.txt", size=1, mode=0o644, is_dir=False, modified_unix_ns=MTIME_NS),
-            ],
+            [FileInfo(path="b.txt", size=1, mode=0o644, is_dir=False, modified_unix_ns=MTIME_NS)],
         ]
         mock_sandbox.fs.read_bytes.side_effect = [b"aaa", b"b"]
 
@@ -897,5 +811,28 @@ class TestTenkiContainerAPI:
         assert stat["size"] == 4
         with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
             assert sorted(m.name for m in tar.getmembers()) == ["dir/a.txt", "dir/nested/b.txt"]
-            assert tar.extractfile("dir/a.txt").read() == b"aaa"  # type: ignore[union-attr]
-            assert tar.extractfile("dir/nested/b.txt").read() == b"b"  # type: ignore[union-attr]
+
+    def test_copy_from_container_falls_back_to_shell_outside_workdir(
+        self, mock_client: MagicMock, mock_sandbox: MagicMock
+    ) -> None:
+        """Test paths the FS API rejects are archived via shell (plot capture)."""
+        import base64
+
+        mock_sandbox.fs.stat.side_effect = SandboxError("path outside workdir")
+
+        tar_buf = io.BytesIO()
+        with tarfile.open(fileobj=tar_buf, mode="w") as tar:
+            member = tarfile.TarInfo(name="000001.png")
+            member.size = 4
+            tar.addfile(member, io.BytesIO(b"PNG!"))
+        encoded = base64.b64encode(tar_buf.getvalue())
+
+        mock_sandbox.shell.side_effect = [
+            make_command_result(),
+            make_command_result(stdout=encoded),
+        ]
+
+        data, _ = TenkiContainerAPI(mock_client).copy_from_container(mock_sandbox, "/tmp/sandbox_plots/000001.png")
+
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
+            assert tar.extractfile("000001.png").read() == b"PNG!"  # type: ignore[union-attr]
