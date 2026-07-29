@@ -4,14 +4,10 @@ import base64
 import logging
 from pathlib import Path
 
-from podman import PodmanClient
-
 from llm_sandbox import ArtifactSandboxSession, SandboxBackend
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-podman_client = PodmanClient.from_env()
 
 code = """
 import matplotlib.pyplot as plt
@@ -242,79 +238,96 @@ print("All plotting tests completed successfully!")
 print("Generated plots from: matplotlib, seaborn, pandas, and plotly!")
 """
 
-Path("plots").mkdir(exist_ok=True)
+BACKENDS = {
+    "docker": SandboxBackend.DOCKER,
+    "kubernetes": SandboxBackend.KUBERNETES,
+    "podman": SandboxBackend.PODMAN,
+    "tenki": SandboxBackend.TENKI,
+}
 
-with ArtifactSandboxSession(
-    lang="python",
-    verbose=True,
-    image="ghcr.io/vndee/sandbox-python-311-bullseye",
-    backend=SandboxBackend.KUBERNETES,
-) as session:
-    result = session.run(code)
-    logger.info("Captured %d plots", len(result.plots))
 
-    # Create plots directory if it doesn't exist
-    Path("plots/kubernetes").mkdir(exist_ok=True)
+def build_client(backend_name: str) -> object | None:
+    """Build a client for one backend only, at the point of use.
 
-    # save plots to files
-    for i, plot in enumerate(result.plots):
-        plot_path = Path("plots/kubernetes") / f"{i + 1:06d}.{plot.format.value}"
+    Constructing every client up front made the module unimportable without Podman
+    running, which in turn made the cloud backends unreachable on a machine with no
+    local container runtime at all.
+
+    Returns:
+        object | None: A backend client, or None when the backend builds its own.
+
+    """
+    if backend_name == "podman":
+        from podman import PodmanClient
+
+        return PodmanClient.from_env()
+    return None
+
+
+def save_plots(backend_name: str, result: object) -> None:
+    """Write captured plots into plots/<backend>/."""
+    out_dir = Path("plots") / backend_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for i, plot in enumerate(result.plots):  # type: ignore[attr-defined]
+        plot_path = out_dir / f"{i + 1:06d}.{plot.format.value}"
         with plot_path.open("wb") as f:
             f.write(base64.b64decode(plot.content_base64))
 
-with ArtifactSandboxSession(
-    lang="python",
-    verbose=True,
-    image="ghcr.io/vndee/sandbox-python-311-bullseye",
-    backend=SandboxBackend.DOCKER,
-) as session:
-    result = session.run(code)
-    logger.info("Captured %d plots", len(result.plots))
 
-    # Create plots directory if it doesn't exist
-    Path("plots/docker").mkdir(exist_ok=True)
+def run_backend(backend_name: str) -> None:
+    """Capture plots on one backend.
 
-    # save plots to files
-    for i, plot in enumerate(result.plots):
-        plot_path = Path("plots/docker") / f"{i + 1:06d}.{plot.format.value}"
-        with plot_path.open("wb") as f:
-            f.write(base64.b64decode(plot.content_base64))
+    Raises:
+        ValueError: If the backend name is not recognised.
 
-with ArtifactSandboxSession(
-    client=podman_client,
-    lang="python",
-    verbose=True,
-    image="ghcr.io/vndee/sandbox-python-311-bullseye",
-    backend=SandboxBackend.PODMAN,
-) as session:
-    result = session.run(code)
-    logger.info("Captured %d plots", len(result.plots))
+    """
+    if backend_name not in BACKENDS:
+        msg = f"Unknown backend {backend_name!r}; choose from {sorted(BACKENDS)}"
+        raise ValueError(msg)
 
-    # Create plots directory if it doesn't exist
-    Path("plots/podman").mkdir(exist_ok=True)
+    logger.info("=== %s ===", backend_name.upper())
 
-    # save plots to files
-    for i, plot in enumerate(result.plots):
-        plot_path = Path("plots/podman") / f"{i + 1:06d}.{plot.format.value}"
-        with plot_path.open("wb") as f:
-            f.write(base64.b64decode(plot.content_base64))
+    session_kwargs: dict = {
+        "lang": "python",
+        "verbose": True,
+        "backend": BACKENDS[backend_name],
+        "client": build_client(backend_name),
+    }
+    run_kwargs: dict = {}
 
-with ArtifactSandboxSession(
-    lang="python",
-    verbose=True,
-    backend=SandboxBackend.TENKI,
-    workdir="/home/tenki",
-    runtime_configs={"allow_outbound": True},
-) as session:
-    result = session.run(
-        code,
-        libraries=["matplotlib", "seaborn", "pandas", "numpy", "plotly"],
-    )
-    logger.info("Captured %d plots", len(result.plots))
+    if backend_name == "tenki":
+        # Tenki boots its own images, and the plotting stack is not preinstalled, so it
+        # is installed per run. The workdir default already matches, and egress is
+        # needed to reach PyPI.
+        session_kwargs["runtime_configs"] = {"allow_outbound": True}
+        run_kwargs["libraries"] = ["matplotlib", "seaborn", "pandas", "numpy", "plotly"]
+    else:
+        session_kwargs["image"] = "ghcr.io/vndee/sandbox-python-311-bullseye"
 
-    Path("plots/tenki").mkdir(exist_ok=True)
+    with ArtifactSandboxSession(**session_kwargs) as session:
+        result = session.run(code, **run_kwargs)
+        logger.info("Captured %d plots", len(result.plots))
+        save_plots(backend_name, result)
 
-    for i, plot in enumerate(result.plots):
-        plot_path = Path("plots/tenki") / f"{i + 1:06d}.{plot.format.value}"
-        with plot_path.open("wb") as f:
-            f.write(base64.b64decode(plot.content_base64))
+
+def main() -> None:
+    """Run one backend by name, or every backend when none is given."""
+    import sys
+
+    Path("plots").mkdir(exist_ok=True)
+
+    if len(sys.argv) > 1:
+        run_backend(sys.argv[1])
+        return
+
+    # No argument: attempt them all, but one unavailable runtime must not stop the rest.
+    for backend_name in BACKENDS:
+        try:
+            run_backend(backend_name)
+        except Exception:
+            logger.exception("%s skipped", backend_name)
+
+
+if __name__ == "__main__":
+    main()
