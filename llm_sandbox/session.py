@@ -289,7 +289,7 @@ class ArtifactSandboxSession:
         commit_container: bool = False,
         verbose: bool = False,
         runtime_configs: dict | None = None,
-        workdir: str | None = "/sandbox",
+        workdir: str | None = None,
         enable_plotting: bool = True,
         security_policy: SecurityPolicy | None = None,
         container_id: str | None = None,
@@ -471,13 +471,19 @@ class ArtifactSandboxSession:
         # Initialize attributes with proper types
         self._pooled_impl: ArtifactPooledSandboxSession | None
         self._session: BaseSession | PooledSandboxSession | None
+        if workdir is None:
+            match backend:
+                case SandboxBackend.TENKI:
+                    workdir = "/home/tenki"
+                case _:
+                    workdir = "/sandbox"
 
         # If pool is provided, delegate to ArtifactPooledSandboxSession
         if pool is not None:
             self._pooled_impl = ArtifactPooledSandboxSession(
                 pool_manager=pool,
                 verbose=verbose,
-                workdir=workdir or "/sandbox",
+                workdir=workdir,
                 enable_plotting=enable_plotting,
                 security_policy=security_policy,
                 **kwargs,
