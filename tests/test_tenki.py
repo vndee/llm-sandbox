@@ -810,7 +810,54 @@ class TestTenkiContainerAPI:
 
         assert stat["size"] == 4
         with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
-            assert sorted(m.name for m in tar.getmembers()) == ["dir/a.txt", "dir/nested/b.txt"]
+            members = {m.name: m.isdir() for m in tar.getmembers()}
+
+        # Directory entries are carried too, root first. Without them the shared extractor
+        # mistakes a single-file directory for a file copy and overwrites the destination.
+        assert members == {"dir": True, "dir/a.txt": False, "dir/nested": True, "dir/nested/b.txt": False}
+
+    def test_copy_from_container_single_file_directory_is_still_a_directory(
+        self, mock_client: MagicMock, mock_sandbox: MagicMock
+    ) -> None:
+        """Test a directory holding exactly one file archives as two members, not one.
+
+        _determine_extract_path treats a one-member tar whose member is a file as a
+        single-file copy, so without the root entry the destination directory is replaced.
+        """
+        mock_sandbox.fs.stat.return_value = FileInfo(
+            path=f"{WORKDIR}/dir", size=0, mode=0o755, is_dir=True, modified_unix_ns=MTIME_NS
+        )
+        mock_sandbox.fs.list.return_value = [
+            FileInfo(path="only.txt", size=4, mode=0o644, is_dir=False, modified_unix_ns=MTIME_NS)
+        ]
+        mock_sandbox.fs.read_bytes.return_value = b"data"
+
+        data, _ = TenkiContainerAPI(mock_client).copy_from_container(mock_sandbox, f"{WORKDIR}/dir")
+
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
+            members = tar.getmembers()
+
+        assert [m.name for m in members] == ["dir", "dir/only.txt"]
+        assert members[0].isdir()
+
+    def test_copy_from_container_empty_directory_is_not_reported_as_missing(
+        self, mock_client: MagicMock, mock_sandbox: MagicMock
+    ) -> None:
+        """Test an empty directory yields a member and a non-zero size.
+
+        Callers read size 0 as "not found", so an empty directory has to report something:
+        it was found, it simply holds no bytes.
+        """
+        mock_sandbox.fs.stat.return_value = FileInfo(
+            path=f"{WORKDIR}/empty", size=0, mode=0o755, is_dir=True, modified_unix_ns=MTIME_NS
+        )
+        mock_sandbox.fs.list.return_value = []
+
+        data, stat = TenkiContainerAPI(mock_client).copy_from_container(mock_sandbox, f"{WORKDIR}/empty")
+
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
+            assert [m.name for m in tar.getmembers()] == ["empty"]
+        assert stat["size"] > 0
 
     def test_copy_from_container_falls_back_to_shell_outside_workdir(
         self, mock_client: MagicMock, mock_sandbox: MagicMock

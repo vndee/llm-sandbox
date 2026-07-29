@@ -74,16 +74,25 @@ def _archive_via_shell(container: Sandbox, src: str) -> tuple[bytes, dict]:
     }
 
 
-def _iter_remote_files(container: Sandbox, root: str) -> list[tuple[str, Any]]:
-    """List every file under a guest directory as ``(absolute_path, FileInfo)``."""
-    files: list[tuple[str, Any]] = []
+def _iter_remote_entries(container: Sandbox, root: str) -> list[tuple[str, Any]]:
+    """List everything under a guest directory as ``(absolute_path, FileInfo)``.
+
+    Directories are included, each before its contents. Emitting them is not cosmetic:
+    the shared extractor treats a one-member tar whose member is a file as a single-file
+    copy, so a directory holding exactly one file would be extracted over the
+    destination directory, and a directory holding none would produce an empty archive.
+
+    Returns:
+        list[tuple[str, Any]]: Absolute guest paths paired with their FileInfo.
+
+    """
+    entries: list[tuple[str, Any]] = []
     for entry in container.fs.list(root):
         full = f"{root.rstrip('/')}/{Path(entry.path).name}"
+        entries.append((full, entry))
         if entry.is_dir:
-            files.extend(_iter_remote_files(container, full))
-        else:
-            files.append((full, entry))
-    return files
+            entries.extend(_iter_remote_entries(container, full))
+    return entries
 
 
 class TenkiContainerAPI:
@@ -154,9 +163,9 @@ class TenkiContainerAPI:
 
         name = Path(src).name
         if info.is_dir:
-            entries = [
+            entries = [(name, src, info)] + [
                 (f"{name}/{Path(path).relative_to(src).as_posix()}", path, entry)
-                for path, entry in _iter_remote_files(container, src)
+                for path, entry in _iter_remote_entries(container, src)
             ]
         else:
             entries = [(name, src, info)]
@@ -166,17 +175,24 @@ class TenkiContainerAPI:
 
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
             for member_name, remote_path, file_info in entries:
-                data = container.fs.read_bytes(remote_path)
                 member = tarfile.TarInfo(name=member_name)
-                member.size = len(data)
                 member.mode = file_info.mode & 0o7777
                 member.mtime = file_info.modified_unix_ns // 1_000_000_000
+
+                if file_info.is_dir:
+                    member.type = tarfile.DIRTYPE
+                    tar.addfile(member)
+                    continue
+
+                data = container.fs.read_bytes(remote_path)
+                member.size = len(data)
                 tar.addfile(member, io.BytesIO(data))
                 total_size += file_info.size
 
-        return tar_stream.getvalue(), {
+        archive = tar_stream.getvalue()
+        return archive, {
             "name": name,
-            "size": total_size,
+            "size": total_size or len(archive),
             "mtime": info.modified_unix_ns // 1_000_000_000,
             "mode": info.mode & 0o7777,
             "linkTarget": "",
