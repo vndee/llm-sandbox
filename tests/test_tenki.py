@@ -388,15 +388,44 @@ class TestSandboxTenkiSessionCloseIsRetryable:
     def test_exit_does_not_let_cleanup_failure_mask_the_block_error(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
     ) -> None:
-        """Test the caller's exception wins over a teardown failure."""
-        mock_sandbox.terminate.side_effect = SandboxError("already gone")
+        """Test the caller's exception wins, with the cleanup failure chained onto it."""
+        mock_sandbox.terminate.side_effect = SandboxError("terminate failed")
         session = tenki_session_factory()
-
         body_error = ValueError("user code failed")
 
-        with pytest.raises(ValueError, match="user code failed"), session:
+        with pytest.raises(ValueError, match="user code failed") as raised, session:
             raise body_error
 
+        assert isinstance(raised.value.__context__, ContainerError)
+        assert "Failed to release Tenki sandbox" in str(raised.value.__context__)
+        assert session.container is mock_sandbox
+
+        mock_sandbox.terminate.side_effect = None
+        session.close()
+        assert session.container is None
+
+    def test_exit_reports_failed_cleanup_while_preserving_the_block_error(
+        self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
+    ) -> None:
+        """Test a failed __exit__ cleanup is logged with the sandbox id."""
+        mock_sandbox.terminate.side_effect = SandboxError("terminate failed")
+        session = tenki_session_factory()
+        session.verbose = True
+        body_error = ValueError("user code failed")
+
+        with (
+            patch.object(session, "_log") as mock_log,
+            pytest.raises(ValueError, match="user code failed"),
+            session,
+        ):
+            raise body_error
+
+        mock_log.assert_any_call(
+            f"Tenki sandbox {mock_sandbox.id} is STILL RUNNING: "
+            f"CLEANUP FAILED (Failed to release Tenki sandbox {mock_sandbox.id}: terminate failed). "
+            "Call close() again to retry or terminate directly.",
+            "error",
+        )
         assert session.container is mock_sandbox
 
     def test_exit_raises_cleanup_failure_when_the_block_succeeded(

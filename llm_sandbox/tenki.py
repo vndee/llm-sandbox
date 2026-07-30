@@ -6,7 +6,6 @@ backends.
 """
 
 import base64
-import contextlib
 import io
 import shlex
 import tarfile
@@ -362,7 +361,7 @@ class SandboxTenkiSession(BaseSession):
             except Exception as cleanup_error:  # noqa: BLE001 - must not displace setup_error
                 self._log(
                     f"Tenki sandbox {getattr(self.container, 'id', 'unknown')} is STILL RUNNING: "
-                    f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly..",
+                    f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly.",
                     "error",
                 )
                 setup_error.__context__ = cleanup_error
@@ -480,13 +479,21 @@ class SandboxTenkiSession(BaseSession):
         exc_val: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Close the session, without letting cleanup mask an error from the block."""
+        """Close the session without letting cleanup mask an error from the block."""
         if exc_type is None:
             self.close()
             return
 
-        with contextlib.suppress(Exception):
+        try:
             self.close()
+        except Exception as cleanup_error:  # noqa: BLE001 - must not displace the block error
+            self._log(
+                f"Tenki sandbox {getattr(self.container, 'id', 'unknown')} is STILL RUNNING: "
+                f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly.",
+                "error",
+            )
+            if exc_val is not None:
+                exc_val.__context__ = cleanup_error
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:
         """Get an archive of a path from the Tenki sandbox.
