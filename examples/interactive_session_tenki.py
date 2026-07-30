@@ -59,7 +59,7 @@ print(f'Mean: {arr.mean()}')
         print("\n[Example 5] Error handling")
         result = session.run("print(1 / 0)")
         print(f"Exit code: {result.exit_code}")
-        print(f"Error: {result.stderr}")
+        print(f"Error: {result.stderr or result.stdout}")
 
     print("\n" + "=" * 60)
     print("Demo completed successfully!")
