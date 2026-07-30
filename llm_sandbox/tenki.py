@@ -344,9 +344,9 @@ class SandboxTenkiSession(BaseSession):
 
         super().open()
 
-        self.container_api = TenkiContainerAPI(self._get_client())
-
         try:
+            self.container_api = TenkiContainerAPI(self._get_client())
+
             if self.using_existing_container and self.config.container_id:
                 self._connect_to_existing_container(self.config.container_id)
             else:
