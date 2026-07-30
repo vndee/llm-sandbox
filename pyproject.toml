@@ -26,7 +26,7 @@ Documentation = "https://vndee.github.io/llm-sandbox/"
 docker = ["docker>=7.1.0"]
 k8s = ["kubernetes>=32.0.1"]
 podman = ["docker>=7.1.0", "podman>=5.4.0.1"]
-tenki = ["tenki-sandbox>=0.4.0"]
+tenki = ["tenki>=0.5.4"]
 mcp-docker = ["docker>=7.1.0", "mcp>=1.10.0"]
 mcp-podman = ["docker>=7.1.0", "mcp>=1.10.0", "podman>=5.4.0.1"]
 mcp-k8s = ["kubernetes>=32.0.1", "mcp>=1.10.0"]
@@ -55,7 +55,7 @@ dev = [
     "mkdocs-minify-plugin>=0.8.0",
     "mkdocs-git-revision-date-localized-plugin>=1.4.6",
     "mcp>=1.10.0",
-    "tenki-sandbox>=0.4.0",
+    "tenki>=0.5.4",
 ]
 
 [build-system]

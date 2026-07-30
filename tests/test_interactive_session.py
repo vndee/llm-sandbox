@@ -116,7 +116,7 @@ class TestInteractiveTenkiBackend:
         """
         import inspect
 
-        from tenki_sandbox import Client
+        from tenki import Client
 
         mock_cls, _ = self._make_tenki(runtime_configs={"mem_limit": "1GB", "cpu_cores": 2})
 

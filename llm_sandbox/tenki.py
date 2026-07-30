@@ -14,8 +14,8 @@ import types
 from pathlib import Path
 from typing import Any
 
-from tenki_sandbox import Client, CommandResult, Sandbox, SessionNotFoundError, SessionTerminatedError
-from tenki_sandbox import SandboxError as TenkiError
+from tenki import Client, CommandResult, Sandbox, SessionNotFoundError, SessionTerminatedError
+from tenki import SandboxError as TenkiError
 
 from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig

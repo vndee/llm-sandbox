@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from tenki_sandbox import (
+from tenki import (
     Client,
     CommandResult,
     FileInfo,
@@ -48,7 +48,7 @@ def make_command_result(
 
 @pytest.fixture
 def mock_sandbox() -> MagicMock:
-    """Build a stand-in for tenki_sandbox.Sandbox that returns real SDK result types."""
+    """Build a stand-in for tenki.Sandbox that returns real SDK result types."""
     sandbox = MagicMock()
     sandbox.id = "sbx-test"
     sandbox.state = "RUNNING"
@@ -62,7 +62,7 @@ def mock_sandbox() -> MagicMock:
 
 @pytest.fixture
 def mock_client(mock_sandbox: MagicMock) -> MagicMock:
-    """Build a stand-in for tenki_sandbox.Client."""
+    """Build a stand-in for tenki.Client."""
     client = MagicMock()
     client.create.return_value = mock_sandbox
     client.get.return_value = mock_sandbox

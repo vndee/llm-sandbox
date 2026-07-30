@@ -74,7 +74,7 @@ class TestBackendSelection:
     @patch("llm_sandbox.tenki.SandboxTenkiSession")
     def test_create_tenki_session(self, mock_tenki_session: MagicMock, mock_find_spec: MagicMock) -> None:
         """Test creating Tenki session."""
-        mock_find_spec.return_value = MagicMock()  # tenki-sandbox available
+        mock_find_spec.return_value = MagicMock()  # tenki available
         mock_session_instance = MagicMock()
         mock_tenki_session.return_value = mock_session_instance
 
@@ -128,9 +128,9 @@ class TestBackendSelection:
     @patch("llm_sandbox.session.find_spec")
     def test_create_session_missing_tenki_dependency(self, mock_find_spec: MagicMock) -> None:
         """Test creating session when Tenki dependency is missing."""
-        mock_find_spec.return_value = None  # tenki-sandbox not available
+        mock_find_spec.return_value = None  # tenki not available
 
-        with pytest.raises(MissingDependencyError, match="Tenki backend requires 'tenki-sandbox' package"):
+        with pytest.raises(MissingDependencyError, match="Tenki backend requires 'tenki' package"):
             create_session(backend=SandboxBackend.TENKI)
 
 

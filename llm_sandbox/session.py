@@ -35,8 +35,8 @@ def _check_dependency(backend: SandboxBackend) -> None:
     if backend == SandboxBackend.PODMAN and not find_spec("podman"):
         msg = "Podman backend requires 'podman' package. Install it with: pip install llm-sandbox[podman]"
         raise MissingDependencyError(msg)
-    if backend == SandboxBackend.TENKI and not find_spec("tenki_sandbox"):
-        msg = "Tenki backend requires 'tenki-sandbox' package. Install it with: pip install llm-sandbox[tenki]"
+    if backend == SandboxBackend.TENKI and not find_spec("tenki"):
+        msg = "Tenki backend requires 'tenki' package. Install it with: pip install llm-sandbox[tenki]"
         raise MissingDependencyError(msg)
 
 
