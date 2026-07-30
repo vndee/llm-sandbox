@@ -148,10 +148,15 @@ class TenkiContainerAPI:
             container.fs.upload(src, dest)
             return
 
+        container.shell(f"mkdir -p {shlex.quote(dest)}")
+
         for path in src_path.rglob("*"):
+            remote = f"{dest.rstrip('/')}/{path.relative_to(src_path).as_posix()}"
+            if path.is_dir():
+                container.shell(f"mkdir -p {shlex.quote(remote)}")
+                continue
             if not path.is_file():
                 continue
-            remote = f"{dest.rstrip('/')}/{path.relative_to(src_path).as_posix()}"
             container.shell(f"mkdir -p {shlex.quote(str(Path(remote).parent))}")
             container.fs.upload(str(path), remote)
 
