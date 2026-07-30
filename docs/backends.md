@@ -887,12 +887,34 @@ A process that exits before retrying leaves the sandbox running. Set
 `idle_timeout_minutes` or `max_duration` in `runtime_configs` if you need a backstop that
 does not depend on your process staying alive.
 
+### Languages on the default guest
+
+Unlike Docker/Podman/Kubernetes, Tenki does **not** pick a different default image per
+language. Omitting `image=` boots the account default guest, which only has **Python**,
+**Node.js** (`javascript`), and **g++** (`cpp`).
+
+`lang="java"`, `lang="go"`, `lang="ruby"`, and `lang="r"` are rejected at session creation
+unless you pass a custom `image=...` (or attach with `container_id=...`):
+
+```python
+# Fails fast — default guest has no Java
+SandboxSession(backend=SandboxBackend.TENKI, lang="java")
+
+# OK — your image must provide the runtime
+SandboxSession(
+    backend=SandboxBackend.TENKI,
+    lang="java",
+    image="your-registry/java-guest",
+)
+```
+
 ### Limitations
 
 | Feature | Status |
 |---------|--------|
 | `dockerfile=` | Not supported — Tenki boots prebuilt images; use `image=` |
 | `runtime_configs={"user": ...}` | Not supported — single-tenant, one non-root user |
+| Default guest languages | Python, JavaScript, and C++ only; others need `image=` |
 | C++ `libraries=[...]` | Not supported — `apt-get` needs root |
 | Output streaming | Callbacks fire once per command, not incrementally |
 

@@ -24,6 +24,13 @@ from llm_sandbox.data import StreamCallback
 from llm_sandbox.exceptions import ContainerError, ExtraArgumentsError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
+# Runtimes present on Tenki's default guest image (live E2E). Other languages need image=.
+_DEFAULT_GUEST_LANGUAGES = frozenset({
+    SupportedLanguage.PYTHON,
+    SupportedLanguage.JAVASCRIPT,
+    SupportedLanguage.CPP,
+})
+
 
 def _exit_code_of(result: CommandResult) -> int:
     """Return a non-zero exit code whenever a command did not actually succeed.
@@ -235,7 +242,9 @@ class SandboxTenkiSession(BaseSession):
                 `auth_token`/`base_url`, falling back to the `TENKI_AUTH_TOKEN` or
                 `TENKI_API_KEY` environment variable.
             image (str | None): The Tenki image or template to boot. If None, the Tenki
-                account default is used.
+                account default is used. That default only includes Python, Node.js, and
+                g++; other languages require a custom ``image`` (or an existing
+                ``container_id``).
             lang (str): The language to use.
             verbose (bool): Whether to enable verbose output.
             stream (bool): Whether to stream the output. Tenki executes commands
@@ -258,6 +267,8 @@ class SandboxTenkiSession(BaseSession):
 
         Raises:
             ExtraArgumentsError: If `dockerfile` is provided; Tenki boots prebuilt images.
+                Also raised when ``lang`` is not on the default guest and neither
+                ``image`` nor ``container_id`` is set.
 
         """
         if kwargs.pop("dockerfile", None):
@@ -267,9 +278,19 @@ class SandboxTenkiSession(BaseSession):
             )
             raise ExtraArgumentsError(msg)
 
+        resolved_lang = SupportedLanguage(lang.upper())
+        if image is None and container_id is None and resolved_lang not in _DEFAULT_GUEST_LANGUAGES:
+            supported = ", ".join(sorted(guest_lang.value for guest_lang in _DEFAULT_GUEST_LANGUAGES))
+            msg = (
+                f"The Tenki default guest image does not include {resolved_lang.value}. "
+                f"It ships {supported} only. Pass image=... with a guest that provides "
+                f"{resolved_lang.value}, or attach to an existing sandbox via container_id=...."
+            )
+            raise ExtraArgumentsError(msg)
+
         config = SessionConfig(
             image=image,
-            lang=SupportedLanguage(lang.upper()),
+            lang=resolved_lang,
             verbose=verbose,
             workdir=workdir,
             runtime_configs=runtime_configs or {},

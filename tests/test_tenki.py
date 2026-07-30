@@ -137,6 +137,42 @@ class TestSandboxTenkiSessionInit:
         with pytest.raises(ExtraArgumentsError, match="does not build images from a Dockerfile"):
             tenki_session_factory(dockerfile="/path/to/Dockerfile")
 
+    @pytest.mark.parametrize("lang", ["python", "javascript", "cpp"])
+    def test_init_allows_default_guest_languages(
+        self, tenki_session_factory: Callable[..., SandboxTenkiSession], lang: str
+    ) -> None:
+        """Test languages on the default guest do not require a custom image."""
+        session = tenki_session_factory(lang=lang)
+
+        assert session.config.lang.value == lang
+        assert session.config.image is None
+
+    @pytest.mark.parametrize("lang", ["java", "go", "ruby", "r"])
+    def test_init_rejects_unsupported_default_guest_languages(
+        self, tenki_session_factory: Callable[..., SandboxTenkiSession], lang: str
+    ) -> None:
+        """Test langs absent from the default guest fail fast without image=."""
+        with pytest.raises(ExtraArgumentsError, match="default guest image does not include"):
+            tenki_session_factory(lang=lang)
+
+    def test_init_allows_unsupported_language_with_custom_image(
+        self, tenki_session_factory: Callable[..., SandboxTenkiSession]
+    ) -> None:
+        """Test a custom image opts into languages the default guest lacks."""
+        session = tenki_session_factory(lang="java", image="tenki/java:17")
+
+        assert session.config.lang.value == "java"
+        assert session.config.image == "tenki/java:17"
+
+    def test_init_allows_unsupported_language_when_attaching(
+        self, tenki_session_factory: Callable[..., SandboxTenkiSession]
+    ) -> None:
+        """Test attaching to an existing sandbox skips the default-guest language gate."""
+        session = tenki_session_factory(lang="go", container_id="sbx-999")
+
+        assert session.config.lang.value == "go"
+        assert session.using_existing_container is True
+
 
 class TestSandboxTenkiSessionClient:
     """Test lazy Tenki client construction."""
