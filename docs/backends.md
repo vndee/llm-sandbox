@@ -811,11 +811,16 @@ with SandboxSession(
         "cpu_cores": 2,
         "memory_mb": 2048,      # not Docker's "mem_limit"
         "allow_outbound": False, # no network egress
+        "timeout": 60,          # provisioning wait (passed to wait_ready)
         "env": {"MY_VAR": "value"},
     },
 ) as session:
     pass
 ```
+
+`timeout` is the SDK create wait budget. llm-sandbox creates with `wait=False` so it can assign
+the sandbox handle before waiting; the same `timeout` value is then passed to `wait_ready()`.
+Omit it to keep the SDK default of 180 seconds.
 
 There is no `user` option — a Tenki sandbox is single-tenant and runs everything as one
 non-root user.

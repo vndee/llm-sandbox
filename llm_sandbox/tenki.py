@@ -118,7 +118,7 @@ class TenkiContainerAPI:
         return self.client.create(**config)
 
     def start_container(self, container: Sandbox) -> None:
-        """Wait until the sandbox can run commands."""
+        """Wait until the sandbox can run commands (SDK default timeout)."""
         container.wait_ready()
 
     def stop_container(self, container: Sandbox) -> None:
@@ -388,10 +388,14 @@ class SandboxTenkiSession(BaseSession):
         create_config["env"] = env
 
         create_config["wait"] = False
+        provision_timeout = create_config.get("timeout")
 
         try:
             self.container = self.container_api.create_container(create_config)
-            self.container_api.start_container(self.container)
+            if provision_timeout is None:
+                self.container.wait_ready()
+            else:
+                self.container.wait_ready(provision_timeout)
         except Exception as e:
             msg = f"Failed to create Tenki sandbox: {e}"
             self._log(msg, "error")
@@ -536,7 +540,11 @@ class SandboxTenkiSession(BaseSession):
                 self._log(f"Tenki sandbox {container_id} is paused, resuming...")
                 container.resume()
 
-            container.wait_ready()
+            provision_timeout = self.config.runtime_configs.get("timeout")
+            if provision_timeout is None:
+                container.wait_ready()
+            else:
+                container.wait_ready(provision_timeout)
             self.container = container
             self._log(f"Attached to existing Tenki sandbox {container_id}")
         except Exception as e:

@@ -214,9 +214,21 @@ class TestSandboxTenkiSessionOpen:
         assert create_kwargs["cpu_cores"] == 2
         assert create_kwargs["env"]["MY_VAR"] == "value"
         assert create_kwargs["env"]["PYTHONUNBUFFERED"] == "1"
-        mock_sandbox.wait_ready.assert_called_once()
+        mock_sandbox.wait_ready.assert_called_once_with()
         assert session.container is mock_sandbox
         assert session.is_open is True
+
+    def test_open_forwards_create_timeout_to_wait_ready(
+        self,
+        tenki_session_factory: Callable[..., SandboxTenkiSession],
+        mock_sandbox: MagicMock,
+    ) -> None:
+        """Test runtime_configs timeout is applied to wait_ready after create(wait=False)."""
+        session = tenki_session_factory(runtime_configs={"timeout": 30})
+
+        session.open()
+
+        mock_sandbox.wait_ready.assert_called_once_with(30)
 
     def test_open_wraps_creation_errors(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_client: MagicMock
@@ -412,6 +424,21 @@ class TestSandboxTenkiSessionCloseIsRetryable:
 
 class TestSandboxTenkiSessionOpenIsFailureAtomic:
     """Test that a failed open() never silently abandons a running microVM."""
+
+    def test_open_rolls_back_session_state_when_auth_is_missing(
+        self, tenki_session_factory: Callable[..., SandboxTenkiSession], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test missing credentials clear is_open and the session timer."""
+        monkeypatch.delenv("TENKI_AUTH_TOKEN", raising=False)
+        monkeypatch.delenv("TENKI_API_KEY", raising=False)
+        session = tenki_session_factory(client=None, session_timeout=60.0)
+
+        with pytest.raises(MissingAuthTokenError, match="TENKI_AUTH_TOKEN or TENKI_API_KEY"):
+            session.open()
+
+        assert session.is_open is False
+        assert session._session_timer is None
+        assert session.container is None
 
     def test_open_terminates_sandbox_when_readiness_fails(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
