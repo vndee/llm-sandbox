@@ -894,23 +894,13 @@ does not depend on your process staying alive.
 
 ### Languages on the default guest
 
-Unlike Docker/Podman/Kubernetes, Tenki does **not** pick a different default image per
-language. Omitting `image=` boots the account default guest, which only has **Python**,
-**Node.js** (`javascript`), and **g++** (`cpp`).
-
-`lang="java"`, `lang="go"`, `lang="ruby"`, and `lang="r"` are rejected at session creation
-unless you pass a custom `image=...` (or attach with `container_id=...`):
+Tenki does not pick a per-language default image. Without `image=`, only **Python**,
+**JavaScript**, and **C++** work. Other languages need a custom `image=` (or an existing
+`container_id=`):
 
 ```python
-# Fails fast — default guest has no Java
-SandboxSession(backend=SandboxBackend.TENKI, lang="java")
-
-# OK — your image must provide the runtime
-SandboxSession(
-    backend=SandboxBackend.TENKI,
-    lang="java",
-    image="your-registry/java-guest",
-)
+SandboxSession(backend=SandboxBackend.TENKI, lang="java")  # rejected
+SandboxSession(backend=SandboxBackend.TENKI, lang="java", image="your-registry/java-guest")
 ```
 
 ### Limitations
