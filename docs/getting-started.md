@@ -907,10 +907,13 @@ kubectl version
 ```
 
 Not applicable to Tenki, which needs no local runtime. If Tenki fails to start a sandbox,
-check your credentials instead:
+check whether a credential is present — this reports presence only, never the value, so it
+is safe to run in CI logs:
 
 ```bash
-echo "${TENKI_AUTH_TOKEN:-${TENKI_API_KEY:-unset}}"
+[ -n "${TENKI_AUTH_TOKEN:-}${TENKI_API_KEY:-}" ] \
+  && echo "Tenki credential: set" \
+  || echo "Tenki credential: NOT set"
 ```
 
 ### Permission Errors
