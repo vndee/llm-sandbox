@@ -11,6 +11,7 @@ Usage:
 
 import logging
 import time
+from contextlib import ExitStack, closing
 
 from llm_sandbox import SandboxBackend, SandboxSession
 
@@ -26,8 +27,11 @@ BACKENDS = {
 }
 
 
-def build_client(backend_name: str) -> object | None:
+def build_client(backend_name: str, stack: ExitStack) -> object | None:
     """Build a client for one backend only, at the point of use.
+
+    The client is entered into ``stack`` so it is closed when the caller exits the
+    ``ExitStack``. Docker/Podman sessions do not close an injected client themselves.
 
     Returns:
         object | None: A backend client, or None when the backend builds its own.
@@ -36,11 +40,12 @@ def build_client(backend_name: str) -> object | None:
     if backend_name == "docker":
         import docker
 
-        return docker.DockerClient.from_env()
+        # DockerClient has close() but is not a context manager.
+        return stack.enter_context(closing(docker.DockerClient.from_env()))
     if backend_name == "podman":
         from podman import PodmanClient
 
-        return PodmanClient.from_env()
+        return stack.enter_context(PodmanClient.from_env())
     return None
 
 
@@ -56,13 +61,16 @@ def time_startup(backend_name: str, *, skip_setup: bool) -> None:
     logger.info("\n--- %s: %s ---", backend_name, label)
 
     started = time.perf_counter()
-    with SandboxSession(
-        lang="python",
-        verbose=True,
-        backend=BACKENDS[backend_name],
-        client=build_client(backend_name),
-        skip_environment_setup=skip_setup,
-    ) as session:
+    with (
+        ExitStack() as stack,
+        SandboxSession(
+            lang="python",
+            verbose=True,
+            backend=BACKENDS[backend_name],
+            client=build_client(backend_name, stack),
+            skip_environment_setup=skip_setup,
+        ) as session,
+    ):
         ready = time.perf_counter() - started
         # Confirms the sandbox is genuinely usable, not merely opened. With setup skipped
         # this relies on the image already shipping a working interpreter.

@@ -2,6 +2,7 @@
 
 import base64
 import logging
+from contextlib import ExitStack
 from pathlib import Path
 
 from llm_sandbox import ArtifactSandboxSession, SandboxBackend
@@ -246,12 +247,13 @@ BACKENDS = {
 }
 
 
-def build_client(backend_name: str) -> object | None:
+def build_client(backend_name: str, stack: ExitStack) -> object | None:
     """Build a client for one backend only, at the point of use.
 
     Constructing every client up front made the module unimportable without Podman
     running, which in turn made the cloud backends unreachable on a machine with no
-    local container runtime at all.
+    local container runtime at all. The client is entered into ``stack`` so it is
+    closed when the caller exits the ``ExitStack``.
 
     Returns:
         object | None: A backend client, or None when the backend builds its own.
@@ -260,7 +262,7 @@ def build_client(backend_name: str) -> object | None:
     if backend_name == "podman":
         from podman import PodmanClient
 
-        return PodmanClient.from_env()
+        return stack.enter_context(PodmanClient.from_env())
     return None
 
 
@@ -288,27 +290,28 @@ def run_backend(backend_name: str) -> None:
 
     logger.info("=== %s ===", backend_name.upper())
 
-    session_kwargs: dict = {
-        "lang": "python",
-        "verbose": True,
-        "backend": BACKENDS[backend_name],
-        "client": build_client(backend_name),
-    }
-    run_kwargs: dict = {}
+    with ExitStack() as stack:
+        session_kwargs: dict = {
+            "lang": "python",
+            "verbose": True,
+            "backend": BACKENDS[backend_name],
+            "client": build_client(backend_name, stack),
+        }
+        run_kwargs: dict = {}
 
-    if backend_name == "tenki":
-        # Tenki boots its own images, and the plotting stack is not preinstalled, so it
-        # is installed per run. The workdir default already matches, and egress is
-        # needed to reach PyPI.
-        session_kwargs["runtime_configs"] = {"allow_outbound": True}
-        run_kwargs["libraries"] = ["matplotlib", "seaborn", "pandas", "numpy", "plotly"]
-    else:
-        session_kwargs["image"] = "ghcr.io/vndee/sandbox-python-311-bullseye"
+        if backend_name == "tenki":
+            # Tenki boots its own images, and the plotting stack is not preinstalled, so it
+            # is installed per run. The workdir default already matches, and egress is
+            # needed to reach PyPI.
+            session_kwargs["runtime_configs"] = {"allow_outbound": True}
+            run_kwargs["libraries"] = ["matplotlib", "seaborn", "pandas", "numpy", "plotly"]
+        else:
+            session_kwargs["image"] = "ghcr.io/vndee/sandbox-python-311-bullseye"
 
-    with ArtifactSandboxSession(**session_kwargs) as session:
-        result = session.run(code, **run_kwargs)
-        logger.info("Captured %d plots", len(result.plots))
-        save_plots(backend_name, result)
+        with ArtifactSandboxSession(**session_kwargs) as session:
+            result = session.run(code, **run_kwargs)
+            logger.info("Captured %d plots", len(result.plots))
+            save_plots(backend_name, result)
 
 
 def main() -> None:
