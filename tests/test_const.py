@@ -79,15 +79,17 @@ class TestSandboxBackend:
         assert SandboxBackend.KUBERNETES == "kubernetes"
         assert SandboxBackend.PODMAN == "podman"
         assert SandboxBackend.MICROMAMBA == "micromamba"
+        assert SandboxBackend.TENKI == "tenki"
 
     def test_backend_iteration(self) -> None:
         """Test iterating over backends."""
         backends = list(SandboxBackend)
-        assert len(backends) == 4
+        assert len(backends) == 5
         assert SandboxBackend.DOCKER in backends
         assert SandboxBackend.KUBERNETES in backends
         assert SandboxBackend.PODMAN in backends
         assert SandboxBackend.MICROMAMBA in backends
+        assert SandboxBackend.TENKI in backends
 
     def test_backend_case_insensitive(self) -> None:
         """Test case-insensitive backend lookup."""
@@ -95,6 +97,7 @@ class TestSandboxBackend:
         assert SandboxBackend("Kubernetes") == SandboxBackend.KUBERNETES
         assert SandboxBackend("PODMAN") == SandboxBackend.PODMAN
         assert SandboxBackend("MicroMamba") == SandboxBackend.MICROMAMBA
+        assert SandboxBackend("Tenki") == SandboxBackend.TENKI
 
 
 class TestSupportedLanguage:

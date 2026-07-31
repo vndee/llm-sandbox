@@ -72,8 +72,11 @@ pip install 'llm-sandbox[k8s]'
 # For Podman support
 pip install 'llm-sandbox[podman]'
 
+# For Tenki support (cloud microVMs)
+pip install 'llm-sandbox[tenki]'
+
 # All backends
-pip install 'llm-sandbox[docker,k8s,podman]'
+pip install 'llm-sandbox[docker,k8s,podman,tenki]'
 ```
 
 ### Development Installation

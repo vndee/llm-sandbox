@@ -98,6 +98,12 @@ def _create_backend_session(
             # Filter it out from kwargs if it's present to avoid TypeError
             kubernetes_kwargs = {k: v for k, v in kwargs.items() if k != "runtime_configs"}
             return SandboxKubernetesSession(**kubernetes_kwargs)
+        case SandboxBackend.TENKI:
+            from llm_sandbox.tenki import SandboxTenkiSession
+
+            # Drop mem_limit. Tenki rejects unknown create kwargs. Use memory_mb instead.
+            tenki_configs = {k: v for k, v in (runtime_configs or {}).items() if k != "mem_limit"}
+            return SandboxTenkiSession(runtime_configs=tenki_configs, **kwargs)
         case _:
             raise UnsupportedBackendError(backend=backend)
 
@@ -106,8 +112,9 @@ class InteractiveSandboxSession(BaseSession):
     """Interactive sandbox session that preserves interpreter state across runs.
 
     This class provides a persistent Python execution environment using an IPython kernel
-    that maintains state across multiple code executions. It supports Docker, Podman, and
-    Kubernetes backends, allowing you to choose the backend that best fits your infrastructure.
+    that maintains state across multiple code executions. It supports Docker, Podman,
+    Kubernetes, and Tenki backends, allowing you to choose the backend that best fits your
+    infrastructure.
 
     Unlike standard SandboxSession which creates a fresh execution context for each run(),
     InteractiveSandboxSession maintains a persistent interpreter, making it ideal for
@@ -129,10 +136,11 @@ class InteractiveSandboxSession(BaseSession):
         """Initialize the interactive session.
 
         Args:
-            backend: The sandbox backend to use (docker, podman, or kubernetes)
+            backend: The sandbox backend to use (docker, podman, kubernetes, or tenki)
             lang: Programming language (currently only Python is supported for interactive sessions)
             kernel_type: Kernel backend used for execution (default: ipython)
-            max_memory: Optional memory limit
+            max_memory: Optional memory limit. Ignored by the Kubernetes and Tenki
+                backends; size a Tenki sandbox with runtime_configs={"memory_mb": N}
             history_size: Number of cached execution entries retained in the kernel
             timeout: Default per-cell timeout in seconds
             runtime_configs: Backend-specific runtime configurations

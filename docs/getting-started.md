@@ -7,10 +7,17 @@ This guide will help you get up and running with LLM Sandbox in just a few minut
 Before you begin, ensure you have:
 
 - **Python 3.10 or higher** installed
-- **Container runtime** (at least one of the following):
-    - Docker Desktop or Docker Engine
-    - Kubernetes cluster (local or remote)
-    - Podman
+- **An execution backend** — what this requires depends on which one you pick:
+
+| Backend | Prerequisite |
+|---------|--------------|
+| **Docker** | Docker Desktop or Docker Engine running locally |
+| **Kubernetes** | A cluster (local or remote) and a working kubeconfig |
+| **Podman** | Podman running locally |
+| **Tenki** | A [Tenki](https://tenki.cloud) account and `TENKI_AUTH_TOKEN` — **no local runtime needed** |
+
+Tenki runs code in cloud microVMs, so it is the option to choose if you would rather not
+install or manage a container runtime at all. See [Tenki Backend](backends.md#tenki-backend).
 
 ## Installation
 
@@ -36,8 +43,11 @@ pip install 'llm-sandbox[k8s]'
 # Podman backend
 pip install 'llm-sandbox[podman]'
 
+# Tenki backend (cloud microVMs)
+pip install 'llm-sandbox[tenki]'
+
 # All backends
-pip install 'llm-sandbox[docker,k8s,podman]'
+pip install 'llm-sandbox[docker,k8s,podman,tenki]'
 ```
 
 ### Development Installation
@@ -894,6 +904,16 @@ podman --version
 
 # Check Kubernetes
 kubectl version
+```
+
+Not applicable to Tenki, which needs no local runtime. If Tenki fails to start a sandbox,
+check whether a credential is present — this reports presence only, never the value, so it
+is safe to run in CI logs:
+
+```bash
+[ -n "${TENKI_AUTH_TOKEN:-}${TENKI_API_KEY:-}" ] \
+  && echo "Tenki credential: set" \
+  || echo "Tenki credential: NOT set"
 ```
 
 ### Permission Errors
