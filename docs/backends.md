@@ -14,9 +14,9 @@ Supported backends:
 | **Tenki** | Cloud microVMs, no local runtime | No | Managed | High |
 
 > [!IMPORTANT]
->  Working directory differs on Tenki
->  Docker, Kubernetes, Podman and Micromamba all default `workdir` to `/sandbox`.
->  Tenki defaults to `/home/tenki`. See [Tenki Backend](#tenki-backend).
+> Working directory differs on Tenki
+> Docker, Kubernetes, Podman and Micromamba all default `workdir` to `/sandbox`.
+> Tenki defaults to `/home/tenki`. See [Tenki Backend](#tenki-backend).
 
 ## Docker Backend
 
@@ -870,9 +870,9 @@ Note that `libraries=[...]` is unavailable in this mode — bake dependencies in
 4. **Don't hardcode `/sandbox`** — see the working directory section above.
 
 > [!WARNING]
->  Cleanup is best-effort, not guaranteed
->  `with` is not a promise that the sandbox was released, so a caller that cares about the
->  bill should be prepared to retry or terminate the sandbox manually.
+> Cleanup is best-effort, not guaranteed
+> `with` is not a promise that the sandbox was released, so a caller that cares about the
+> bill should be prepared to retry or terminate the sandbox manually.
 
 Construct the session first if you want to retry, since `as session` is never bound when
 `open()` fails:

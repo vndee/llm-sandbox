@@ -14,7 +14,7 @@ Before you begin, ensure you have:
 | **Docker** | Docker Desktop or Docker Engine running locally |
 | **Kubernetes** | A cluster (local or remote) and a working kubeconfig |
 | **Podman** | Podman running locally |
-| **Tenki** | A [Tenki](https://tenki.cloud) account and `TENKI_AUTH_TOKEN` — **no local runtime needed** |
+| **Tenki** | A [Tenki](https://tenki.cloud) account and `TENKI_AUTH_TOKEN` or `TENKI_API_KEY` — **no local runtime needed** |
 
 Tenki runs code in cloud microVMs, so it is the option to choose if you would rather not
 install or manage a container runtime at all. See [Tenki Backend](backends.md#tenki-backend).

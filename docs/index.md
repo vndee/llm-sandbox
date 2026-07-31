@@ -138,9 +138,11 @@ graph TD
     D --> F[Docker]
     D --> G[Kubernetes]
     D --> H[Podman]
+    D --> I[Tenki]
     F --> J[Isolated Execution]
     G --> J
     H --> J
+    I --> J
     J --> K[Results & Artifacts]
     K --> A
     K --> A1
