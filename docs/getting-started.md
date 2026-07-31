@@ -907,11 +907,11 @@ kubectl version
 ```
 
 Not applicable to Tenki, which needs no local runtime. If Tenki fails to start a sandbox,
-check whether a credential is present — this reports presence only, never the value, so it
-is safe to run in CI logs:
+check whether a credential is present. Use presence-only expansions so the values never
+appear even under `set -x`:
 
 ```bash
-[ -n "${TENKI_AUTH_TOKEN:-}${TENKI_API_KEY:-}" ] \
+[ -n "${TENKI_AUTH_TOKEN:+x}${TENKI_API_KEY:+x}" ] \
   && echo "Tenki credential: set" \
   || echo "Tenki credential: NOT set"
 ```
