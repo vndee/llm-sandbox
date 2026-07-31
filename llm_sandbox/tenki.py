@@ -122,8 +122,25 @@ class TenkiContainerAPI:
         container.wait_ready()
 
     def stop_container(self, container: Sandbox) -> None:
-        """Terminate the Tenki sandbox so the microVM is no longer billed."""
-        container.terminate()
+        """Terminate the Tenki sandbox so the microVM is no longer billed.
+
+        Raises:
+            SessionNotFoundError: If the sandbox no longer exists.
+            SessionTerminatedError: If the sandbox was already terminated.
+            Exception: If both terminate attempts fail (last error raised).
+
+        """
+        try:
+            container.terminate()
+        except (SessionNotFoundError, SessionTerminatedError):
+            raise
+        except Exception as first_error:  # noqa: BLE001 - retry any release failure once
+            try:
+                self.client.get(container.id).terminate()
+            except (SessionNotFoundError, SessionTerminatedError):
+                return
+            except Exception as retry_error:  # noqa: BLE001 - surface the last failure
+                raise retry_error from first_error
 
     def execute_command(self, container: Sandbox, command: str, **kwargs: Any) -> tuple[int, Any]:
         """Execute a shell command in the sandbox.
