@@ -325,16 +325,23 @@ class TestSandboxTenkiSessionCloseIsRetryable:
     """Test failed teardown raises and stays retryable."""
 
     def test_failed_termination_raises_and_keeps_the_handle(
-        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
+        self,
+        opened_session_factory: Callable[..., SandboxTenkiSession],
+        mock_client: MagicMock,
+        mock_sandbox: MagicMock,
     ) -> None:
         """Test a live sandbox that will not die raises and retains the handle."""
         session = opened_session_factory()
         mock_sandbox.terminate.side_effect = SandboxError("503 Service Unavailable")
+        mock_client.get.return_value = mock_sandbox
 
         with pytest.raises(ContainerError, match="Failed to release Tenki sandbox"):
             session.close()
 
         assert session.container is mock_sandbox
+        # Direct terminate + fresh-handle retry both failed.
+        assert mock_sandbox.terminate.call_count == 2
+        mock_client.get.assert_called_once_with(mock_sandbox.id)
 
     def test_failed_termination_keeps_the_client_alive_for_the_retry(
         self, tenki_session_factory: Callable[..., SandboxTenkiSession]
@@ -345,8 +352,10 @@ class TestSandboxTenkiSessionCloseIsRetryable:
         with patch("llm_sandbox.tenki.Client") as mock_client_cls:
             owned_client = mock_client_cls.return_value
             sandbox = MagicMock(shell=Mock(return_value=make_command_result()))
+            sandbox.id = "sbx-owned"
             sandbox.terminate.side_effect = SandboxError("already gone")
             owned_client.create.return_value = sandbox
+            owned_client.get.return_value = sandbox
             session.open()
 
             with pytest.raises(ContainerError):
@@ -355,18 +364,63 @@ class TestSandboxTenkiSessionCloseIsRetryable:
         owned_client.close.assert_not_called()
         assert session._client is owned_client
 
-    def test_retrying_close_releases_the_sandbox(
-        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
+    def test_close_recovers_via_fresh_handle_after_transient_terminate(
+        self,
+        opened_session_factory: Callable[..., SandboxTenkiSession],
+        mock_client: MagicMock,
+        mock_sandbox: MagicMock,
     ) -> None:
-        """Test a second close() after a transient failure frees the microVM."""
+        """Test a dataplane/timeout failure still releases via client.get().terminate()."""
         session = opened_session_factory()
-        mock_sandbox.terminate.side_effect = [SandboxError("transient"), None]
+        mock_sandbox.terminate.side_effect = [
+            SandboxError("Stream removed (recvmsg:Operation timed out (60))"),
+            None,
+        ]
+        mock_client.get.return_value = mock_sandbox
+
+        session.close()
+
+        assert mock_sandbox.terminate.call_count == 2
+        mock_client.get.assert_called_once_with(mock_sandbox.id)
+        assert session.container is None
+
+    def test_close_treats_gone_on_retry_as_success(
+        self,
+        opened_session_factory: Callable[..., SandboxTenkiSession],
+        mock_client: MagicMock,
+        mock_sandbox: MagicMock,
+    ) -> None:
+        """Test a timed-out terminate that already won server-side clears the handle."""
+        session = opened_session_factory()
+        mock_sandbox.terminate.side_effect = SandboxError("Operation timed out (60)")
+        fresh = MagicMock()
+        fresh.terminate.side_effect = SessionTerminatedError("session already terminated")
+        mock_client.get.return_value = fresh
+
+        session.close()
+
+        assert session.container is None
+
+    def test_retrying_close_releases_the_sandbox(
+        self,
+        opened_session_factory: Callable[..., SandboxTenkiSession],
+        mock_client: MagicMock,
+        mock_sandbox: MagicMock,
+    ) -> None:
+        """Test a second close() after both terminate attempts fail frees the microVM."""
+        session = opened_session_factory()
+        mock_sandbox.terminate.side_effect = [
+            SandboxError("transient"),
+            SandboxError("transient"),
+            None,
+        ]
+        mock_client.get.return_value = mock_sandbox
 
         with pytest.raises(ContainerError):
             session.close()
         session.close()
 
-        assert mock_sandbox.terminate.call_count == 2
+        assert mock_sandbox.terminate.call_count == 3
         assert session.container is None
 
     def test_failed_detach_of_attached_sandbox_also_raises(

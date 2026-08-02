@@ -14,10 +14,46 @@ import time
 from contextlib import ExitStack, closing
 
 from llm_sandbox import SandboxBackend, SandboxSession
+from llm_sandbox.exceptions import MissingDependencyError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 logger = logging.getLogger(__name__)
+
+# Skip only when the runtime is missing/unreachable — not for example/logic bugs.
+_BACKEND_UNAVAILABLE: list[type[BaseException]] = [
+    OSError,
+    ConnectionError,
+    TimeoutError,
+    MissingDependencyError,
+]
+try:
+    from docker.errors import DockerException
+
+    _BACKEND_UNAVAILABLE.append(DockerException)
+except ImportError:
+    pass
+try:
+    from podman.errors.exceptions import PodmanError
+
+    _BACKEND_UNAVAILABLE.append(PodmanError)
+except ImportError:
+    pass
+try:
+    from kubernetes.client.exceptions import ApiException
+    from kubernetes.config.config_exception import ConfigException
+
+    _BACKEND_UNAVAILABLE.extend((ApiException, ConfigException))
+except ImportError:
+    pass
+try:
+    from tenki import MissingAuthTokenError
+
+    _BACKEND_UNAVAILABLE.append(MissingAuthTokenError)
+except ImportError:
+    pass
+
+BACKEND_UNAVAILABLE_ERRORS = tuple(_BACKEND_UNAVAILABLE)
 
 BACKENDS = {
     "docker": SandboxBackend.DOCKER,
@@ -183,7 +219,7 @@ def main() -> None:
         for backend_name in BACKENDS:
             try:
                 run_demo(backend_name)
-            except Exception:
+            except BACKEND_UNAVAILABLE_ERRORS:
                 logger.exception("%s skipped", backend_name)
         demo_kubernetes_use_case()
 

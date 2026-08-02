@@ -1,5 +1,6 @@
 # ruff: noqa: PLR0912, PLR0915, BLE001
 import logging
+import os
 import sys
 import time
 from typing import Any
@@ -10,6 +11,11 @@ from llm_sandbox.exceptions import SandboxTimeoutError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _tenki_credentials_configured() -> bool:
+    """Return True when either Tenki env credential is set (presence only)."""
+    return bool(os.environ.get("TENKI_AUTH_TOKEN") or os.environ.get("TENKI_API_KEY"))
 
 
 def create_test_session(backend_enum: SandboxBackend, client: Any = None) -> BaseSession:
@@ -377,7 +383,13 @@ def main() -> None:
     logger.info("=================================")
     logger.info("Testing timeout functionality across backends...")
 
-    backends = backends_to_test if backend_arg == "all" else {backend_arg: backends_to_test[backend_arg]}
+    if backend_arg == "all":
+        backends = dict(backends_to_test)
+        if not _tenki_credentials_configured():
+            backends.pop("tenki")
+            logger.info("Skipping Tenki (set TENKI_AUTH_TOKEN or TENKI_API_KEY to include it)")
+    else:
+        backends = {backend_arg: backends_to_test[backend_arg]}
     all_results = []
 
     for backend_name, backend_enum in backends.items():

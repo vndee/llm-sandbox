@@ -5,10 +5,46 @@ import logging
 from contextlib import ExitStack
 from pathlib import Path
 
-from llm_sandbox import ArtifactSandboxSession, SandboxBackend
+from llm_sandbox import ArtifactSandboxSession, ExecutionResult, SandboxBackend
+from llm_sandbox.exceptions import MissingDependencyError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# Skip only when the runtime is missing/unreachable — not for example/logic bugs.
+_BACKEND_UNAVAILABLE: list[type[BaseException]] = [
+    OSError,
+    ConnectionError,
+    TimeoutError,
+    MissingDependencyError,
+]
+try:
+    from docker.errors import DockerException
+
+    _BACKEND_UNAVAILABLE.append(DockerException)
+except ImportError:
+    pass
+try:
+    from podman.errors.exceptions import PodmanError
+
+    _BACKEND_UNAVAILABLE.append(PodmanError)
+except ImportError:
+    pass
+try:
+    from kubernetes.client.exceptions import ApiException
+    from kubernetes.config.config_exception import ConfigException
+
+    _BACKEND_UNAVAILABLE.extend((ApiException, ConfigException))
+except ImportError:
+    pass
+try:
+    from tenki import MissingAuthTokenError
+
+    _BACKEND_UNAVAILABLE.append(MissingAuthTokenError)
+except ImportError:
+    pass
+
+BACKEND_UNAVAILABLE_ERRORS = tuple(_BACKEND_UNAVAILABLE)
 
 code = """
 import matplotlib.pyplot as plt
@@ -266,12 +302,12 @@ def build_client(backend_name: str, stack: ExitStack) -> object | None:
     return None
 
 
-def save_plots(backend_name: str, result: object) -> None:
+def save_plots(backend_name: str, result: ExecutionResult) -> None:
     """Write captured plots into plots/<backend>/."""
     out_dir = Path("plots") / backend_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for i, plot in enumerate(result.plots):  # type: ignore[attr-defined]
+    for i, plot in enumerate(result.plots):
         plot_path = out_dir / f"{i + 1:06d}.{plot.format.value}"
         with plot_path.open("wb") as f:
             f.write(base64.b64decode(plot.content_base64))
@@ -328,7 +364,7 @@ def main() -> None:
     for backend_name in BACKENDS:
         try:
             run_backend(backend_name)
-        except Exception:
+        except BACKEND_UNAVAILABLE_ERRORS:
             logger.exception("%s skipped", backend_name)
 
 
