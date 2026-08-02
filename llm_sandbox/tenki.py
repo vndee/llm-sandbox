@@ -177,11 +177,11 @@ class TenkiContainerAPI:
             tuple[int, Any]: The exit code and the raw ``CommandResult``.
 
         """
-        result = container.shell(
-            command,
-            cwd=kwargs.get("workdir"),
-            timeout=kwargs.get("timeout"),
-        )
+        shell_kwargs: dict[str, Any] = {"cwd": kwargs.get("workdir")}
+        timeout = kwargs.get("timeout")
+        if timeout is not None:
+            shell_kwargs["timeout"] = timeout
+        result = container.shell(command, **shell_kwargs)
         return _exit_code_of(result), result
 
     def copy_to_container(self, container: Sandbox, src: str, dest: str, **_kwargs: Any) -> None:
@@ -407,10 +407,9 @@ class SandboxTenkiSession(BaseSession):
             try:
                 self.close()
             except Exception as cleanup_error:  # noqa: BLE001 - must not displace setup_error
-                self._log(
+                self._log_cleanup_failure(
                     f"Tenki sandbox {getattr(self.container, 'id', 'unknown')} is STILL RUNNING: "
-                    f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly.",
-                    "error",
+                    f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly."
                 )
                 setup_error.__context__ = cleanup_error
             raise
@@ -513,7 +512,7 @@ class SandboxTenkiSession(BaseSession):
                 self._log(f"Tenki sandbox {self.container.id} was already gone ({e})")
             except Exception as e:
                 msg = f"Failed to release Tenki sandbox {self.container.id}: {e}"
-                self._log(msg, "error")
+                self._log_cleanup_failure(msg)
                 raise ContainerError(msg) from e
 
             self.container = None
@@ -539,10 +538,9 @@ class SandboxTenkiSession(BaseSession):
         try:
             self.close()
         except Exception as cleanup_error:  # noqa: BLE001 - must not displace the block error
-            self._log(
+            self._log_cleanup_failure(
                 f"Tenki sandbox {getattr(self.container, 'id', 'unknown')} is STILL RUNNING: "
-                f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly.",
-                "error",
+                f"CLEANUP FAILED ({cleanup_error}). Call close() again to retry or terminate directly."
             )
             if exc_val is not None:
                 exc_val.__context__ = cleanup_error
@@ -607,7 +605,11 @@ class SandboxTenkiSession(BaseSession):
         try:
             self.close()
         except Exception as e:  # noqa: BLE001
-            self._log(f"Error during timeout cleanup: {e}", "error")
+            self._log_cleanup_failure(f"Error during timeout cleanup: {e}")
+
+    def _log_cleanup_failure(self, message: str) -> None:
+        """Emit billable-leak / cleanup-failure messages even when verbose is off."""
+        self.logger.error(message)
 
     def _connect_to_existing_container(self, container_id: str) -> None:
         r"""Attach to an existing Tenki sandbox.

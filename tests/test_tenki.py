@@ -441,11 +441,16 @@ class TestSandboxTenkiSessionCloseIsRetryable:
         """Test the caller's exception wins, with cleanup chained, logged, and retryable."""
         mock_sandbox.terminate.side_effect = SandboxError("terminate failed")
         session = tenki_session_factory()
-        session.verbose = True
+        session.verbose = False
         body_error = ValueError("user code failed")
+        expected = (
+            f"Tenki sandbox {mock_sandbox.id} is STILL RUNNING: "
+            f"CLEANUP FAILED (Failed to release Tenki sandbox {mock_sandbox.id}: terminate failed). "
+            "Call close() again to retry or terminate directly."
+        )
 
         with (
-            patch.object(session, "_log") as mock_log,
+            patch.object(session.logger, "error") as mock_error,
             pytest.raises(ValueError, match="user code failed") as raised,
             session,
         ):
@@ -453,12 +458,7 @@ class TestSandboxTenkiSessionCloseIsRetryable:
 
         assert isinstance(raised.value.__context__, ContainerError)
         assert "Failed to release Tenki sandbox" in str(raised.value.__context__)
-        mock_log.assert_any_call(
-            f"Tenki sandbox {mock_sandbox.id} is STILL RUNNING: "
-            f"CLEANUP FAILED (Failed to release Tenki sandbox {mock_sandbox.id}: terminate failed). "
-            "Call close() again to retry or terminate directly.",
-            "error",
-        )
+        mock_error.assert_any_call(expected)
         assert session.container is mock_sandbox
 
         mock_sandbox.terminate.side_effect = None
@@ -657,6 +657,17 @@ class TestSandboxTenkiSessionCommands:
         session.execute_command("ls", workdir=WORKDIR)
 
         mock_sandbox.shell.assert_called_once_with("ls", cwd=WORKDIR)
+
+    def test_execute_command_forwards_execution_timeout(
+        self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
+    ) -> None:
+        """Test session execution_timeout is passed through to Sandbox.shell."""
+        session = opened_session_factory(execution_timeout=12.5)
+        mock_sandbox.shell.reset_mock()
+
+        session.execute_command("sleep 1")
+
+        mock_sandbox.shell.assert_called_once_with("sleep 1", cwd=None, timeout=12.5)
 
     def test_execute_command_unknown_exit_code_is_not_reported_as_success(
         self, opened_session_factory: Callable[..., SandboxTenkiSession], mock_sandbox: MagicMock
