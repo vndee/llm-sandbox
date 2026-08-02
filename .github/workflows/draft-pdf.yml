@@ -22,8 +22,11 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
+      # Third-party action pinned to a full commit SHA rather than the v1.0
+      # tag: tags are mutable, and this action is upstream-labelled
+      # experimental. 85a1837 is the commit v1.0 currently points at.
       - name: Build draft PDF
-        uses: openjournals/openjournals-draft-action@v1.0
+        uses: openjournals/openjournals-draft-action@85a18372e48f551d8af9ddb7a747de685fbbb01c # v1.0
         with:
           journal: joss
           paper-path: paper/paper.md
