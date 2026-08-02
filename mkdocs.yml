@@ -62,6 +62,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Why LLM Sandbox: why-llm-sandbox.md
   - Getting Started: getting-started.md
   - User Guide:
       - Configuration: configuration.md

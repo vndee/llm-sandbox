@@ -23,6 +23,9 @@ Repository = "https://github.com/vndee/llm-sandbox"
 Documentation = "https://vndee.github.io/llm-sandbox/"
 DOI = "https://doi.org/10.5281/zenodo.21760525"
 
+[project.scripts]
+llm-sandbox-mcp = "llm_sandbox.mcp_server.server:main"
+
 [project.optional-dependencies]
 docker = ["docker>=7.1.0"]
 k8s = ["kubernetes>=32.0.1"]
