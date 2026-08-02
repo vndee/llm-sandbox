@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.vndee/llm-sandbox -->
 ## LLM Sandbox
 
 *Securely Execute LLM-Generated Code with Ease*
