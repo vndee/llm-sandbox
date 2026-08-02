@@ -970,20 +970,18 @@ make test
 
 If you use LLM Sandbox in your research, please cite it:
 
-​```bibtex
+```bibtex
 @software{huynh_llm_sandbox,
   author    = {Huynh, Duy V.},
-  title     = {{LLM Sandbox: a portable runtime for securely
-               executing LLM-generated code}},
+  title     = {{LLM Sandbox: a portable runtime for securely executing LLM-generated code}},
   publisher = {Zenodo},
   doi       = {10.5281/zenodo.21760525},
   url       = {https://doi.org/10.5281/zenodo.21760525}
 }
-​```
+```
 
-The DOI above resolves to the latest release. To cite a specific version, use
-that release's own DOI from the
-[Zenodo record](https://doi.org/10.5281/zenodo.21760525).
+The DOI above resolves to the latest release. To cite a specific version, use that release's own DOI from the [Zenodo record](https://doi.org/10.5281/zenodo.21760525).
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
