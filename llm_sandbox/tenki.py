@@ -94,12 +94,31 @@ def _iter_remote_entries(container: Sandbox, root: str) -> list[tuple[str, Any]]
         list[tuple[str, Any]]: Absolute guest paths paired with their FileInfo.
 
     """
+    max_remote_walk_depth = 256
+
     entries: list[tuple[str, Any]] = []
-    for entry in container.fs.list(root):
-        full = f"{root.rstrip('/')}/{Path(entry.path).name}"
+    stack: list[tuple[str, int, list[Any]]] = [(root, 0, list(container.fs.list(root)))]
+    visited: set[str] = {root.rstrip("/")}
+
+    while stack:
+        current, depth, children = stack[-1]
+        if not children:
+            stack.pop()
+            continue
+
+        entry = children.pop(0)
+        full = f"{current.rstrip('/')}/{Path(entry.path).name}"
         entries.append((full, entry))
-        if entry.is_dir:
-            entries.extend(_iter_remote_entries(container, full))
+
+        if not entry.is_dir or entry.is_symlink or depth + 1 >= max_remote_walk_depth:
+            continue
+
+        normalized = full.rstrip("/")
+        if normalized in visited:
+            continue
+        visited.add(normalized)
+        stack.append((full, depth + 1, list(container.fs.list(full))))
+
     return entries
 
 
