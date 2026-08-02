@@ -462,8 +462,8 @@ class SandboxTenkiSession(BaseSession):
             reason = " ".join(filter(None, [self._decode(result.stderr).strip(), _failure_detail(result)]))
             msg = (
                 "The Tenki sandbox image has no Python interpreter "
-                f"({reason}). Pass an image that ships Python via "
-                "image=..., or set skip_environment_setup=True and manage the runtime yourself."
+                f"({reason}). Pass an image that ships Python via image=..., "
+                "or attach to an existing sandbox that already has one via container_id=...."
             )
             self._log(msg, "error")
             raise ContainerError(msg)
