@@ -31,6 +31,43 @@ jobs:
           name: pyproject-toml
           path: pyproject.toml
 
+  update-citation:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      # Unlike the pyproject.toml bump above, which only feeds the build via an
+      # artifact, CITATION.cff has to be committed back: GitHub's "Cite this
+      # repository" widget and cffconvert both read it from the default branch.
+      - name: Check out default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Update CITATION.cff to the released version
+        env:
+          RELEASE_VERSION: ${{ github.event.release.tag_name }}
+          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
+        run: |
+          set -euo pipefail
+          release_date="${RELEASE_PUBLISHED_AT%%T*}"
+          sed -i "s/^version: \".*\"/version: \"${RELEASE_VERSION}\"/" CITATION.cff
+          sed -i "s/^date-released: \".*\"/date-released: \"${release_date}\"/" CITATION.cff
+          grep -E '^(version|date-released):' CITATION.cff
+
+      - name: Commit and push if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- CITATION.cff; then
+            echo "CITATION.cff already up to date; nothing to commit."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add CITATION.cff
+          git commit -m "Update CITATION.cff for ${{ github.event.release.tag_name }}"
+          git push
+
   publish:
     runs-on: ubuntu-latest
     needs: [set-version]
