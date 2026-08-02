@@ -19,8 +19,8 @@ from tenki import SandboxError as TenkiError
 from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
-from llm_sandbox.data import StreamCallback
-from llm_sandbox.exceptions import ContainerError, ExtraArgumentsError, NotOpenSessionError
+from llm_sandbox.data import ConsoleOutput, StreamCallback
+from llm_sandbox.exceptions import CommandEmptyError, ContainerError, ExtraArgumentsError, NotOpenSessionError
 from llm_sandbox.security import SecurityPolicy
 
 # Runtimes present on Tenki's default guest image (live E2E). Other languages need image=.
@@ -169,14 +169,19 @@ class TenkiContainerAPI:
         Args:
             container (Sandbox): The Tenki sandbox to run the command in.
             command (str): The shell command to run.
-            **kwargs: Supports ``workdir``. ``stream`` is accepted for protocol
-                compatibility but ignored, since Tenki exec is request/response.
+            **kwargs: Supports ``workdir`` and ``timeout`` (seconds, forwarded to
+                ``Sandbox.shell``). ``stream`` is accepted for protocol compatibility
+                but ignored, since Tenki exec is request/response.
 
         Returns:
             tuple[int, Any]: The exit code and the raw ``CommandResult``.
 
         """
-        result = container.shell(command, cwd=kwargs.get("workdir"))
+        result = container.shell(
+            command,
+            cwd=kwargs.get("workdir"),
+            timeout=kwargs.get("timeout"),
+        )
         return _exit_code_of(result), result
 
     def copy_to_container(self, container: Sandbox, src: str, dest: str, **_kwargs: Any) -> None:
@@ -553,6 +558,49 @@ class SandboxTenkiSession(BaseSession):
             raise NotOpenSessionError
 
         return self.container_api.copy_from_container(self.container, path)
+
+    def execute_command(
+        self,
+        command: str,
+        workdir: str | None = None,
+        on_stdout: StreamCallback | None = None,
+        on_stderr: StreamCallback | None = None,
+    ) -> ConsoleOutput:
+        """Execute a command, forwarding ``execution_timeout`` to the Tenki SDK.
+
+        Same behaviour as the shared mixin, plus ``timeout=`` on ``Sandbox.shell`` so
+        hung guest commands are killed by Tenki rather than only by the host session
+        timeout handler.
+
+        """
+        if not command:
+            raise CommandEmptyError
+
+        if not self.container:
+            raise NotOpenSessionError
+
+        if self.verbose:
+            self.logger.info("Executing command: %s", command)
+
+        effective_stream = self.stream or (on_stdout is not None) or (on_stderr is not None)
+
+        exit_code, output = self.container_api.execute_command(
+            self.container,
+            command,
+            workdir=workdir,
+            stream=effective_stream,
+            timeout=self.config.get_execution_timeout(),
+        )
+
+        stdout, stderr = self._process_output(output, effective_stream, on_stdout=on_stdout, on_stderr=on_stderr)
+
+        if self.verbose:
+            if stdout:
+                self.logger.info("STDOUT: %s", stdout)
+            if stderr:
+                self.logger.error("STDERR: %s", stderr)
+
+        return ConsoleOutput(exit_code=exit_code or 0, stdout=stdout, stderr=stderr)
 
     def _handle_timeout(self) -> None:
         """Handle Tenki timeout cleanup."""
