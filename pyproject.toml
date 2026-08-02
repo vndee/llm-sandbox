@@ -21,6 +21,7 @@ dependencies = ["pydantic>=2.11.5"]
 Homepage = "https://vndee.github.io/llm-sandbox/"
 Repository = "https://github.com/vndee/llm-sandbox"
 Documentation = "https://vndee.github.io/llm-sandbox/"
+DOI = "https://doi.org/10.5281/zenodo.21760525"
 
 [project.optional-dependencies]
 docker = ["docker>=7.1.0"]

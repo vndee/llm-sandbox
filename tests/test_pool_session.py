@@ -526,7 +526,8 @@ class TestPooledSessionBackendCreation:
             # Verify Kubernetes session was created
             mock_k8s_session.assert_called_once()
             call_kwargs = mock_k8s_session.call_args[1]
-            assert call_kwargs["namespace"] == "custom-ns"
+            assert call_kwargs["kube_namespace"] == "custom-ns"
+            assert call_kwargs["container_id"] == "test-pod"
             assert call_kwargs["skip_environment_setup"] is True
         finally:
             pool.close()
