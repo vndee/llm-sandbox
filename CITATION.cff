@@ -18,9 +18,6 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.21760525"
     description: "Concept DOI - always resolves to the latest release"
-  - type: doi
-    value: "10.5281/zenodo.21760526"
-    description: "DOI for version 0.3.40"
   - type: url
     value: "https://github.com/vndee/llm-sandbox"
     description: "The GitHub repository"
@@ -31,7 +28,7 @@ repository-code: "https://github.com/vndee/llm-sandbox"
 url: "https://vndee.github.io/llm-sandbox/"
 repository-artifact: "https://pypi.org/project/llm-sandbox/"
 license: MIT
-version: "0.3.40"
+version: "0.3.42"
 date-released: "2026-08-02"
 keywords:
   - "large language models"
