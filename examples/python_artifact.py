@@ -11,11 +11,7 @@ from llm_sandbox.exceptions import MissingDependencyError
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Skip only when the runtime is missing/unreachable — not for example/logic bugs.
 _BACKEND_UNAVAILABLE: list[type[BaseException]] = [
-    OSError,
-    ConnectionError,
-    TimeoutError,
     MissingDependencyError,
 ]
 try:
