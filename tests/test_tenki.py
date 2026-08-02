@@ -1006,5 +1006,8 @@ class TestTenkiContainerAPI:
 
         data, _ = TenkiContainerAPI(mock_client).copy_from_container(mock_sandbox, "/tmp/sandbox_plots/000001.png")
 
+        archive_cmd = mock_sandbox.shell.call_args_list[1].args[0]
+        assert "set -o pipefail" in archive_cmd
+
         with tarfile.open(fileobj=io.BytesIO(data), mode="r") as tar:
             assert tar.extractfile("000001.png").read() == b"PNG!"  # type: ignore[union-attr]

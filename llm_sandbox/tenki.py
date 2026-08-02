@@ -66,7 +66,9 @@ def _archive_via_shell(container: Sandbox, src: str) -> tuple[bytes, dict]:
 
     parent = Path(src).parent.as_posix() or "/"
     name = Path(src).name
-    result = container.shell(f"tar -cf - -C {shlex.quote(parent)} {shlex.quote(name)} | base64 | tr -d '\\n'")
+    result = container.shell(
+        f"set -o pipefail; tar -cf - -C {shlex.quote(parent)} {shlex.quote(name)} | base64 | tr -d '\\n'"
+    )
     if not result.ok or not result.stdout:
         return b"", {"size": 0}
 
