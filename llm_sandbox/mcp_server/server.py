@@ -9,7 +9,6 @@ import os
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
 from mcp.types import ImageContent, TextContent
 
 from llm_sandbox import ArtifactSandboxSession, SandboxBackend, SandboxSession, SupportedLanguage, ValidationError
@@ -23,7 +22,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("llm-sandbox-mcp")
 
-mcp = FastMCP("llm-sandbox")
+# mcp 2.0 renamed the server class: `mcp.server.fastmcp.FastMCP` became
+# `mcp.server.MCPServer`. The decorator surface we rely on -- `.tool()`,
+# `.resource()`, `.run()` -- is the same on both, so a single import switch
+# covers the whole file and users are free to pin either major version.
+# mypy resolves against whichever mcp is installed, so one of these two lines
+# always looks wrong to it. uv.lock pins 1.x, so the MCPServer line is the one
+# that needs silencing; with mcp 2.x installed the ignore moves to the other.
+try:
+    from mcp.server import MCPServer as _MCPServer  # type: ignore[attr-defined] # mcp >= 2.0
+except ImportError:  # pragma: no cover - exercised by whichever mcp is installed
+    from mcp.server.fastmcp import FastMCP as _MCPServer  # mcp < 2.0
+
+mcp = _MCPServer("llm-sandbox")
 
 _TRUE_ENV_VALUES = {"true", "1", "yes", "on"}
 _FALSE_ENV_VALUES = {"false", "0", "no", "off"}

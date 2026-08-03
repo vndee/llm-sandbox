@@ -533,7 +533,11 @@ class TestExecuteCode:
         # First result should be the image
         assert isinstance(result[0], ImageContent)
         assert result[0].type == "image"
-        assert result[0].mimeType == "image/png"
+        # mcp 2.0 renamed the attribute to `mime_type`, keeping `mimeType` only
+        # as a serialisation alias -- so it can still be passed to the
+        # constructor, but no longer read back off the model.
+        mime_type = getattr(result[0], "mime_type", None) or getattr(result[0], "mimeType", None)
+        assert mime_type == "image/png"
         assert result[0].data == mock_plot.content_base64
 
         # Second result should be the execution result
