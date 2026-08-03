@@ -295,6 +295,26 @@ Common exceptions include:
 
 ---
 
+## Container Pooling
+
+### ContainerPoolManager
+
+::: llm_sandbox.pool.base.ContainerPoolManager
+
+### PoolConfig
+
+::: llm_sandbox.pool.config.PoolConfig
+
+### PooledSandboxSession
+
+::: llm_sandbox.pool.session.PooledSandboxSession
+
+### create_pool_manager
+
+::: llm_sandbox.pool.factory.create_pool_manager
+
+---
+
 ## Type Hints
 
 ### StreamCallback

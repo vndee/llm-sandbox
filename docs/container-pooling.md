@@ -1137,4 +1137,4 @@ For detailed API documentation, see:
 - [Configuration Guide](configuration.md) - General session configuration
 - [Container Backends](backends.md) - Docker, Kubernetes, and Podman setup
 - [Security](security.md) - Security considerations for pooled containers
-- [Performance Optimization](configuration.md#performance-optimization) - Additional optimization tips
+- [Container Pooling Configuration](configuration.md#container-pooling-configuration) - Pool tuning and best practices
