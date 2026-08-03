@@ -64,6 +64,73 @@ def test_interactive_session_requires_python_language() -> None:
         InteractiveSandboxSession(lang="javascript")
 
 
+class TestInteractiveTenkiBackend:
+    """Test the Tenki backend behind InteractiveSandboxSession.
+
+    Tenki forwards runtime_configs straight to Client.create(), which declares no
+    **kwargs, so a Docker-shaped key raises TypeError instead of being harmlessly
+    ignored. The interactive session always sets one — mem_limit, from max_memory —
+    so it has to be filtered out, as Kubernetes already does for the same reason.
+    """
+
+    @staticmethod
+    def _make_tenki(**kwargs: Any) -> tuple[MagicMock, Any]:
+        from llm_sandbox.interactive import _create_backend_session
+
+        with patch("llm_sandbox.tenki.SandboxTenkiSession") as mock_cls:
+            mock_cls.return_value = MagicMock(config=SessionConfig())
+            session = _create_backend_session(backend=SandboxBackend.TENKI, lang="python", **kwargs)
+        return mock_cls, session
+
+    def test_tenki_backend_is_supported(self) -> None:
+        """Test the Tenki backend resolves instead of raising UnsupportedBackendError."""
+        mock_cls, session = self._make_tenki()
+
+        mock_cls.assert_called_once()
+        assert session is mock_cls.return_value
+
+    def test_mem_limit_is_dropped(self) -> None:
+        """Test Docker's mem_limit never reaches Tenki, where it is a TypeError."""
+        mock_cls, _ = self._make_tenki(runtime_configs={"mem_limit": "1GB"})
+
+        assert mock_cls.call_args.kwargs["runtime_configs"] == {}
+
+    def test_explicit_memory_mb_survives(self) -> None:
+        """Test Tenki's own memory knob is left alone while mem_limit is stripped."""
+        mock_cls, _ = self._make_tenki(runtime_configs={"mem_limit": "1GB", "memory_mb": 512})
+
+        assert mock_cls.call_args.kwargs["runtime_configs"] == {"memory_mb": 512}
+
+    def test_native_tenki_configs_pass_through(self) -> None:
+        """Test Tenki's own create() arguments are forwarded untouched."""
+        mock_cls, _ = self._make_tenki(runtime_configs={"cpu_cores": 2, "allow_outbound": False})
+
+        assert mock_cls.call_args.kwargs["runtime_configs"] == {"cpu_cores": 2, "allow_outbound": False}
+
+    def test_forwarded_configs_bind_against_the_real_sdk_signature(self) -> None:
+        """Test what we forward is accepted by the real Client.create, not just a mock.
+
+        Every other test here asserts against a MagicMock, which swallows any keyword.
+        This one checks the real signature, so a Docker-only key surviving the filter
+        fails here rather than at runtime against live Tenki.
+        """
+        import inspect
+
+        from tenki import Client
+
+        mock_cls, _ = self._make_tenki(runtime_configs={"mem_limit": "1GB", "cpu_cores": 2})
+
+        inspect.signature(Client.create).bind(None, **mock_cls.call_args.kwargs["runtime_configs"])
+
+    def test_default_construction_does_not_send_mem_limit(self) -> None:
+        """Test the zero-argument case, which max_memory='1GB' would otherwise break."""
+        with patch("llm_sandbox.tenki.SandboxTenkiSession") as mock_cls:
+            mock_cls.return_value = MagicMock(config=SessionConfig())
+            InteractiveSandboxSession(backend=SandboxBackend.TENKI)
+
+        assert "mem_limit" not in mock_cls.call_args.kwargs["runtime_configs"]
+
+
 def test_create_backend_session_filters_runtime_configs_for_kubernetes() -> None:
     """_create_backend_session should filter out runtime_configs for Kubernetes backend."""
     from llm_sandbox.interactive import _create_backend_session

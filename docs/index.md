@@ -103,6 +103,9 @@ pip install 'llm-sandbox[k8s]'
 
 # For Podman support
 pip install 'llm-sandbox[podman]'
+
+# For Tenki support (cloud microVMs)
+pip install 'llm-sandbox[tenki]'
 ```
 
 ## Why LLM Sandbox?
@@ -135,9 +138,11 @@ graph TD
     D --> F[Docker]
     D --> G[Kubernetes]
     D --> H[Podman]
+    D --> I[Tenki]
     F --> J[Isolated Execution]
     G --> J
     H --> J
+    I --> J
     J --> K[Results & Artifacts]
     K --> A
     K --> A1

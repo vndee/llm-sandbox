@@ -62,6 +62,7 @@ class SandboxBackend(StrEnum):
     KUBERNETES = "kubernetes"
     PODMAN = "podman"
     MICROMAMBA = "micromamba"
+    TENKI = "tenki"
 
 
 class SupportedLanguage(StrEnum):

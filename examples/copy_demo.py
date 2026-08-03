@@ -11,7 +11,7 @@ This script shows practical examples of:
 Usage:
     python examples/copy_demo.py [backend]
 
-    backend: docker, podman, kubernetes (default: docker)
+    backend: docker, podman, kubernetes, tenki (default: docker)
 """
 
 import logging
@@ -25,13 +25,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def create_demo_content(base_dir: Path) -> dict[str, Path]:
+def create_demo_content(base_dir: Path, root: str = "/sandbox") -> dict[str, Path]:
     """Create demonstration files and directories."""
     content = {}
 
     # Create a data processing script
     content["processor"] = base_dir / "data_processor.py"
-    content["processor"].write_text('''
+    content["processor"].write_text(f'''
 import json
 import csv
 from pathlib import Path
@@ -41,19 +41,19 @@ def process_data():
     print("🔄 Processing data...")
 
     # Read input data
-    with open("/sandbox/input/data.json", "r") as f:
+    with open("{root}/input/data.json", "r") as f:
         data = json.load(f)
 
     # Process and create output
-    output_dir = Path("/sandbox/output")
+    output_dir = Path("{root}/output")
     output_dir.mkdir(exist_ok=True)
 
     # Create summary report
-    summary = {
+    summary = {{
         "total_items": len(data["items"]),
         "processed_timestamp": "2024-01-01",
         "status": "completed"
-    }
+    }}
 
     with open(output_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
@@ -65,7 +65,7 @@ def process_data():
         for item in data["items"]:
             writer.writerow([item["id"], item["name"], item["value"]])
 
-    print("✅ Processing complete! Check /sandbox/output/")
+    print("✅ Processing complete! Check {root}/output/")
 
 if __name__ == "__main__":
     process_data()
@@ -108,12 +108,15 @@ def run_demo(backend_name: str = "docker") -> None:
         "docker": SandboxBackend.DOCKER,
         "podman": SandboxBackend.PODMAN,
         "kubernetes": SandboxBackend.KUBERNETES,
+        "tenki": SandboxBackend.TENKI,
     }
 
     if backend_name not in backend_map:
         logger.error("❌ Unknown backend: %s", backend_name)
         logger.error("Available: %s", list(backend_map.keys()))
         return
+
+    root = "/home/tenki" if backend_name == "tenki" else "/sandbox"
 
     client = None
     if backend_name == "docker":
@@ -133,7 +136,7 @@ def run_demo(backend_name: str = "docker") -> None:
         temp_path = Path(temp_dir)
 
         logger.info("📝 Creating demo content...")
-        demo_content = create_demo_content(temp_path)
+        demo_content = create_demo_content(temp_path, root)
 
         logger.info("📦 Creating %s session...", backend_name)
 
@@ -144,27 +147,28 @@ def run_demo(backend_name: str = "docker") -> None:
                 verbose=False,
                 keep_template=True,
                 client=client,
+                workdir=root,
             ) as session:
                 logger.info("✅ %s session ready", backend_name)
 
                 # Demo 1: Copy Python script to container
                 logger.info("\n📁 Step 1: Copying Python script to container")
-                session.copy_to_runtime(str(demo_content["processor"]), "/sandbox/data_processor.py")
+                session.copy_to_runtime(str(demo_content["processor"]), f"{root}/data_processor.py")
                 logger.info("✅ Script copied successfully")
 
                 # Demo 2: Copy input directory to container
                 logger.info("\n📁 Step 2: Copying input data directory to container")
-                session.copy_to_runtime(str(demo_content["input_dir"]), "/sandbox/input")
+                session.copy_to_runtime(str(demo_content["input_dir"]), f"{root}/input")
                 logger.info("✅ Input data copied successfully")
 
                 # Demo 3: Copy single config file
                 logger.info("\n📁 Step 3: Copying configuration file")
-                session.copy_to_runtime(str(demo_content["config"]), "/sandbox/config.txt")
+                session.copy_to_runtime(str(demo_content["config"]), f"{root}/config.txt")
                 logger.info("✅ Config file copied successfully")
 
                 # Demo 4: Verify files are in container
                 logger.info("\n🔍 Step 4: Verifying files in container")
-                result = session.execute_command("find /sandbox -type f | head -10")
+                result = session.execute_command(f"find {root} -type f | head -10")
                 logger.info("📋 Files in container:")
                 for line in result.stdout.strip().split("\n"):
                     if line:
@@ -172,7 +176,7 @@ def run_demo(backend_name: str = "docker") -> None:
 
                 # Demo 5: Execute the processing script
                 logger.info("\n🏃 Step 5: Running data processing script")
-                result = session.execute_command("python /sandbox/data_processor.py")
+                result = session.execute_command(f"python {root}/data_processor.py")
                 logger.info("📤 Script output:")
                 logger.info(result.stdout)
 
@@ -181,7 +185,7 @@ def run_demo(backend_name: str = "docker") -> None:
                 output_dir = temp_path / "results"
 
                 # Copy the entire output directory
-                session.copy_from_runtime("/sandbox/output", str(output_dir))
+                session.copy_from_runtime(f"{root}/output", str(output_dir))
                 logger.info("✅ Results copied back successfully")
 
                 # Demo 7: Show what we got back
@@ -207,7 +211,7 @@ def run_demo(backend_name: str = "docker") -> None:
                 # Demo 8: Error handling demonstration
                 logger.info("\n🛡️  Step 8: Demonstrating error handling")
                 try:
-                    session.copy_to_runtime("/nonexistent/file.txt", "/sandbox/dummy.txt")
+                    session.copy_to_runtime("/nonexistent/file.txt", f"{root}/dummy.txt")
                     logger.info("   ❌ Expected this to fail!")
                 except FileNotFoundError:
                     logger.info("   ✅ Correctly handled error")

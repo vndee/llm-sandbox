@@ -30,9 +30,10 @@ llm-sandbox-mcp = "llm_sandbox.mcp_server.server:main"
 docker = ["docker>=7.1.0"]
 k8s = ["kubernetes>=32.0.1"]
 podman = ["docker>=7.1.0", "podman>=5.4.0.1"]
-mcp-docker = ["docker>=7.1.0", "mcp>=1.28.1,<2"]
-mcp-podman = ["docker>=7.1.0", "mcp>=1.28.1,<2", "podman>=5.4.0.1"]
-mcp-k8s = ["kubernetes>=32.0.1", "mcp>=1.28.1,<2"]
+tenki = ["tenki>=0.5.4"]
+mcp-docker = ["docker>=7.1.0", "mcp>=1.10.0"]
+mcp-podman = ["docker>=7.1.0", "mcp>=1.10.0", "podman>=5.4.0.1"]
+mcp-k8s = ["kubernetes>=32.0.1", "mcp>=1.10.0"]
 
 [dependency-groups]
 dev = [
@@ -56,7 +57,8 @@ dev = [
     "langchain-core>=0.3.61",
     "mkdocs-minify-plugin>=0.8.0",
     "mkdocs-git-revision-date-localized-plugin>=1.4.6",
-    "mcp>=1.28.1,<2",
+    "mcp>=1.10.0",
+    "tenki>=0.5.4",
 ]
 
 [build-system]

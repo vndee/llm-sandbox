@@ -11,6 +11,12 @@ Supported backends:
 | **Docker** | Development, single-host | Yes | Limited | High |
 | **Kubernetes** | Production, scalable | Configurable | Full | High |
 | **Podman** | Rootless security | No (rootless) | Limited | High |
+| **Tenki** | Cloud microVMs, no local runtime | No | Managed | High |
+
+> [!IMPORTANT]
+> Working directory differs on Tenki
+> Docker, Kubernetes, Podman and Micromamba all default `workdir` to `/sandbox`.
+> Tenki defaults to `/home/tenki`. See [Tenki Backend](#tenki-backend).
 
 ## Docker Backend
 
@@ -753,6 +759,165 @@ unit = container.generate_systemd(
 2. **Production**: Kubernetes for scalability and enterprise features
 3. **Security-Critical**: Podman for rootless containers and SELinux integration
 
+## Tenki Backend
+
+### Overview
+
+Tenki runs code in cloud microVMs instead of a local container runtime. There is no daemon
+to install and nothing running on your machine — sessions boot from a pre-warmed pool in a
+few seconds and are billed while they run.
+
+### Installation
+
+```bash
+pip install 'llm-sandbox[tenki]'
+
+# Authenticate (TENKI_API_KEY also works)
+export TENKI_AUTH_TOKEN="your-token"
+```
+
+The SDK reads the credential itself, so you normally pass nothing in code. To override it,
+use `auth_token=...`.
+
+### Basic Usage
+
+```python
+from llm_sandbox import SandboxSession, SandboxBackend
+
+with SandboxSession(backend=SandboxBackend.TENKI, lang="python") as session:
+    result = session.run("print('Hello from Tenki!')")
+    print(result.stdout)
+```
+
+### Working Directory: `/home/tenki`, not `/sandbox`
+
+**This is the difference most likely to break code written for another backend.** Every
+other backend defaults `workdir` to `/sandbox`. Tenki defaults to `/home/tenki`, matching
+the guest image's own home directory.
+
+```python
+# Works on Docker, fails on Tenki — /sandbox does not exist there
+session.run("open('/sandbox/data.csv').read()")
+
+# Portable: ask the session where it is
+session.run("import os; print(os.getcwd())")
+```
+
+### Runtime Configuration
+
+`runtime_configs` is passed straight through to the Tenki SDK's `Client.create()`, so use
+**Tenki's** parameter names:
+
+```python
+with SandboxSession(
+    backend=SandboxBackend.TENKI,
+    lang="python",
+    runtime_configs={
+        "cpu_cores": 2,
+        "memory_mb": 2048,      # not Docker's "mem_limit"
+        "allow_outbound": False, # no network egress
+        "timeout": 60,          # provisioning wait (passed to wait_ready)
+        "env": {"MY_VAR": "value"},
+    },
+) as session:
+    pass
+```
+
+`timeout` is the SDK create wait budget. llm-sandbox creates with `wait=False` so it can assign
+the sandbox handle before waiting; the same `timeout` value is then passed to `wait_ready()`.
+Omit it to keep the SDK default of 180 seconds.
+
+There is no `user` option — a Tenki sandbox is single-tenant and runs everything as one
+non-root user.
+
+### Reusing a Sandbox
+
+Pass `container_id` to attach to a sandbox that is already running. Environment setup is
+skipped, and `close()` **detaches instead of terminating**, so the microVM stays up for
+the next session:
+
+```python
+with SandboxSession(
+    backend=SandboxBackend.TENKI,
+    lang="python",
+    container_id="019fa328-5b7f-7057-a3a8-3682cddb67e4",
+) as session:
+    session.run("print('reusing a warm sandbox')")
+# Sandbox is still running here — terminate it yourself when done
+```
+
+Because setup is skipped, the sandbox must already have a Python virtualenv at
+`<workdir>/.sandbox-venv`. Attaching to a bare sandbox created outside llm-sandbox will
+fail to run code.
+
+### Faster Startup
+
+If your image already has Python ready, skip environment setup entirely:
+
+```python
+with SandboxSession(
+    backend=SandboxBackend.TENKI,
+    lang="python",
+    image="your-image-with-python",
+    skip_environment_setup=True,
+) as session:
+    pass
+```
+
+Note that `libraries=[...]` is unavailable in this mode — bake dependencies into the image.
+
+### Tenki Best Practices
+
+1. **Always use a context manager.** Sandboxes are billed while running, and `with` calls
+   `close()` however the block exits.
+2. **Set `allow_outbound=False`** unless the code genuinely needs network access.
+3. **Prebuild images** with your dependencies rather than installing per session.
+4. **Don't hardcode `/sandbox`** — see the working directory section above.
+
+> [!WARNING]
+> Cleanup is best-effort, not guaranteed
+> `with` is not a promise that the sandbox was released, so a caller that cares about the
+> bill should be prepared to retry or terminate the sandbox manually.
+
+Construct the session first if you want to retry, since `as session` is never bound when
+`open()` fails:
+
+```python
+session = SandboxSession(backend=SandboxBackend.TENKI, lang="python")
+try:
+    with session:
+        session.run("print('hello')")
+except ContainerError:
+    if session.container:      # release failed; the microVM is still billing
+        session.close()        # retry once
+    raise
+```
+
+A process that exits before retrying leaves the sandbox running. Set
+`idle_timeout_minutes` or `max_duration` in `runtime_configs` if you need a backstop that
+does not depend on your process staying alive.
+
+### Languages on the default guest
+
+Tenki does not pick a per-language default image. Without `image=`, only **Python**,
+**JavaScript**, and **C++** work. Other languages need a custom `image=` (or an existing
+`container_id=`):
+
+```python
+SandboxSession(backend=SandboxBackend.TENKI, lang="java")  # rejected
+SandboxSession(backend=SandboxBackend.TENKI, lang="java", image="your-registry/java-guest")
+```
+
+### Limitations
+
+| Feature | Status |
+|---------|--------|
+| `dockerfile=` | Not supported — Tenki boots prebuilt images; use `image=` |
+| `runtime_configs={"user": ...}` | Not supported — single-tenant, one non-root user |
+| Default guest languages | Python, JavaScript, and C++ only; others need `image=` |
+| C++ `libraries=[...]` | Not supported — `apt-get` needs root |
+| Output streaming | Callbacks fire once per command, not incrementally |
+
 ## Multi-Backend Support
 
 ### Backend Fallback
@@ -852,6 +1017,16 @@ podman unshare cat /etc/subuid
 # Socket not found
 systemctl --user start podman.socket
 ```
+
+### Tenki Issues
+
+| Error | Cause |
+|-------|-------|
+| `missing auth token: set TENKI_AUTH_TOKEN or TENKI_API_KEY` | No credential found |
+| `No such file or directory: /sandbox/...` | Hardcoded path; the workdir is `/home/tenki` |
+| `got an unexpected keyword argument` | A Docker-style key in `runtime_configs` |
+| `python: command not found` | Image ships no Python; pass a different `image=` |
+| `Permission denied` on `apt-get` | The guest is non-root; bake packages into the image |
 
 ## Next Steps
 

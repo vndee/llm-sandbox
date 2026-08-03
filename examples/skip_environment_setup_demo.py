@@ -1,70 +1,129 @@
-"""Example demonstrating skip_environment_setup feature for Kubernetes deployments.
+"""Example demonstrating the skip_environment_setup feature.
 
-This example shows how to use the skip_environment_setup configuration option
-to avoid package installation delays in Kubernetes environments where
-administrators want to use custom images with pre-configured environments.
+skip_environment_setup=True bypasses the virtualenv build and pip upgrade, trading the
+ability to install libraries at runtime for a faster start. That trade is worth most on
+backends where startup is billed, so this times both paths on whichever backend you pick.
+
+Usage:
+    python examples/skip_environment_setup_demo.py            # every available backend
+    python examples/skip_environment_setup_demo.py tenki      # just one
 """
 
 import logging
+import time
+from contextlib import ExitStack, closing
 
 from llm_sandbox import SandboxBackend, SandboxSession
+from llm_sandbox.exceptions import MissingDependencyError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 logger = logging.getLogger(__name__)
 
+_BACKEND_UNAVAILABLE: list[type[BaseException]] = [
+    MissingDependencyError,
+]
+try:
+    from docker.errors import DockerException
 
-def demo_skip_environment_setup() -> None:
-    """Demonstrate using skip_environment_setup=True to avoid pip upgrade and environment setup."""
-    logger.info("Demo: Skip environment setup for faster container startup")
+    _BACKEND_UNAVAILABLE.append(DockerException)
+except ImportError:
+    pass
+try:
+    from podman.errors.exceptions import PodmanError
 
-    # This configuration skips language-specific environment setup
-    # Useful when using custom images with pre-configured environments
-    # or when administrators want to avoid pip upgrade delays in K8s deployments
-    with SandboxSession(
-        lang="python",
-        verbose=True,
-        backend=SandboxBackend.KUBERNETES,  # Change to KUBERNETES for K8s deployment
-        skip_environment_setup=True,
-        # For K8s deployments, administrators can also set custom images
-        # with pre-installed packages to avoid package installation delays
-    ) as session:
-        logger.info("Session created with skip_environment_setup=True")
-        logger.info("No pip upgrade or virtual environment creation will be performed")
+    _BACKEND_UNAVAILABLE.append(PodmanError)
+except ImportError:
+    pass
+try:
+    from kubernetes.client.exceptions import ApiException
+    from kubernetes.config.config_exception import ConfigException
 
-        # This assumes the container image already has the required environment set up
-        # For custom images, ensure they include necessary Python packages
-        output = session.run("print('Hello from pre-configured environment!')")
-        logger.info("Output: %s", output.stdout.strip())
+    _BACKEND_UNAVAILABLE.extend((ApiException, ConfigException))
+except ImportError:
+    pass
+try:
+    from tenki import MissingAuthTokenError
 
-        # When skip_environment_setup=True, libraries cannot be installed dynamically
-        # They must be pre-installed in the container image
-        try:
-            output = session.run(
-                "import sys; print(f'Python version: {sys.version}')",
-            )
-            logger.info("Python info: %s", output.stdout.strip())
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Failed to run code: %s", e)
-            logger.info("This might happen if the base image doesn't have the expected Python setup")
+    _BACKEND_UNAVAILABLE.append(MissingAuthTokenError)
+except ImportError:
+    pass
+
+BACKEND_UNAVAILABLE_ERRORS = tuple(_BACKEND_UNAVAILABLE)
+
+BACKENDS = {
+    "docker": SandboxBackend.DOCKER,
+    "kubernetes": SandboxBackend.KUBERNETES,
+    "podman": SandboxBackend.PODMAN,
+    "tenki": SandboxBackend.TENKI,
+}
 
 
-def demo_normal_environment_setup() -> None:
-    """Demonstrate normal environment setup (default behavior)."""
-    logger.info("\nDemo: Normal environment setup (default behavior)")
+def build_client(backend_name: str, stack: ExitStack) -> object | None:
+    """Build a client for one backend only, at the point of use.
 
-    # Default behavior - performs full environment setup
-    with SandboxSession(
-        lang="python",
-        verbose=True,
-        backend=SandboxBackend.KUBERNETES,
-        skip_environment_setup=False,  # This is the default
-    ) as session:
-        logger.info("Session created with default environment setup")
-        logger.info("This will create venv, pip cache, and upgrade pip")
+    The client is entered into ``stack`` so it is closed when the caller exits the
+    ``ExitStack``. Docker/Podman sessions do not close an injected client themselves.
 
-        output = session.run("print('Hello with full environment setup!')")
-        logger.info("Output: %s", output.stdout.strip())
+    Returns:
+        object | None: A backend client, or None when the backend builds its own.
+
+    """
+    if backend_name == "docker":
+        import docker
+
+        # DockerClient has close() but is not a context manager.
+        return stack.enter_context(closing(docker.DockerClient.from_env()))
+    if backend_name == "podman":
+        from podman import PodmanClient
+
+        return stack.enter_context(PodmanClient.from_env())
+    return None
+
+
+def time_startup(backend_name: str, *, skip_setup: bool) -> None:
+    """Open a session one way and report how long it took to become usable.
+
+    Args:
+        backend_name: Key into BACKENDS.
+        skip_setup: Whether to skip the venv build and pip upgrade.
+
+    """
+    label = "skip_environment_setup=True" if skip_setup else "default (builds venv)"
+    logger.info("\n--- %s: %s ---", backend_name, label)
+
+    started = time.perf_counter()
+    with (
+        ExitStack() as stack,
+        SandboxSession(
+            lang="python",
+            verbose=True,
+            backend=BACKENDS[backend_name],
+            client=build_client(backend_name, stack),
+            skip_environment_setup=skip_setup,
+        ) as session,
+    ):
+        ready = time.perf_counter() - started
+        # Confirms the sandbox is genuinely usable, not merely opened. With setup skipped
+        # this relies on the image already shipping a working interpreter.
+        output = session.run("import sys; print(sys.version.split()[0])")
+
+    logger.info("%s on %s: ready in %.2fs, python %s", label, backend_name, ready, output.stdout.strip())
+
+
+def run_demo(backend_name: str) -> None:
+    """Time both startup paths on one backend.
+
+    Raises:
+        ValueError: If the backend name is not recognised.
+
+    """
+    if backend_name not in BACKENDS:
+        msg = f"Unknown backend {backend_name!r}; choose from {sorted(BACKENDS)}"
+        raise ValueError(msg)
+
+    for skip_setup in (False, True):
+        time_startup(backend_name, skip_setup=skip_setup)
 
 
 def demo_kubernetes_use_case() -> None:
@@ -142,10 +201,23 @@ print("Environment setup was skipped - using pre-configured image!")
         logger.info("In a properly configured K8s cluster, this would work fine")
 
 
-if __name__ == "__main__":
-    demo_skip_environment_setup()
-    demo_normal_environment_setup()
-    demo_kubernetes_use_case()
+def main() -> None:
+    """Time one backend by name, or every backend when none is given."""
+    import sys
+
+    if len(sys.argv) > 1:
+        backend_name = sys.argv[1]
+        run_demo(backend_name)
+        if backend_name == "kubernetes":
+            demo_kubernetes_use_case()
+    else:
+        # One unavailable runtime must not stop the rest, so failures are logged.
+        for backend_name in BACKENDS:
+            try:
+                run_demo(backend_name)
+            except BACKEND_UNAVAILABLE_ERRORS:
+                logger.exception("%s skipped", backend_name)
+        demo_kubernetes_use_case()
 
     separator = "=" * 60
     logger.info("\n%s", separator)
@@ -158,3 +230,7 @@ if __name__ == "__main__":
     logger.info("  • Standard development and testing")
     logger.info("  • When using base images without pre-installed packages")
     logger.info("  • Maximum compatibility with dynamic package installation")
+
+
+if __name__ == "__main__":
+    main()
