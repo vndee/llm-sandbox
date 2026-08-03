@@ -1,0 +1,77 @@
+name: mcp-sdk-matrix
+
+# uv.lock pins one mcp version, so the normal test job only ever exercises that
+# one. This runs the MCP server suite against each supported major instead.
+#
+# mcp 2.0 removing mcp.server.fastmcp shipped to PyPI as a broken install
+# because nothing here installed 2.x. The weekly run is what catches the next
+# one before users do.
+
+on:
+  schedule:
+    # Mondays, 07:00 UTC.
+    - cron: "0 7 * * 1"
+  pull_request:
+    paths:
+      - "llm_sandbox/mcp_server/**"
+      - "tests/test_mcp_server.py"
+      - "pyproject.toml"
+      - ".github/workflows/mcp-sdk-matrix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-sdk:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: "1.x (lower bound)"
+            spec: "mcp==1.28.1"
+          - label: "1.x (latest)"
+            spec: "mcp>=1.28.1,<2"
+          - label: "2.x (latest)"
+            spec: "mcp>=2,<3"
+    name: mcp ${{ matrix.label }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        env:
+          SPEC: ${{ matrix.spec }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[docker]" pytest pytest-asyncio
+          # Installed after the project so this pin wins over the resolved one.
+          pip install "$SPEC"
+
+      - name: Show resolved version
+        run: python -c "import importlib.metadata as m; print('mcp', m.version('mcp'))"
+
+      - name: Server imports and registers its tools
+        run: |
+          python - <<'PY'
+          import asyncio
+          from llm_sandbox.mcp_server.server import mcp, main
+
+          async def go():
+              tools = sorted(t.name for t in await mcp.list_tools())
+              assert tools == ["execute_code", "get_language_details", "get_supported_languages"], tools
+              resources = [str(r.uri) for r in await mcp.list_resources()]
+              assert resources == ["sandbox://languages"], resources
+              print("tools and resources OK:", tools)
+
+          asyncio.run(go())
+          PY
+
+      - name: Run the MCP server suite
+        run: python -m pytest tests/test_mcp_server.py -q
