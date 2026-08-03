@@ -60,14 +60,17 @@ right call. What they cannot offer is these three things:
 
 ## Where it runs
 
-The same code runs on all four backends — you change one argument:
+The same code runs on all three container backends — you change one argument:
 
 | Backend        | Use it when                                                   |
 | -------------- | ------------------------------------------------------------- |
 | **Docker**     | Default. Laptops, single servers, CI.                         |
 | **Podman**     | You want rootless containers.                                 |
 | **Kubernetes** | You're scaling out, with custom pod manifests and namespaces. |
-| **Micromamba** | You need conda-managed scientific environments.               |
+
+There's also `MicromambaSession`, which isn't a fourth backend — it's a
+specialisation of the Docker one for Micromamba images, when you need
+conda-managed scientific environments.
 
 ## Honest limitations
 
