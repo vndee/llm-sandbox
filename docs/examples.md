@@ -456,7 +456,8 @@ class SecureAICodeExecutor:
                     "mem_limit": "256m",
                     "cpu_count": 1,
                     "network_mode": "none",
-                    "read_only": True
+                    "cap_drop": ["ALL"],
+                    "cap_add": ["DAC_OVERRIDE"],  # needed to read the copied code
                 }
             ) as session:
                 # Security check

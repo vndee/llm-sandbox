@@ -57,13 +57,13 @@ per-call cost. See [`../pool_basic_demo.py`](../pool_basic_demo.py).
 **These examples run untrusted code — that is the whole point.** Anything the
 agent reads can steer what gets executed, so each file applies container
 controls that the runtime actually enforces: `network_mode="none"`,
-`mem_limit`, `pids_limit` and `no-new-privileges`. Verified: egress is blocked.
+`mem_limit`, `pids_limit`, `cap_drop=["ALL"]` and `no-new-privileges`.
+Verified inside the container: egress blocked, `CapEff` is `0000000000000002`.
 
-Two controls you will see recommended elsewhere, including in this project's own
-docs, **do not work** with llm-sandbox 0.3.43 and are deliberately omitted —
-`read_only=True` makes Docker reject the code copy (`container rootfs is marked
-read-only`), and `cap_drop=["ALL"]` drops `DAC_OVERRIDE` so the copied file
-cannot be read.
+`DAC_OVERRIDE` is added back deliberately — without it the container cannot read
+the source file llm-sandbox copies in. `read_only=True` is omitted because Docker
+rejects that copy outright against a read-only rootfs. See
+[the security guide](https://vndee.github.io/llm-sandbox/security/) for both.
 
 **Security policies are advisory.** `session.is_safe(code)` returns a verdict;
 it does not block execution, and `run()` executes code the policy flagged. If
