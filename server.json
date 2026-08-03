@@ -1,0 +1,104 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.vndee/llm-sandbox",
+  "title": "LLM Sandbox",
+  "description": "Securely run LLM-generated code in isolated containers across 7 languages and 3 container backends.",
+  "version": "0.3.43",
+  "repository": {
+    "url": "https://github.com/vndee/llm-sandbox",
+    "source": "github"
+  },
+  "websiteUrl": "https://vndee.github.io/llm-sandbox/",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "llm-sandbox",
+      "version": "0.3.43",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--from",
+          "value": "llm-sandbox[mcp-docker]",
+          "description": "Install the MCP server extra. The base llm-sandbox package intentionally ships no container or MCP dependencies, so the extra is required for the server to start.",
+          "isRequired": true
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "BACKEND",
+          "description": "Container backend to use. Must match the installed extra: mcp-docker, mcp-podman, or mcp-k8s.",
+          "default": "docker",
+          "choices": [
+            "docker",
+            "podman",
+            "kubernetes"
+          ],
+          "isRequired": false
+        },
+        {
+          "name": "DOCKER_HOST",
+          "description": "Docker or Podman socket URL, e.g. unix:///var/run/docker.sock",
+          "isRequired": false
+        },
+        {
+          "name": "KUBECONFIG",
+          "description": "Path to kubeconfig file when BACKEND=kubernetes.",
+          "isRequired": false
+        },
+        {
+          "name": "NAMESPACE",
+          "description": "Kubernetes namespace used for sandbox pods when BACKEND=kubernetes.",
+          "default": "default",
+          "isRequired": false
+        },
+        {
+          "name": "COMMIT_CONTAINER",
+          "description": "Commit the container after a run so installed libraries persist between sessions.",
+          "default": "true",
+          "isRequired": false
+        },
+        {
+          "name": "KEEP_TEMPLATE",
+          "description": "Keep the base image after the session ends to avoid re-pulling it on the next run.",
+          "default": "true",
+          "isRequired": false
+        },
+        {
+          "name": "SANDBOX_NETWORK_MODE",
+          "description": "Network mode for the sandbox container. Set to 'none' for hardened isolation. Docker and Podman backends only.",
+          "isRequired": false
+        },
+        {
+          "name": "SANDBOX_READ_ONLY",
+          "description": "Mount the sandbox root filesystem read-only. Recommended: true. Docker and Podman backends only.",
+          "isRequired": false
+        },
+        {
+          "name": "SANDBOX_CAP_DROP",
+          "description": "Comma-separated Linux capabilities to drop. Recommended: ALL. Docker and Podman backends only.",
+          "isRequired": false
+        },
+        {
+          "name": "SANDBOX_SECURITY_OPT",
+          "description": "Comma-separated container security options, e.g. no-new-privileges. Docker and Podman backends only.",
+          "isRequired": false
+        },
+        {
+          "name": "SANDBOX_MEMORY",
+          "description": "Memory limit for the sandbox container, e.g. 4g. Docker and Podman backends only.",
+          "isRequired": false
+        },
+        {
+          "name": "SANDBOX_CPUS",
+          "description": "Fractional CPU allocation for the sandbox container, e.g. 1.5. Docker and Podman backends only.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

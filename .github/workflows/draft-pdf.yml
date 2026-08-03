@@ -1,0 +1,42 @@
+name: draft-pdf
+
+# Compiles paper/paper.md with the same Open Journals toolchain JOSS uses at
+# review time, so a paper that no longer builds is caught here rather than
+# after submission. The PDF is a build artifact and is not committed.
+
+on:
+  push:
+    paths:
+      - "paper/**"
+      - ".github/workflows/draft-pdf.yml"
+  pull_request:
+    paths:
+      - "paper/**"
+      - ".github/workflows/draft-pdf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Third-party action pinned to a full commit SHA rather than the v1.0
+      # tag: tags are mutable, and this action is upstream-labelled
+      # experimental. 85a1837 is the commit v1.0 currently points at.
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@85a18372e48f551d8af9ddb7a747de685fbbb01c # v1.0
+        with:
+          journal: joss
+          paper-path: paper/paper.md
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper
+          path: paper/paper.pdf
+          if-no-files-found: error

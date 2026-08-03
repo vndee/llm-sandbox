@@ -1,0 +1,100 @@
+name: agent-sdk-smoke
+
+# Checks the examples in examples/agent_sdks/ against the *current* release of
+# each framework, so upstream drift surfaces here instead of in a user's
+# traceback. Two breakages this repo already shipped would have been caught:
+# LangChain 1.0 removing AgentExecutor, and mcp 2.0 removing mcp.server.fastmcp.
+#
+# The weekly run is the point. Frameworks release on their own schedule, so an
+# examples file that passed on merge can be broken a fortnight later with no
+# commit here to trigger it.
+
+on:
+  schedule:
+    # Mondays, 06:00 UTC.
+    - cron: "0 6 * * 1"
+  pull_request:
+    paths:
+      - "examples/agent_sdks/**"
+      - "scripts/smoke_agent_sdks.py"
+      - ".github/workflows/agent-sdk-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    # One framework per job: several pin conflicting LangChain versions and
+    # cannot share an environment.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: openai_agents_tool
+            package: openai-agents
+          - module: claude_agent_sdk_tool
+            package: claude-agent-sdk
+          - module: pydantic_ai_tool
+            package: pydantic-ai
+          - module: smolagents_tool
+            package: smolagents
+          - module: google_adk_tool
+            package: google-adk
+          - module: crewai_tool
+            package: crewai
+          - module: strands_tool
+            package: strands-agents
+          - module: deepagents_tool
+            package: deepagents
+          - module: ag2_tool
+            package: ag2
+          - module: langchain_tool
+            package: langchain langchain-openai
+          - module: llamaindex_tool
+            package: llama-index llama-index-llms-openai
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the framework and this library
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          python -m pip install --upgrade pip
+          # Unpinned on purpose: the job exists to detect new releases breaking
+          # these examples. A pin here would defeat it.
+          # shellcheck disable=SC2086
+          pip install "llm-sandbox[docker]" $PACKAGE
+
+      - name: Smoke-check the example
+        env:
+          MODULE: ${{ matrix.module }}
+        run: python scripts/smoke_agent_sdks.py "$MODULE"
+
+  # Docker is exercised once rather than in all eleven jobs: run_python is
+  # identical across the examples, and each container run pulls a ~1.6 GB image.
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install "llm-sandbox[docker]" openai-agents
+
+      - name: Execute code in a real container
+        run: python scripts/smoke_agent_sdks.py openai_agents_tool --docker

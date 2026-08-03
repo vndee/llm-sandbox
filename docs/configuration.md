@@ -587,7 +587,10 @@ runtime_configs = {
     "privileged": False,
     "user": "1000:1000",           # Run as specific user/group
     "cap_drop": ["ALL"],           # Drop all capabilities
-    "cap_add": ["NET_ADMIN"],      # Add specific capabilities
+    # DAC_OVERRIDE must be added back whenever you drop ALL: without it the
+    # container cannot read the source file the session copies in, and every
+    # run fails with "[Errno 13] Permission denied".
+    "cap_add": ["DAC_OVERRIDE"],
     "security_opt": ["no-new-privileges:true"]
 }
 ```

@@ -170,8 +170,13 @@ with SandboxSession(
 
         # Security options
         "privileged": False,
-        "read_only": True,
+        # NOTE: "read_only": True is not usable with SandboxSession. The session
+        # copies your code into the container, and Docker rejects that against a
+        # read-only rootfs ("container rootfs is marked read-only") -- a tmpfs on
+        # the workdir does not help.
         "cap_drop": ["ALL"],
+        # Keep DAC_OVERRIDE: without it the container cannot read the copied
+        # source file. Everything else stays dropped.
         "cap_add": ["DAC_OVERRIDE"],
         "security_opt": ["no-new-privileges"],
 

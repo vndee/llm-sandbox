@@ -21,6 +21,10 @@ dependencies = ["pydantic>=2.11.5"]
 Homepage = "https://vndee.github.io/llm-sandbox/"
 Repository = "https://github.com/vndee/llm-sandbox"
 Documentation = "https://vndee.github.io/llm-sandbox/"
+DOI = "https://doi.org/10.5281/zenodo.21760525"
+
+[project.scripts]
+llm-sandbox-mcp = "llm_sandbox.mcp_server.server:main"
 
 [project.optional-dependencies]
 docker = ["docker>=7.1.0"]
@@ -51,7 +55,6 @@ dev = [
     "langgraph>=0.4.7",
     "langchain-openai>=0.3.18",
     "langchain-core>=0.3.61",
-    "nest-asyncio>=1.6.0",
     "mkdocs-minify-plugin>=0.8.0",
     "mkdocs-git-revision-date-localized-plugin>=1.4.6",
     "mcp>=1.10.0",
@@ -135,3 +138,10 @@ source = ["llm_sandbox"]
 
 [tool.deptry]
 ignore = ["DEP004"]
+# The agent SDK examples each import a third-party framework (openai-agents,
+# crewai, ag2, ...) that is intentionally not a project dependency: they are
+# illustrations, installed ad hoc by whoever runs one. Declaring all of them
+# would also be unresolvable, since several pin conflicting langchain versions.
+# extend_exclude, not exclude: the latter replaces deptry's defaults, which
+# already skip tests/ and .venv.
+extend_exclude = ["examples/agent_sdks"]

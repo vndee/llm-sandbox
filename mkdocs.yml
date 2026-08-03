@@ -62,6 +62,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Why LLM Sandbox: why-llm-sandbox.md
   - Getting Started: getting-started.md
   - User Guide:
       - Configuration: configuration.md
@@ -141,8 +142,12 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
-      auto_append:
-        - includes/mkdocs.md
+      # Fail the build on a missing include. The default is False, which
+      # silently drops the snippet and publishes an empty code block -- that is
+      # how four sections shipped empty when their example files were renamed.
+      # Enabling this also revealed that the previous `auto_append` pointed at
+      # docs/includes/mkdocs.md, which has never existed in this repo.
+      check_paths: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid

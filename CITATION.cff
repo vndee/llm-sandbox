@@ -2,13 +2,22 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "LLM Sandbox"
-abstract: "A lightweight and portable sandbox environment designed to run Large Language Model (LLM) generated code in a safe and isolated mode. It provides a secure execution environment for AI-generated code while offering flexibility in container backends and comprehensive language support."
+abstract: >-
+  A lightweight and portable sandbox environment designed to run Large Language
+  Model (LLM) generated code in a safe and isolated mode. It provides a secure
+  execution environment for AI-generated code with pluggable container backends
+  (Docker, Podman, Kubernetes, Micromamba), configurable security policies,
+  multi-language support, automatic artifact extraction, container pooling, and
+  a Model Context Protocol (MCP) server.
 authors:
   - family-names: "Huynh"
     given-names: "Duy V."
     email: "vndee.huynh@gmail.com"
-    orcid: "https://orcid.org/0000-0000-0000-0000"  # Add your ORCID if available
+    orcid: "https://orcid.org/0009-0002-5001-7815"
 identifiers:
+  - type: doi
+    value: "10.5281/zenodo.21760525"
+    description: "Concept DOI - always resolves to the latest release"
   - type: url
     value: "https://github.com/vndee/llm-sandbox"
     description: "The GitHub repository"
@@ -19,31 +28,17 @@ repository-code: "https://github.com/vndee/llm-sandbox"
 url: "https://vndee.github.io/llm-sandbox/"
 repository-artifact: "https://pypi.org/project/llm-sandbox/"
 license: MIT
-version: "0.3.8"
-date-released: "2025-06-13"  # Update this to the actual release date
+version: "0.3.43"
+date-released: "2026-08-03"
 keywords:
-  - "LLM"
+  - "large language models"
+  - "code interpreter"
   - "sandbox"
-  - "code execution"
-  - "container"
+  - "secure code execution"
+  - "AI agents"
+  - "containers"
   - "docker"
   - "kubernetes"
-  - "security"
+  - "podman"
+  - "model context protocol"
   - "python"
-  - "javascript"
-  - "java"
-  - "artificial intelligence"
-  - "large language models"
-  - "secure execution"
-preferred-citation:
-  type: software
-  title: "LLM Sandbox: Secure Execution Environment for AI-Generated Code"
-  authors:
-    - family-names: "Huynh"
-      given-names: "Duy V."
-      email: "vndee.huynh@gmail.com"
-  version: "0.3.8"
-  date-released: "2025-06-13"  # Update this to the actual release date
-  url: "https://github.com/vndee/llm-sandbox"
-  license: MIT
-  repository-code: "https://github.com/vndee/llm-sandbox"
