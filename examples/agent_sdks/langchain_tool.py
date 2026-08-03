@@ -9,6 +9,8 @@ integration used to be written against: `langchain.hub`, `AgentExecutor` and
 returns a LangGraph graph you invoke directly.
 """
 
+from typing import Any
+
 from _sandbox import TOOL_DESCRIPTION, run_python
 from langchain.agents import create_agent
 from langchain_core.tools import tool
@@ -20,7 +22,7 @@ def execute_python(code: str) -> str:
     return run_python(code)
 
 
-def build_agent(model: str = "openai:gpt-4o"):  # noqa: ANN201 - returns a LangGraph graph
+def build_agent(model: str = "openai:gpt-4o") -> Any:
     """Construct an agent with the sandbox tool attached.
 
     Built lazily rather than at module scope because `create_agent` resolves the

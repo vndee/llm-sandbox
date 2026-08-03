@@ -54,7 +54,6 @@ dev = [
     "langgraph>=0.4.7",
     "langchain-openai>=0.3.18",
     "langchain-core>=0.3.61",
-    "nest-asyncio>=1.6.0",
     "mkdocs-minify-plugin>=0.8.0",
     "mkdocs-git-revision-date-localized-plugin>=1.4.6",
     "mcp>=1.28.1,<2",
@@ -143,4 +142,4 @@ ignore = ["DEP004"]
 # would also be unresolvable, since several pin conflicting langchain versions.
 # extend_exclude, not exclude: the latter replaces deptry's defaults, which
 # already skip tests/ and .venv.
-extend_exclude = ["examples/agent_sdks", "\\.worktrees"]
+extend_exclude = ["examples/agent_sdks"]

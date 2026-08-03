@@ -15,8 +15,17 @@ from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.openai import OpenAI
 
+
+def execute_python(code: str) -> str:
+    """Run Python in a sandboxed container and return stdout."""
+    return run_python(code)
+
+
+# Wrapped rather than passing run_python directly: FunctionTool derives the
+# schema from the signature, so the raw function would expose `libraries` and
+# let the model install arbitrary PyPI packages.
 sandbox_tool = FunctionTool.from_defaults(
-    fn=run_python,
+    fn=execute_python,
     name="execute_python",
     description=TOOL_DESCRIPTION,
 )

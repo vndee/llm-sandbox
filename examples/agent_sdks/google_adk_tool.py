@@ -35,5 +35,7 @@ root_agent = Agent(
 )
 
 if __name__ == "__main__":
-    print("Run with: adk run google_adk_tool.py")
+    # ADK is CLI-driven: `adk run` expects a package directory whose
+    # agent.py defines root_agent, not a module path.
+    print("Copy root_agent into an agent package, then: adk run <package_dir>")
     print("Tools registered:", [t.name for t in root_agent.tools])

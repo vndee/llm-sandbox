@@ -19,7 +19,8 @@ wants a tool declared.
 | Strands Agents | [`strands_tool.py`](strands_tool.py) | strands-agents 1.50.2 |
 | AG2 | [`ag2_tool.py`](ag2_tool.py) | ag2 1.0.1 |
 
-Every example is import-checked against the version listed. Versions are stated
+Each example was import-checked against the version listed at the time of writing
+(there is no CI job doing this yet). Versions are stated
 because these APIs move: LangChain 1.0 removed `AgentExecutor` and
 `langchain.hub`, LlamaIndex dropped `FunctionCallingAgentWorker`, and AG2 1.0
 replaced `ConversableAgent`/`register_function` outright. If an example fails
@@ -43,8 +44,18 @@ framework expects.
 fine for a demo and wrong for an agent loop — container creation dominates
 per-call cost. See [`../pool_basic_demo.py`](../pool_basic_demo.py).
 
+**These examples run untrusted code — that is the whole point.** Anything the
+agent reads can steer what gets executed, so `_sandbox.py` applies container
+controls that the runtime actually enforces: `network_mode="none"`,
+`mem_limit`, `pids_limit` and `no-new-privileges`. Verified: egress is blocked.
+
+Two controls you will see recommended elsewhere, including in this project's own
+docs, **do not work** with llm-sandbox 0.3.43 and are deliberately omitted —
+`read_only=True` makes Docker reject the code copy (`container rootfs is marked
+read-only`), and `cap_drop=["ALL"]` drops `DAC_OVERRIDE` so the copied file
+cannot be read.
+
 **Security policies are advisory.** `session.is_safe(code)` returns a verdict;
-it does not block execution, and `run()` will happily execute code the policy
-flagged. If you are running genuinely untrusted code, check it yourself and pair
-the container controls (`network_mode="none"`, read-only rootfs, capability
-drops) with a hardened runtime. See [the security guide](https://vndee.github.io/llm-sandbox/security/).
+it does not block execution, and `run()` executes code the policy flagged. If
+you rely on it, check it yourself before calling `run()`. See
+[the security guide](https://vndee.github.io/llm-sandbox/security/).
