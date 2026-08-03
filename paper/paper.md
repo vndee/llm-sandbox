@@ -29,8 +29,10 @@ interpreters, real package installation, real plotting — for the result to be 
 `LLM Sandbox` [@llmsandbox] is a Python library that provides this execution layer. A single
 context-managed `SandboxSession` accepts a code string and returns its stdout, stderr,
 exit code, and any generated artifacts, having run the code inside an isolated container.
-The same API is served by four interchangeable backends — Docker, Podman, Kubernetes, and
-Micromamba — so that a workflow prototyped on a laptop runs unchanged on a cluster. Seven
+The same API is served by three interchangeable container backends — Docker, Podman and
+Kubernetes — so that a workflow prototyped on a laptop runs unchanged on a cluster. A
+fourth session type specialises the Docker backend for Micromamba images, giving
+conda-managed scientific environments without a separate backend implementation. Seven
 languages are supported (Python, JavaScript, Java, C++, Go, R, Ruby) with automatic
 dependency installation, and plots written by `matplotlib` or `ggplot2` are captured and
 returned as structured artifacts rather than being lost inside the container.
@@ -54,7 +56,7 @@ user's infrastructure. Neither option serves work under data-governance constrai
 air-gapped evaluation, or high-volume batch execution where per-call pricing dominates.
 
 `LLM Sandbox` targets this gap. It is installable with `pip`, runs entirely on
-infrastructure the user already controls, and imposes no per-execution cost. Its intended
+infrastructure the user already controls, and imposes no vendor per-execution fee. Its intended
 audience is researchers building evaluation harnesses over generated code, and engineers
 embedding code execution into agent systems under privacy or cost constraints.
 
@@ -72,10 +74,12 @@ Several systems address sandboxed execution of model-generated code, and they di
 `E2B` [@e2b] and `microsandbox` [@microsandbox] both execute code inside microVMs —
 Firecracker and libkrun respectively — providing hardware-level isolation stronger than
 containers. `Daytona` [@daytona] provides elastic container-based infrastructure for agent
-workloads. Each of these ships its own execution substrate: a microVM runtime, a daemon,
-or a control plane that the user must adopt and operate. `E2B` and `Daytona` additionally
-offer hosted services, which reintroduces the per-execution cost and data-egress
-properties described above, though both can be self-hosted.
+workloads. Self-hosting any of these means adopting and operating its execution substrate:
+a microVM runtime, a daemon, or a control plane. `E2B` and `Daytona` additionally offer
+hosted services, which reintroduce the per-execution cost and data-egress properties
+described above. `Daytona`'s public repository has moreover stated since June 2026 that it
+is no longer maintained, with development moved to a private codebase — an illustration of
+the roadmap dependency that self-hosted, permissively licensed infrastructure avoids.
 
 `MPLSandbox` [@mplsandbox] is the closest system in research intent, providing multi-language
 sandboxed execution for LLMs. Its design centre, however, is unified compiler and
@@ -88,10 +92,10 @@ here to make the lineage explicit rather than to dispute it.
 `LLM Sandbox` was built rather than contributed to these projects because its design
 centre is incompatible with theirs. It ships *no runtime of its own*: it is a library that
 adapts to container infrastructure an organisation already operates, whether that is
-Docker on a laptop or a managed Kubernetes cluster. Adding a Kubernetes or Micromamba
-backend to a microVM-based platform would contradict that platform's central premise, so
-the multi-backend abstraction — one session API, four substrates — could not have been
-contributed upstream. Two further capabilities follow from the library form factor and are
+Docker on a laptop or a managed Kubernetes cluster. Adding a Kubernetes backend to a
+microVM-based platform would contradict that platform's central premise, so the
+multi-backend abstraction — one session API over whichever container runtime is already
+in place — could not have been contributed upstream. Two further capabilities follow from the library form factor and are
 not the focus of the alternatives: structured extraction of plots and files produced
 inside the container, and container pooling that removes creation latency from agent loops
 executing code many times per task.
@@ -109,7 +113,7 @@ session classes layer language handling, dependency installation, artifact extra
 and policy enforcement on top. This boundary is what makes the multi-backend claim
 tractable: adding a backend does not require touching language support, and adding a
 language does not require touching any backend. The cost is an abstraction that must
-express the least-common-denominator of four container systems, which is why
+express the least-common-denominator of three container systems, which is why
 backend-specific options are surfaced explicitly rather than hidden.
 
 Three session types share one interface: `SandboxSession` for one-shot execution,
@@ -119,11 +123,12 @@ imports persist across calls. An optional pool manager pre-warms and recycles co
 with configurable size bounds, idle and lifetime limits, health checks, and explicit
 exhaustion strategies.
 
-Pooling exists because container creation, not code execution, dominates the cost of an
-agent loop. Executing a trivial snippet through a fresh session — creating, setting up and
+Pooling exists because for short-running code — the common case in an agent loop —
+container creation rather than execution dominates the cost. Executing a trivial snippet
+through a fresh session — creating, setting up and
 destroying a container per call — took a median of 17.9 s, against 223 ms when the same
-snippet borrowed a pre-warmed container from a pool, a 80-fold reduction in per-execution
-overhead. Those figures come from `benchmarks/pooling_latency.py`, included in the
+snippet borrowed a pre-warmed container from a pool, an approximately 80-fold reduction in
+per-execution overhead for this workload. Those figures come from `benchmarks/pooling_latency.py`, included in the
 repository, run over 8 iterations per arm on Docker Desktop 28.2.2 under macOS on
 Apple silicon with four CPUs allocated to the Docker VM; image download and the pool's
 first acquisition are excluded from timing. The absolute numbers are specific to that
@@ -131,13 +136,17 @@ environment — Docker Desktop's virtual machine makes container creation costli
 than on native Linux, so the ratio should be read as an illustration of where the time
 goes rather than a portable constant.
 
-Security is layered rather than singular. Static policies reject code matching
-configurable patterns before any container starts; container-level controls then apply
-network isolation, read-only root filesystems, capability dropping, and CPU and memory
-limits. Static screening is deliberately treated as defence in depth rather than a
-guarantee, since pattern matching over source code is evadable; it reduces accidental
-damage and obvious misuse, while the container controls bound the blast radius. As noted
-above, the library does not claim kernel-level isolation.
+Security is layered rather than singular, and the layers differ in how they are enforced.
+A configurable `SecurityPolicy` screens code against patterns before execution, but it is
+deliberately *advisory*: `session.is_safe(code)` returns a verdict and the caller decides
+what to do with it, and `session.run()` does not reject code on the policy's behalf. This
+is a design choice rather than an omission — pattern matching over source code is evadable,
+so presenting it as a gate would misrepresent its strength, and applications differ in
+whether a violation should abort, warn, or downgrade privileges. The layer that is actually
+enforced is the container runtime: network isolation, read-only root filesystems,
+capability dropping, and CPU and memory limits are applied by Docker, Podman, or the
+Kubernetes pod specification when configured, and hold regardless of what the static
+screen concluded. As noted above, the library does not claim kernel-level isolation.
 
 # Research impact statement
 
@@ -164,12 +173,11 @@ The project shows sustained open development rather than a single release. It ha
 developed publicly since June 2024 across more than twenty months of commit activity, with
 43 tagged releases, 19 contributors, merged pull requests from 18 developers outside the
 core author, and 65 issues opened by external users. It has been downloaded more than 3.9
-million times from PyPI, with over 600,000 downloads in the 30 days preceding submission.
+million times from PyPI, with over 600,000 in the preceding 30 days (GitHub and PyPI, measured 3 August 2026).
 
 The wider trajectory of the field supports the need for this infrastructure: the emergence
-of Kubernetes-native agent-sandbox primitives [@agentsandbox] indicates that isolated
-execution is becoming a standard component of agent systems rather than a per-project
-concern.
+of Kubernetes-native agent-sandbox primitives [@agentsandbox] illustrates growing interest in treating isolated
+execution as shared infrastructure rather than a per-project concern.
 
 # AI usage disclosure
 

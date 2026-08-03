@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import sys
 import time
@@ -49,10 +50,19 @@ class Stats:
 
     @classmethod
     def from_samples(cls, arm: str, samples_ms: list[float]) -> Stats:
-        """Summarise raw millisecond samples for one arm."""
+        """Summarise raw millisecond samples for one arm.
+
+        Raises:
+            ValueError: If no samples were collected.
+
+        """
+        if not samples_ms:
+            msg = "cannot summarise an empty sample list"
+            raise ValueError(msg)
         ordered = sorted(samples_ms)
-        # Nearest-rank p95; for small n this is simply the top sample.
-        p95_index = max(0, min(len(ordered) - 1, round(0.95 * len(ordered)) - 1))
+        # Nearest-rank p95: ceil(0.95 * n), 1-indexed. round() would pick rank 10
+        # of 11, which is the 91st percentile, understating the tail.
+        p95_index = min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)
         return cls(
             arm=arm,
             iterations=len(ordered),
@@ -62,6 +72,15 @@ class Stats:
             min_ms=ordered[0],
             max_ms=ordered[-1],
         )
+
+
+def _positive_int(value: str) -> int:
+    """Parse a CLI integer that must be at least 1."""
+    parsed = int(value)
+    if parsed < 1:
+        msg = f"must be >= 1, got {parsed}"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
 
 
 def _time_cold(backend: SandboxBackend, lang: str, iterations: int) -> list[float]:
@@ -97,7 +116,12 @@ def _time_pooled(backend: SandboxBackend, lang: str, iterations: int) -> list[fl
 def main() -> int:
     """Run both arms, print a summary table, and optionally write JSON."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--iterations", type=int, default=20, help="timed executions per arm")
+    parser.add_argument(
+        "--iterations",
+        type=_positive_int,
+        default=20,
+        help="timed executions per arm (must be >= 1)",
+    )
     parser.add_argument("--backend", default="docker", choices=["docker", "podman"])
     parser.add_argument("--lang", default="python")
     parser.add_argument("--json", type=Path, default=None, help="write results to this path")

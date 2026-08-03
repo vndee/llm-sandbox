@@ -1,7 +1,7 @@
 {
   "upload_type": "software",
   "title": "LLM Sandbox: a portable runtime for securely executing LLM-generated code",
-  "description": "<p>LLM Sandbox is a lightweight, portable sandbox runtime (code interpreter) for executing Large Language Model generated code in isolation. It provides pluggable container backends (Docker, Podman, Kubernetes, Micromamba), configurable security policies with static pre-execution analysis, resource and network limits, multi-language execution (Python, JavaScript, Java, C++, Go, R, Ruby), automatic artifact and plot extraction, container pooling for low-latency reuse, interactive notebook-style sessions, and a Model Context Protocol (MCP) server for AI assistants.</p><p>Documentation: https://vndee.github.io/llm-sandbox/</p>",
+  "description": "<p>LLM Sandbox is a lightweight, portable sandbox runtime (code interpreter) for executing Large Language Model generated code in isolation. It provides pluggable container backends (Docker, Podman, Kubernetes) with a Micromamba variant of the Docker backend, configurable security policies with static pre-execution analysis, resource and network limits, multi-language execution (Python, JavaScript, Java, C++, Go, R, Ruby), automatic artifact and plot extraction, container pooling for low-latency reuse, interactive notebook-style sessions, and a Model Context Protocol (MCP) server for AI assistants.</p><p>Documentation: https://vndee.github.io/llm-sandbox/</p>",
   "access_right": "open",
   "license": "MIT",
   "creators": [

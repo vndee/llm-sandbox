@@ -15,6 +15,9 @@ on:
         required: false
         default: "10"
 
+permissions:
+  contents: read
+
 jobs:
   benchmark:
     runs-on: ubuntu-latest
@@ -32,10 +35,15 @@ jobs:
           echo "cpus: $(nproc)"
           echo "mem: $(free -g | awk '/^Mem:/{print $2}')GB"
 
+      # ITERATIONS is passed through the environment rather than interpolated
+      # into the script body: `${{ inputs.* }}` is attacker-controlled text and
+      # expanding it inline would allow shell injection.
       - name: Run pooling benchmark
+        env:
+          ITERATIONS: ${{ inputs.iterations }}
         run: |
           uv run --extra docker python benchmarks/pooling_latency.py \
-            --iterations "${{ inputs.iterations }}" \
+            --iterations "$ITERATIONS" \
             --backend docker \
             --json pooling-latency.json
 
