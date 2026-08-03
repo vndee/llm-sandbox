@@ -12,6 +12,7 @@ argument, and tools are attached with `tools=` or `add_tool()`.
 
 import ag2
 from _sandbox import TOOL_DESCRIPTION, run_python
+from ag2.config import OpenAIConfig
 
 
 @ag2.tool(description=TOOL_DESCRIPTION)
@@ -20,11 +21,21 @@ def execute_python(code: str) -> str:
     return run_python(code)
 
 
-agent = ag2.Agent(
-    "analyst",
-    "You solve problems by writing and running Python. Always print results.",
-    tools=[execute_python],
-)
+def build_agent() -> ag2.Agent:
+    """Construct the agent.
+
+    `config` is required: `ag2.Agent` defaults it to None and does not pick a
+    provider on its own, so `run()` fails without it. Swap `OpenAIConfig` for
+    `AnthropicConfig`, `GeminiConfig`, `OllamaConfig` and so on from
+    `ag2.config` as needed.
+    """
+    return ag2.Agent(
+        "analyst",
+        "You solve problems by writing and running Python. Always print results.",
+        config=OpenAIConfig(model="gpt-4o"),
+        tools=[execute_python],
+    )
+
 
 if __name__ == "__main__":
-    print(agent.run("What is the sum of the first 100 square numbers?"))
+    print(build_agent().run("What is the sum of the first 100 square numbers?"))

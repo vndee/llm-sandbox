@@ -29,7 +29,9 @@ against a newer release, the version column tells you where the drift started.
 ## Running one
 
 ```bash
-pip install 'llm-sandbox[docker]' openai-agents   # swap for your framework
+# Pin to the verified version from the table above; the examples are
+# checked against those releases, not against latest.
+pip install 'llm-sandbox[docker]' 'openai-agents==0.19.2'
 cd examples/agent_sdks
 export OPENAI_API_KEY=...                          # or the relevant provider key
 python openai_agents_tool.py

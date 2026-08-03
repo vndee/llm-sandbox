@@ -30,16 +30,19 @@ sandbox_tool = FunctionTool.from_defaults(
     description=TOOL_DESCRIPTION,
 )
 
-agent = FunctionAgent(
-    tools=[sandbox_tool],
-    llm=OpenAI(model="gpt-4o"),
-    system_prompt="You solve problems by writing and running Python. Always print results.",
-)
+
+def build_agent(model: str = "gpt-4o") -> FunctionAgent:
+    """Construct the agent lazily, so importing this file needs no credentials."""
+    return FunctionAgent(
+        tools=[sandbox_tool],
+        llm=OpenAI(model=model),
+        system_prompt="You solve problems by writing and running Python. Always print results.",
+    )
 
 
 async def main() -> None:
     """Ask the agent a question that needs real execution."""
-    print(await agent.run("What is the standard deviation of the first 50 primes?"))
+    print(await build_agent().run("What is the standard deviation of the first 50 primes?"))
 
 
 if __name__ == "__main__":
