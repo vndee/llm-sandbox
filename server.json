@@ -3,7 +3,7 @@
   "name": "io.github.vndee/llm-sandbox",
   "title": "LLM Sandbox",
   "description": "Securely run LLM-generated code in isolated containers across 7 languages and 3 container backends.",
-  "version": "0.3.42",
+  "version": "0.3.43",
   "repository": {
     "url": "https://github.com/vndee/llm-sandbox",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "llm-sandbox",
-      "version": "0.3.42",
+      "version": "0.3.43",
       "transport": {
         "type": "stdio"
       },
