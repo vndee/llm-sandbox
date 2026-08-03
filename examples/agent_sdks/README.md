@@ -1,9 +1,14 @@
 # Agent SDK integrations
 
 One example per framework, each exposing the same capability — run Python in an
-isolated container and return what it printed. The sandbox logic lives in
-[`_sandbox.py`](_sandbox.py) so each file shows only what differs: how that SDK
-wants a tool declared.
+isolated container and return what it printed.
+
+Every file is **self-contained**: it shows the `SandboxSession` call and the
+container hardening inline, then the part that actually differs — how that SDK
+wants a tool declared. That means the sandbox block repeats across files. This
+is deliberate: these are meant to be copied out whole, and a shared import would
+leave a copy-paster with an `ImportError` and no idea what hardening they just
+dropped.
 
 | Framework | Example | Verified against |
 | --- | --- | --- |
@@ -47,7 +52,7 @@ fine for a demo and wrong for an agent loop — container creation dominates
 per-call cost. See [`../pool_basic_demo.py`](../pool_basic_demo.py).
 
 **These examples run untrusted code — that is the whole point.** Anything the
-agent reads can steer what gets executed, so `_sandbox.py` applies container
+agent reads can steer what gets executed, so each file applies container
 controls that the runtime actually enforces: `network_mode="none"`,
 `mem_limit`, `pids_limit` and `no-new-privileges`. Verified: egress is blocked.
 
