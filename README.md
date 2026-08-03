@@ -46,7 +46,7 @@ Execute code in multiple programming languages with automatic dependency managem
 - **R** - Statistical computing and data analysis with CRAN packages
 
 ### 🔌 LLM Framework Integration
-Seamlessly integrate with popular LLM frameworks such as LangChain, LangGraph, LlamaIndex, OpenAI, and more.
+Runnable examples for eleven agent frameworks — OpenAI Agents SDK, Claude Agent SDK, LangChain, DeepAgents, LlamaIndex, Google ADK, CrewAI, Pydantic AI, smolagents, Strands and AG2. See [`examples/agent_sdks/`](examples/agent_sdks/README.md).
 
 ### 📊 Advanced Features
 - **Artifact Extraction**: Automatically capture plots and visualizations
@@ -701,50 +701,46 @@ See the `examples/` directory for complete demonstrations:
 
 ## 🤖 LLM Framework Integration
 
-### LangChain Tool
+Runnable, version-pinned examples for **eleven** agent frameworks live in
+**[`examples/agent_sdks/`](examples/agent_sdks/README.md)**:
+
+| | | |
+|---|---|---|
+| [OpenAI Agents SDK](examples/agent_sdks/openai_agents_tool.py) | [Claude Agent SDK](examples/agent_sdks/claude_agent_sdk_tool.py) | [LangChain](examples/agent_sdks/langchain_tool.py) |
+| [DeepAgents](examples/agent_sdks/deepagents_tool.py) | [LlamaIndex](examples/agent_sdks/llamaindex_tool.py) | [Google ADK](examples/agent_sdks/google_adk_tool.py) |
+| [CrewAI](examples/agent_sdks/crewai_tool.py) | [Pydantic AI](examples/agent_sdks/pydantic_ai_tool.py) | [smolagents](examples/agent_sdks/smolagents_tool.py) |
+| [Strands Agents](examples/agent_sdks/strands_tool.py) | [AG2](examples/agent_sdks/ag2_tool.py) | |
+
+Each file is self-contained, names the SDK version it was verified against, and
+applies container hardening. They all share the same core — a sandbox call with
+the controls that matter once the code was written by a model:
 
 ```python
-from langchain.tools import BaseTool
 from llm_sandbox import SandboxSession
 
-class PythonSandboxTool(BaseTool):
-    name = "python_sandbox"
-    description = "Execute Python code in a secure sandbox"
+SANDBOX_RUNTIME = {
+    "network_mode": "none",                        # no egress
+    "mem_limit": "512m",
+    "pids_limit": 128,                             # bounds fork bombs
+    "security_opt": ["no-new-privileges:true"],
+}
 
-    def _run(self, code: str) -> str:
-        with SandboxSession(lang="python") as session:
-            result = session.run(code)
-            return result.stdout if result.exit_code == 0 else result.stderr
+def run_python(code: str) -> str:
+    with SandboxSession(
+        lang="python",
+        keep_template=True,                        # else the image is re-pulled each call
+        runtime_configs=SANDBOX_RUNTIME,
+    ) as session:
+        result = session.run(code, timeout=30)
+    return result.stdout if result.exit_code == 0 else result.stderr
 ```
 
-### Use with OpenAI Functions
+> [!IMPORTANT]
+> **Security policies are advisory.** `session.is_safe(code)` returns a verdict —
+> it does **not** block execution, and `run()` executes code the policy flagged.
+> Check it yourself before calling `run()`. See the
+> [security guide](https://vndee.github.io/llm-sandbox/security/).
 
-```python
-import openai
-from llm_sandbox import SandboxSession
-
-def execute_code(code: str, language: str = "python") -> str:
-    """Execute code in a secure sandbox environment."""
-    with SandboxSession(lang=language) as session:
-        result = session.run(code)
-        return result.stdout if result.exit_code == 0 else result.stderr
-
-# Register as OpenAI function
-functions = [
-    {
-        "name": "execute_code",
-        "description": "Execute code in a secure sandbox",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "code": {"type": "string", "description": "Code to execute"},
-                "language": {"type": "string", "enum": ["python", "javascript", "java", "cpp", "go", "r"]}
-            },
-            "required": ["code"]
-        }
-    }
-]
-```
 
 ## 🔌 Model Context Protocol (MCP) Server
 

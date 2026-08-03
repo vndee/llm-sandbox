@@ -1,5 +1,25 @@
 # LLM Framework Integrations
 
+!!! warning "Framework APIs move fast"
+    The framework-specific snippets on this page were written against earlier
+    releases. Against LangChain 1.x, `initialize_agent` and `AgentType` (used
+    below), `LLMChain`/`SequentialChain`/`TransformChain`, `langchain.llms`,
+    `langchain.memory` and `langchain.prompts` have all moved or been removed;
+    the LangGraph section calls `create_react_agent(llm, tools)` positionally
+    against a signature whose first parameter is now `model`. The LlamaIndex
+    section predates the `FunctionAgent` workflow API.
+
+    For runnable, version-pinned examples covering eleven frameworks — OpenAI
+    Agents SDK, Claude Agent SDK, LangChain, LangGraph/DeepAgents, LlamaIndex,
+    Google ADK, CrewAI, Pydantic AI, smolagents, Strands and AG2 — see
+    [`examples/agent_sdks/`](https://github.com/vndee/llm-sandbox/tree/main/examples/agent_sdks).
+    Each states the exact version it was verified against, and each applies
+    container hardening these snippets omit.
+
+    The framework-agnostic patterns further down (error handling, resource
+    management, the middleware pattern) still apply.
+
+
 LLM Sandbox seamlessly integrates with popular LLM frameworks to provide secure code execution capabilities. This guide covers integration patterns and examples.
 
 ## LangChain Integration

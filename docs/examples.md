@@ -7,7 +7,7 @@ This section provides practical examples of using LLM Sandbox for executing LLM-
 ### LangChain Integration
 
 ```python
---8<-- "examples/langchain_tool.py"
+--8<-- "examples/agent_sdks/langchain_tool.py"
 ```
 
 ### LangGraph Integration
@@ -19,7 +19,7 @@ This section provides practical examples of using LLM Sandbox for executing LLM-
 ### LlamaIndex Integration
 
 ```python
---8<-- "examples/llamaindex_tool.py"
+--8<-- "examples/agent_sdks/llamaindex_tool.py"
 ```
 
 ## Real-Time Output Streaming
