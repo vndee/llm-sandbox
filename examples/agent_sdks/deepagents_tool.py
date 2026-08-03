@@ -10,6 +10,7 @@ pooling is built for -- see `examples/pool_basic_demo.py`.
 """
 
 import logging
+from typing import Any
 
 from deepagents import create_deep_agent
 from docker.errors import DockerException
@@ -73,11 +74,20 @@ def execute_python(code: str) -> str:
     return run_python(code)
 
 
-agent = create_deep_agent(
-    tools=[execute_python],
-    system_prompt="You solve problems by writing and running Python. Always print results.",
-)
+def build_agent(model: str = "claude-sonnet-4-5-20250929") -> Any:
+    """Construct the agent.
+
+    `model` is passed explicitly: leaving it None is deprecated in deepagents
+    and becomes an error in 1.0. Building lazily also keeps `import` working
+    without provider credentials.
+    """
+    return create_deep_agent(
+        model=model,
+        tools=[execute_python],
+        system_prompt="You solve problems by writing and running Python. Always print results.",
+    )
+
 
 if __name__ == "__main__":
-    result = agent.invoke({"messages": [{"role": "user", "content": "Sum the primes below 1000."}]})
+    result = build_agent().invoke({"messages": [{"role": "user", "content": "Sum the primes below 1000."}]})
     print(result["messages"][-1].content)
