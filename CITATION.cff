@@ -28,8 +28,8 @@ repository-code: "https://github.com/vndee/llm-sandbox"
 url: "https://vndee.github.io/llm-sandbox/"
 repository-artifact: "https://pypi.org/project/llm-sandbox/"
 license: MIT
-version: "0.3.42"
-date-released: "2026-08-02"
+version: "0.3.43"
+date-released: "2026-08-03"
 keywords:
   - "large language models"
   - "code interpreter"

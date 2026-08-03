@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      pull-requests: write
     steps:
       # Unlike the pyproject.toml bump above, which only feeds the build via an
       # artifact, CITATION.cff has to be committed back: GitHub's "Cite this
@@ -55,18 +56,38 @@ jobs:
           sed -i "s/^date-released: \".*\"/date-released: \"${release_date}\"/" CITATION.cff
           grep -E '^(version|date-released):' CITATION.cff
 
-      - name: Commit and push if changed
+      # main is governed by a repository ruleset requiring pull requests, so this
+      # opens one rather than pushing directly. Direct pushes are rejected with
+      # GH013 even when the token holds contents: write.
+      - name: Open a pull request if changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
           if git diff --quiet -- CITATION.cff; then
-            echo "CITATION.cff already up to date; nothing to commit."
+            echo "CITATION.cff already up to date; nothing to do."
             exit 0
           fi
+
+          branch="citation/${RELEASE_VERSION}"
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$branch"
           git add CITATION.cff
-          git commit -m "Update CITATION.cff for ${{ github.event.release.tag_name }}"
-          git push
+          git commit -m "Update CITATION.cff for ${RELEASE_VERSION}"
+          git push --force-with-lease origin "$branch"
+
+          # Reruns of the same release should update the existing PR, not fail.
+          if gh pr view "$branch" --json number >/dev/null 2>&1; then
+            echo "PR already open for $branch"
+          else
+            gh pr create \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "$branch" \
+              --title "Update CITATION.cff for ${RELEASE_VERSION}" \
+              --body "Automated: syncs \`version\` and \`date-released\` in \`CITATION.cff\` with the ${RELEASE_VERSION} release, so the \"Cite this repository\" widget and \`cffconvert\` report the current version."
+          fi
 
   publish:
     runs-on: ubuntu-latest
