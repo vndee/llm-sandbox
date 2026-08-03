@@ -137,3 +137,10 @@ source = ["llm_sandbox"]
 
 [tool.deptry]
 ignore = ["DEP004"]
+# The agent SDK examples each import a third-party framework (openai-agents,
+# crewai, ag2, ...) that is intentionally not a project dependency: they are
+# illustrations, installed ad hoc by whoever runs one. Declaring all of them
+# would also be unresolvable, since several pin conflicting langchain versions.
+# extend_exclude, not exclude: the latter replaces deptry's defaults, which
+# already skip tests/ and .venv.
+extend_exclude = ["examples/agent_sdks", "\\.worktrees"]
