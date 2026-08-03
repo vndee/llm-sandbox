@@ -28,14 +28,18 @@ logger = logging.getLogger(__name__)
 # llm-sandbox's SecurityPolicy, which is advisory -- session.is_safe() returns a
 # verdict and session.run() executes regardless of it.
 #
-# read_only=True and cap_drop=["ALL"] are omitted on purpose: both break the
-# code-copy step (verified against llm-sandbox 0.3.43). read_only makes Docker
-# reject put_archive; cap_drop=ALL removes DAC_OVERRIDE so the copied file
-# cannot be read.
+# read_only=True is deliberately absent: Docker rejects the code copy with
+# "container rootfs is marked read-only", with or without a tmpfs on the
+# workdir. Verified against llm-sandbox 0.3.43.
 SANDBOX_RUNTIME = {
     "network_mode": "none",  # no egress: injected code cannot exfiltrate or fetch a second stage
     "mem_limit": "512m",
     "pids_limit": 128,  # bounds fork bombs
+    "cap_drop": ["ALL"],
+    # DAC_OVERRIDE has to go back or the container cannot read the source file
+    # llm-sandbox copies in. Everything else stays dropped: verified CapEff
+    # 0000000000000002 inside the container.
+    "cap_add": ["DAC_OVERRIDE"],
     "security_opt": ["no-new-privileges:true"],
 }
 

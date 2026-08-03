@@ -166,6 +166,53 @@ When you specify a restricted module like `"os"`, the language handler automatic
 
 **For Other Languages**: Each language handler implements its own import detection patterns appropriate for that language's syntax.
 
+## Container Hardening That Works
+
+Security policies are advisory (see above). The layer the runtime actually
+enforces is `runtime_configs`. This is the strongest set verified to work with
+`SandboxSession`:
+
+```python
+HARDENED = {
+    "network_mode": "none",                      # no egress
+    "mem_limit": "512m",
+    "pids_limit": 128,                           # bounds fork bombs
+    "cap_drop": ["ALL"],
+    "cap_add": ["DAC_OVERRIDE"],                 # see note below
+    "security_opt": ["no-new-privileges:true"],
+}
+
+with SandboxSession(lang="python", runtime_configs=HARDENED) as session:
+    result = session.run(code)
+```
+
+Verified inside the container: `CapEff` is `0000000000000002` (DAC_OVERRIDE
+only) and outbound connections fail.
+
+### Two caveats specific to this library
+
+**`cap_drop: ["ALL"]` needs `DAC_OVERRIDE` added back.** The session copies your
+code into the container before running it. Without `DAC_OVERRIDE` the container
+cannot read that file and every run fails with `[Errno 13] Permission denied`.
+Dropping everything else still removes `SYS_ADMIN`, `NET_RAW` and the rest.
+
+**`read_only: True` does not work.** Docker rejects the code copy against a
+read-only root filesystem:
+
+```
+docker.errors.APIError: 400 Client Error ...
+("container rootfs is marked read-only")
+```
+
+Mounting a tmpfs on the workdir does not help — the rejection is on the rootfs
+flag itself, not the destination directory. If you need an immutable filesystem,
+pair the library with a runtime that provides it rather than setting this flag.
+
+**`network_mode: "none"` disables `libraries=`.** Package installation needs the
+network. Pre-bake dependencies into a custom image instead — see
+[Custom Images](custom-images.md).
+
+
 ## Creating Security Policies
 
 ### Basic Usage

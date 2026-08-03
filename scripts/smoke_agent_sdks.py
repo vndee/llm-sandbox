@@ -52,7 +52,7 @@ SCHEMA_ACCESSORS: dict[str, Any] = {
     "ag2_tool": lambda m: m.execute_python.schema.function.parameters["properties"],
 }
 
-REQUIRED_HARDENING = {"network_mode", "mem_limit", "pids_limit", "security_opt"}
+REQUIRED_HARDENING = {"network_mode", "mem_limit", "pids_limit", "cap_drop", "security_opt"}
 
 
 def _fallback_schema(module: Any) -> dict[str, Any]:
