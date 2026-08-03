@@ -24,8 +24,11 @@ dropped.
 | Strands Agents | [`strands_tool.py`](strands_tool.py) | strands-agents 1.50.2 |
 | AG2 | [`ag2_tool.py`](ag2_tool.py) | ag2 1.0.1 |
 
-Each example was import-checked against the version listed at the time of writing
-(there is no CI job doing this yet). Versions are stated
+Each example is checked by [`agent-sdk-smoke`](../../.github/workflows/agent-sdk-smoke.yml),
+which runs weekly against the *current* release of each framework — not the pinned
+one — so upstream drift surfaces here rather than in your traceback. It verifies
+the module imports, drives `SandboxSession` directly, applies the hardening, and
+exposes exactly one tool parameter (`code`). Versions are stated
 because these APIs move: LangChain 1.0 removed `AgentExecutor` and
 `langchain.hub`, LlamaIndex dropped `FunctionCallingAgentWorker`, and AG2 1.0
 replaced `ConversableAgent`/`register_function` outright. If an example fails
