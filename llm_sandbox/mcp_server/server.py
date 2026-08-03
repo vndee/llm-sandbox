@@ -9,7 +9,6 @@ import os
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
 from mcp.types import ImageContent, TextContent
 
 from llm_sandbox import ArtifactSandboxSession, SandboxBackend, SandboxSession, SupportedLanguage, ValidationError
@@ -23,7 +22,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger("llm-sandbox-mcp")
 
-mcp = FastMCP("llm-sandbox")
+# mcp 2.0 renamed the server class: `mcp.server.fastmcp.FastMCP` became
+# `mcp.server.MCPServer`. The decorator surface we rely on -- `.tool()`,
+# `.resource()`, `.run()` -- is the same on both, so a single import switch
+# covers the whole file and users are free to pin either major version.
+# mypy resolves against whichever mcp is installed, so this import is either
+# missing (1.x) or present (2.x) depending on the environment. `unused-ignore`
+# is listed alongside `attr-defined` so the same line type-checks under both --
+# without it, warn_unused_ignores fails the run for anyone on mcp 2.x.
+try:
+    from mcp.server import MCPServer as _MCPServer  # type: ignore[attr-defined,unused-ignore] # mcp >= 2.0
+except ImportError:  # pragma: no cover - exercised by whichever mcp is installed
+    # no-redef fires only under 2.x, where mypy can see both branches.
+    from mcp.server.fastmcp import FastMCP as _MCPServer  # type: ignore[no-redef,unused-ignore] # mcp < 2.0
+
+mcp = _MCPServer("llm-sandbox")
 
 _TRUE_ENV_VALUES = {"true", "1", "yes", "on"}
 _FALSE_ENV_VALUES = {"false", "0", "no", "off"}
@@ -274,7 +287,12 @@ def execute_code(
                 results.append(
                     ImageContent(
                         data=plot.content_base64,
-                        mimeType=f"image/{plot.format.value}",
+                        # `mimeType` is the MCP wire field name and pydantic
+                        # accepts it on both majors, but 2.x renamed the model
+                        # attribute to `mime_type`, so mypy rejects this
+                        # spelling there and the other one on 1.x. No single
+                        # spelling type-checks on both.
+                        mimeType=f"image/{plot.format.value}",  # type: ignore[call-arg,unused-ignore]
                         type="image",
                     )
                 )

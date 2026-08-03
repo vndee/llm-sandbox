@@ -533,7 +533,12 @@ class TestExecuteCode:
         # First result should be the image
         assert isinstance(result[0], ImageContent)
         assert result[0].type == "image"
-        assert result[0].mimeType == "image/png"
+        # Assert the serialised wire field rather than the Python attribute.
+        # mcp 1.x names it `mimeType`, 2.x renamed it to `mime_type` and kept
+        # `mimeType` as the alias -- but the alias *is* the MCP wire contract,
+        # so checking the dump covers what clients actually receive and stays
+        # correct across both major versions.
+        assert result[0].model_dump(by_alias=True)["mimeType"] == "image/png"
         assert result[0].data == mock_plot.content_base64
 
         # Second result should be the execution result

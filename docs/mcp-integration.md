@@ -25,6 +25,19 @@ pip install 'llm-sandbox[mcp-podman]'
 pip install 'llm-sandbox[mcp-k8s]'
 ```
 
+## MCP SDK compatibility
+
+The server works with both major versions of the Python MCP SDK. `mcp` 2.0
+renamed the server class (`mcp.server.fastmcp.FastMCP` became
+`mcp.server.MCPServer`), so `llm_sandbox` selects whichever is present at
+import time and the tool surface is identical either way.
+
+If you are pinning explicitly, anything from `mcp>=1.28.1` onwards works. That
+floor also clears two high-severity advisories in the SDK: missing Host/Origin
+validation on the WebSocket transport, and HTTP transports serving sessions
+without verifying the authenticated principal. Neither affects this server,
+which runs over stdio, but there is no reason to permit the vulnerable range.
+
 ## Configuration
 
 Add the following configuration to your MCP client (e.g., `claude_desktop_config.json` for Claude Desktop):
