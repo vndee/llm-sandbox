@@ -119,6 +119,18 @@ imports persist across calls. An optional pool manager pre-warms and recycles co
 with configurable size bounds, idle and lifetime limits, health checks, and explicit
 exhaustion strategies.
 
+Pooling exists because container creation, not code execution, dominates the cost of an
+agent loop. Executing a trivial snippet through a fresh session — creating, setting up and
+destroying a container per call — took a median of 17.9 s, against 223 ms when the same
+snippet borrowed a pre-warmed container from a pool, a 80-fold reduction in per-execution
+overhead. Those figures come from `benchmarks/pooling_latency.py`, included in the
+repository, run over 8 iterations per arm on Docker Desktop 28.2.2 under macOS on
+Apple silicon with four CPUs allocated to the Docker VM; image download and the pool's
+first acquisition are excluded from timing. The absolute numbers are specific to that
+environment — Docker Desktop's virtual machine makes container creation costlier on macOS
+than on native Linux, so the ratio should be read as an illustration of where the time
+goes rather than a portable constant.
+
 Security is layered rather than singular. Static policies reject code matching
 configurable patterns before any container starts; container-level controls then apply
 network isolation, read-only root filesystems, capability dropping, and CPU and memory
@@ -165,13 +177,18 @@ Generative AI tools were used in the development of this software and in the pre
 of this manuscript, and are disclosed here in accordance with the journal's AI usage
 policy.
 
-**Tools and scope.** Anthropic's Claude models, used through the Claude Code command-line
-assistant, provided assistance across four areas: (i) *source code* — drafting and
-refactoring portions of the library, including backend implementations and language
-handlers; (ii) *tests* — generating and scaffolding portions of the test suite; (iii)
-*documentation* — drafting sections of the project documentation and README; and (iv)
-*this manuscript* — drafting prose, structuring sections, and verifying and formatting the
-bibliography.
+**Tools.** Several assistants were used over the project's development, each attributed in
+the public commit history: GitHub Copilot, including Copilot Autofix; Anthropic's Claude
+models (Claude Sonnet 4.5 and Claude Opus 4.6) via the Claude Code command-line assistant;
+OpenAI Codex; and Crush. CodeRabbit was additionally used for automated review of pull
+requests.
+
+**Scope of assistance.** These tools contributed across four areas: (i) *source code* —
+code completion, drafting and refactoring portions of the library, including backend
+implementations and language handlers; (ii) *tests* — generating and scaffolding portions
+of the test suite; (iii) *documentation* — drafting sections of the project documentation
+and README; and (iv) *this manuscript* — drafting prose, structuring sections, and
+verifying and formatting the bibliography.
 
 **Human oversight.** The author made all architectural and design decisions, including the
 backend abstraction, session model, pooling strategy, and security architecture. All
