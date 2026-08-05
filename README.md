@@ -1,6 +1,8 @@
 <!-- mcp-name: io.github.vndee/llm-sandbox -->
 ## LLM Sandbox
 
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.vndee%2Fllm-sandbox.svg)](https://mcptoplist.com/server/io.github.vndee%2Fllm-sandbox)
+
 *Securely Execute LLM-Generated Code with Ease*
 
 [![SonarQube Cloud](https://sonarcloud.io/images/project_badges/sonarcloud-light.svg)](https://sonarcloud.io/summary/new_code?id=vndee_llm-sandbox)
