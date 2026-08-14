@@ -188,6 +188,30 @@ class BackendComplianceTests(BackendInterfaceComplianceTests):
     timeout_seconds: ClassVar[float] = 1.0
     """Timeout used by the timeout test."""
 
+    scratch_dir: ClassVar[str | None] = None
+    """Directory inside the sandbox to write scratch files to.
+
+    Defaults to the session's own ``workdir``. The kit deliberately does not assume ``/tmp``
+    exists or is writable in your sandbox -- a minimal image or a non-POSIX runtime may have
+    neither -- and for a backend that executes on the host, a predictable shared path is a
+    collision between concurrent runs and a symlink target on a shared machine. Override this
+    only if your sandbox needs scratch files somewhere specific.
+    """
+
+    def scratch_path(self, session: Any, name: str) -> str:
+        """Build a unique scratch path inside the sandbox.
+
+        Args:
+            session (Any): The open session the path will be used with.
+            name (str): A short label distinguishing this file from others.
+
+        Returns:
+            str: An absolute path inside the sandbox, unique to this call.
+
+        """
+        base = self.scratch_dir or getattr(getattr(session, "config", None), "workdir", "") or "."
+        return f"{base.rstrip('/')}/llm_sandbox_{name}_{uuid.uuid4().hex}.txt"
+
     def make_session(self, **overrides: Any) -> Any:
         """Create an unopened session for the backend under test.
 
@@ -322,12 +346,9 @@ class BackendComplianceTests(BackendInterfaceComplianceTests):
         source = tmp_path / "payload.txt"
         source.write_text(payload)
         destination = tmp_path / "returned.txt"
-        # Unique per run: for a host-executing backend this is a real host path, where a
-        # fixed name is both a collision between concurrent runs and a symlink-overwrite
-        # target on a shared machine.
-        remote = f"/tmp/llm_sandbox_compliance_{uuid.uuid4().hex}.txt"
 
         with self.make_session() as session:
+            remote = self.scratch_path(session, "roundtrip")
             session.copy_to_runtime(str(source), remote)
             session.copy_from_runtime(remote, str(destination))
 
@@ -336,7 +357,7 @@ class BackendComplianceTests(BackendInterfaceComplianceTests):
     def test_copy_to_runtime_rejects_missing_source(self, tmp_path: Path) -> None:
         """Copying a nonexistent file raises FileNotFoundError."""
         with self.make_session() as session, pytest.raises(FileNotFoundError):
-            session.copy_to_runtime(str(tmp_path / "does-not-exist.txt"), "/tmp/nope.txt")
+            session.copy_to_runtime(str(tmp_path / "does-not-exist.txt"), self.scratch_path(session, "missing"))
 
     # ------------------------------------------------------------------ #
     # Declared capabilities
@@ -355,9 +376,9 @@ class BackendComplianceTests(BackendInterfaceComplianceTests):
 
         source = tmp_path / "artifact.txt"
         source.write_text("artifact-payload")
-        remote = f"/tmp/llm_sandbox_artifact_{uuid.uuid4().hex}.txt"
 
         with self.make_session() as session:
+            remote = self.scratch_path(session, "artifact")
             session.copy_to_runtime(str(source), remote)
             data, stat = session.get_archive(remote)
 
