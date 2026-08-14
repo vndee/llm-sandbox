@@ -23,7 +23,7 @@ from llm_sandbox.testing import BackendComplianceTests
 from tests.plugin_helpers import installed, write_distribution
 
 #: A plugin that declares no capabilities at all.
-NO_CAPABILITY_PLUGIN = '''
+NO_CAPABILITY_PLUGIN = """
 from typing import Any, ClassVar
 
 from llm_sandbox.backends import SandboxBackendPlugin
@@ -36,7 +36,7 @@ class Backend(SandboxBackendPlugin):
     @classmethod
     def create_session(cls, *args: Any, **kwargs: Any) -> Any:
         return object()
-'''
+"""
 
 EXAMPLE_PLUGIN_ROOT = Path(__file__).parent.parent / "examples" / "plugins" / "llm-sandbox-example"
 EXAMPLE_PLUGIN_SRC = EXAMPLE_PLUGIN_ROOT / "src"
@@ -54,9 +54,7 @@ def _write_dist_info(target: Path) -> Path:
     """
     dist_info = target / "llm_sandbox_example-0.1.0.dist-info"
     dist_info.mkdir(parents=True, exist_ok=True)
-    (dist_info / "METADATA").write_text(
-        "Metadata-Version: 2.1\nName: llm-sandbox-example\nVersion: 0.1.0\n"
-    )
+    (dist_info / "METADATA").write_text("Metadata-Version: 2.1\nName: llm-sandbox-example\nVersion: 0.1.0\n")
     (dist_info / "entry_points.txt").write_text(
         "[llm_sandbox.backends]\nexample = llm_sandbox_example:ExampleBackend\n"
     )
@@ -151,9 +149,7 @@ class TestArtifactSessionWithAPlugin:
         with session:
             assert session._session.config.workdir != "/sandbox"
 
-    def test_backend_without_artifacts_is_refused_before_construction(
-        self, tmp_path: Path
-    ) -> None:
+    def test_backend_without_artifacts_is_refused_before_construction(self, tmp_path: Path) -> None:
         """A backend that cannot do artifacts fails up front, not mid-run with a live container."""
         root = write_distribution(
             tmp_path / "site",

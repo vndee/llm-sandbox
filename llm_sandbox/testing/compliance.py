@@ -110,9 +110,7 @@ class BackendInterfaceComplianceTests:
         """Every declared capability is a real BackendCapability."""
         valid = {capability.value for capability in BackendCapability}
         for capability in provider.capabilities:
-            assert str(capability) in valid, (
-                f"Unknown capability {capability!r}. Valid capabilities: {sorted(valid)}."
-            )
+            assert str(capability) in valid, f"Unknown capability {capability!r}. Valid capabilities: {sorted(valid)}."
 
     def test_name_normalisation_is_stable(self, provider: type[SandboxBackendPlugin]) -> None:
         """The backend resolves identically through hyphen, underscore, and case variants."""

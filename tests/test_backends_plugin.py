@@ -95,6 +95,7 @@ class TestSandboxBackendPlugin:
 
     def test_create_session_is_abstract(self) -> None:
         """Create session is abstract."""
+
         class Incomplete(SandboxBackendPlugin):
             PLUGIN_API_VERSION: ClassVar[int] = 1
             name: ClassVar[str] = "incomplete"
@@ -113,6 +114,7 @@ class TestSandboxBackendPlugin:
 
     def test_supports_and_require(self) -> None:
         """Supports and require."""
+
         class Capable(_MinimalPlugin):
             capabilities: ClassVar[frozenset[BackendCapability]] = frozenset({BackendCapability.ARTIFACTS})
 

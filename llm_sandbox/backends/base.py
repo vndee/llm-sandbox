@@ -117,9 +117,7 @@ class SandboxBackendBase(BaseSession, ABC):
         remaining = dict(kwargs)
         config_kwargs = {key: remaining.pop(key) for key in list(remaining) if key in SessionConfig.model_fields}
         config_kwargs = {
-            key: value
-            for key, value in config_kwargs.items()
-            if value is not None or key in _NULLABLE_CONFIG_FIELDS
+            key: value for key, value in config_kwargs.items() if value is not None or key in _NULLABLE_CONFIG_FIELDS
         }
         return SessionConfig(**config_kwargs), remaining
 

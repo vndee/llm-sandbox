@@ -188,9 +188,7 @@ def _discover() -> tuple[dict[str, _PluginRecord], tuple[BackendInfo, ...], list
         # A conflict is recorded, not raised. Raising here would let one bad pair of plugins
         # break resolution for every other backend; instead it surfaces when that specific
         # name is requested.
-        conflicts = (
-            tuple(sorted({d or "<unknown distribution>" for _, d, _ in entries})) if len(entries) > 1 else ()
-        )
+        conflicts = tuple(sorted({d or "<unknown distribution>" for _, d, _ in entries})) if len(entries) > 1 else ()
         records[name] = _PluginRecord(
             name=name,
             entry_point=entry_point,
@@ -404,10 +402,7 @@ def _unknown_backend_error(key: str, requested: str) -> BackendNotFoundError:
             f"packages — try: pip install llm-sandbox-{key.replace('_', '-')}"
         )
     else:
-        lines.append(
-            f"{requested!r} is not a usable backend name. Names must match "
-            f"{BACKEND_NAME_PATTERN.pattern}."
-        )
+        lines.append(f"{requested!r} is not a usable backend name. Names must match {BACKEND_NAME_PATTERN.pattern}.")
 
     lines.append(f"See {INTEGRATIONS_URL}")
     return BackendNotFoundError(requested, "\n".join(lines))

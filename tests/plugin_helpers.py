@@ -185,9 +185,7 @@ def write_distribution(
 
     dist_info = root / f"{distribution.replace('-', '_')}-{version}.dist-info"
     dist_info.mkdir(parents=True, exist_ok=True)
-    (dist_info / "METADATA").write_text(
-        f"Metadata-Version: 2.1\nName: {distribution}\nVersion: {version}\n"
-    )
+    (dist_info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {distribution}\nVersion: {version}\n")
     (dist_info / "entry_points.txt").write_text(f"[{group}]\n{entry_point_name} = {module}:{attribute}\n")
     return root
 

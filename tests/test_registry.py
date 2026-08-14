@@ -254,9 +254,7 @@ class TestFailureIsolation:
             (ABSTRACT_PLUGIN, "does not implement create_session"),
         ],
     )
-    def test_broken_plugin_raises_backend_load_error(
-        self, tmp_path: Path, source: str, expected_fragment: str
-    ) -> None:
+    def test_broken_plugin_raises_backend_load_error(self, tmp_path: Path, source: str, expected_fragment: str) -> None:
         """Broken plugin raises backend load error."""
         root = write_distribution(
             tmp_path / "site",
@@ -316,6 +314,7 @@ class TestFailureIsolation:
 
     def test_unreadable_metadata_does_not_break_builtins(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Unreadable metadata does not break builtins."""
+
         def explode(**_kwargs: object) -> None:
             msg = "corrupt metadata on sys.path"
             raise RuntimeError(msg)
