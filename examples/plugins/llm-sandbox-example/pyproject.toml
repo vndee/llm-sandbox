@@ -5,6 +5,9 @@ description = "Reference backend plugin for llm-sandbox. Demonstrates the interf
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+# This package runs code on the host with no isolation. It exists to be read and copied,
+# never installed from an index -- the classifier makes an accidental upload fail.
+classifiers = ["Private :: Do Not Upload"]
 
 # Depend on llm-sandbox; never vendor or fork it. Pin to a plugin-API-compatible range:
 # the lower bound is the release that introduced the plugin API you target, and the upper

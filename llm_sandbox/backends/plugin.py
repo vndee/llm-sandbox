@@ -5,9 +5,11 @@ depend on these, so they may not be removed or changed incompatibly within a plu
 major version. See :data:`PLUGIN_API_VERSION` and ``docs/plugins/authoring.md``.
 """
 
+import re
+import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from llm_sandbox.const import StrEnum
 from llm_sandbox.exceptions import BackendCapabilityError
@@ -32,20 +34,33 @@ SUPPORTED_PLUGIN_API_VERSIONS = frozenset({1})
 ENTRY_POINT_GROUP = "llm_sandbox.backends"
 
 
+#: A normalised backend name must match this. Enforced on both sides -- an entry point whose
+#: name does not match is refused at discovery, and a lookup that does not match cannot
+#: resolve. Without it, an entry point named ``""`` (which ``entry_points.txt`` permits)
+#: would answer to ``backend=""``, so a caller reading the backend out of an unset config
+#: value or environment variable would silently route execution to whoever registered it.
+BACKEND_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]*$")
+
+
 def normalize_backend_name(name: str) -> str:
     """Normalise a backend name for lookup and collision detection.
 
     Backend names are case-insensitive and treat hyphens and underscores as equivalent,
     so ``"My-Service"``, ``"my_service"`` and ``"MY_SERVICE"`` all address the same backend.
 
+    Compatibility characters are folded first (NFKC), so visually confusable forms -- a
+    fullwidth capital D, for instance -- cannot masquerade as a distinct backend in a
+    listing or a pasted config line.
+
     Args:
         name (str): The raw backend name, as typed by a user or declared by a plugin.
 
     Returns:
-        str: The normalised name.
+        str: The normalised name. May be empty or otherwise invalid; callers check it
+            against `BACKEND_NAME_PATTERN`.
 
     """
-    return name.strip().lower().replace("-", "_")
+    return unicodedata.normalize("NFKC", name).strip().lower().replace("-", "_")
 
 
 class BackendCapability(StrEnum):
@@ -72,6 +87,12 @@ class BackendCapability(StrEnum):
     """Attaching to an already-running container or pod via ``container_id=``."""
 
 
+#: Why a backend is or is not usable, as reported by :func:`llm_sandbox.list_backends`.
+#: Widening this later is source-compatible for callers; narrowing a bare ``str`` would not
+#: have been, which is why it is a ``Literal`` in a frozen dataclass.
+BackendStatus = Literal["ok", "shadowed", "conflict", "error"]
+
+
 @dataclass(frozen=True)
 class BackendInfo:
     """A backend that core can see, whether or not it has been loaded.
@@ -88,9 +109,10 @@ class BackendInfo:
         capabilities (frozenset[BackendCapability] | None): Declared capabilities, or None
             when the backend has not been loaded (the default -- see ``load=`` on
             :func:`llm_sandbox.list_backends`).
-        status (str): One of ``"ok"``, ``"shadowed"`` (a plugin tried to take a built-in
+        status (BackendStatus): ``"ok"``, ``"shadowed"`` (a plugin tried to take a built-in
             name and lost), ``"conflict"`` (several distributions claim the name), or
-            ``"error"`` (loading was attempted and failed).
+            ``"error"`` (loading was attempted and failed). A ``Literal`` rather than a bare
+            ``str`` so callers switching on it get checked, and so a typo in core is caught.
         detail (str | None): Explanation for any status other than ``"ok"``.
 
     """
@@ -101,7 +123,7 @@ class BackendInfo:
     version: str | None = None
     entry_point: str | None = None
     capabilities: frozenset[BackendCapability] | None = None
-    status: str = "ok"
+    status: "BackendStatus" = "ok"
     detail: str | None = None
 
 
@@ -206,7 +228,7 @@ class SandboxBackendPlugin(ABC):
             BackendCapabilityError: If this backend does not support pooling.
 
         """
-        raise BackendCapabilityError(cls.name, BackendCapability.POOLING.value)
+        raise BackendCapabilityError(cls.name, capability=BackendCapability.POOLING.value)
 
     @classmethod
     def create_interactive_session(cls, **kwargs: Any) -> "BaseSession":  # noqa: ARG003
@@ -227,7 +249,7 @@ class SandboxBackendPlugin(ABC):
             BackendCapabilityError: If this backend does not support interactive sessions.
 
         """
-        raise BackendCapabilityError(cls.name, BackendCapability.INTERACTIVE.value)
+        raise BackendCapabilityError(cls.name, capability=BackendCapability.INTERACTIVE.value)
 
     @classmethod
     def supports(cls, capability: BackendCapability | str) -> bool:
@@ -254,4 +276,4 @@ class SandboxBackendPlugin(ABC):
 
         """
         if not cls.supports(capability):
-            raise BackendCapabilityError(cls.name, str(capability))
+            raise BackendCapabilityError(cls.name, capability=str(capability))

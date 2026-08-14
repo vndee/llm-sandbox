@@ -163,7 +163,10 @@ here lets core warn about a mismatch instead of silently honouring one of them.
 
 **`capabilities`** — optional, defaults to empty. Declare only what you actually implement.
 Core checks the declaration *before* constructing anything, so an unsupported capability
-fails cleanly instead of leaving a half-built session or a leaked container behind.
+fails cleanly instead of leaving a half-built session or a leaked container behind. All four
+are enforced: `ArtifactSandboxSession` requires `ARTIFACTS`, `container_id=` requires
+`EXISTING_CONTAINER`, `create_pool_manager()` requires `POOLING`, and
+`InteractiveSandboxSession` requires `INTERACTIVE`.
 
 | Capability | Unlocks | You must implement |
 |---|---|---|
@@ -192,12 +195,14 @@ lifecycle plus six hooks.
 from typing import Any
 
 from llm_sandbox.backends import SandboxBackendBase
-from llm_sandbox.data import StreamCallback
+from llm_sandbox import StreamCallback
 from llm_sandbox.exceptions import ContainerError
 
 
 class MyServiceSession(SandboxBackendBase):
     """A session backed by a MyService sandbox."""
+
+    backend_name = "myservice"  # so errors name the backend, not this class
 
     def __init__(self, api_key: str | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -304,6 +309,28 @@ regardless of which backend they picked:
 
     `on_stdout` and `on_stderr` must be accepted and must fire. A backend that cannot stream
     may collect the complete output and invoke each callback once at the end.
+
+!!! warning "`workdir` defaults to a path inside a container"
+
+    Core's default `workdir` is `/sandbox`, and `ArtifactSandboxSession` passes it
+    *explicitly* rather than leaving it unset — so "the caller did not choose one" is not
+    something you can detect by absence alone.
+
+    If your backend executes anywhere other than a container filesystem, map it:
+
+    ```python
+    CONTAINER_DEFAULT_WORKDIR = "/sandbox"
+
+    def __init__(self, **kwargs):
+        requested = kwargs.get("workdir")
+        self._owns_workdir = requested in (None, CONTAINER_DEFAULT_WORKDIR)
+        if self._owns_workdir:
+            kwargs["workdir"] = tempfile.mkdtemp()
+        super().__init__(**kwargs)
+    ```
+
+    And only delete a directory you created. Deleting one the caller named is not
+    recoverable.
 
 !!! warning "The inherited `run()` assumes a filesystem and a shell"
 
@@ -480,7 +507,8 @@ window rather than a flag day.
 | Import from | Names |
 |---|---|
 | `llm_sandbox.backends` | `SandboxBackendPlugin`, `SandboxBackendBase`, `BackendCapability`, `BackendInfo`, `BaseSession`, `ContainerAPI`, `PLUGIN_API_VERSION`, `SUPPORTED_PLUGIN_API_VERSIONS`, `ENTRY_POINT_GROUP`, `normalize_backend_name` |
-| `llm_sandbox` | `SandboxSession`, `create_session`, `ArtifactSandboxSession`, `InteractiveSandboxSession`, `list_backends`, `SessionConfig`, `ConsoleOutput`, `ExecutionResult`, `PlotOutput`, `FileType`, `StreamCallback`, `SupportedLanguage`, `SandboxBackend`, `DefaultImage`, `SecurityPolicy`, `SecurityPattern`, `SecurityIssueSeverity`, `KernelType` |
+| `llm_sandbox` | `SandboxSession`, `create_session`, `ArtifactSandboxSession`, `InteractiveSandboxSession`, `list_backends`, `SessionConfig`, `ConsoleOutput`, `ExecutionResult`, `PlotOutput`, `FileType`, `StreamCallback`, `SupportedLanguage`, `SandboxBackend`, `DefaultImage`, `SecurityPolicy`, `SecurityPattern`, `SecurityIssueSeverity`, `KernelType`, `BackendShadowWarning`, `BackendNameMismatchWarning` |
+| `llm_sandbox.registry` | `get_backend`, `list_backends`, `clear_cache`, `BackendShadowWarning`, `BackendNameMismatchWarning` |
 | `llm_sandbox.exceptions` | every exception in the module |
 | `llm_sandbox.pool` | `ContainerPoolManager`, `PoolConfig`, `ExhaustionStrategy`, `PooledContainer`, `ContainerState`, and the pool exceptions |
 | `llm_sandbox.testing` | `BackendComplianceTests`, `BackendInterfaceComplianceTests` |
@@ -489,8 +517,12 @@ window rather than a flag day.
 
 - Anything under `llm_sandbox.core`. `BaseSession` and `ContainerAPI` are re-exported from
   `llm_sandbox.backends` precisely so you never have to.
-- `llm_sandbox.registry` internals. `get_backend` and `clear_cache` are stable; anything
-  underscore-prefixed is not.
+- `BaseSession` **as a base class**. It is exported so you can annotate against it, and
+  `create_session` is typed as returning it. Do not subclass it directly: its abstract
+  method set may grow within a plugin API major version, and `SandboxBackendBase` exists
+  to absorb that for you. Subclass `SandboxBackendBase`.
+- Underscore-prefixed names in `llm_sandbox.registry`. The four listed above are stable;
+  nothing else in that module is.
 - The language handler classes in `llm_sandbox.language_handlers`.
 - The underscore-prefixed methods on `BaseSession`. `SandboxBackendBase` gives you public
   names for all of them; the bridges are `@final`, so override the public name.

@@ -753,3 +753,32 @@ corrected in place above; they are collected here so the record is honest.
 A third correction came from the test suite rather than the design: `_check_dependency` cannot
 move out of `llm_sandbox/session.py`, because six tests patch `llm_sandbox.session.find_spec`.
 See §5.2.
+
+### Found in code review, after the first implementation landed
+
+- **There were four dispatch sites, not three** (§1.4). `PooledSandboxSession` inferred the
+  backend by substring-matching the pool manager's *class name*, then dispatched through its
+  own hardcoded `match`. That made `POOLING` undeliverable for any plugin, and silently
+  misrouted a third-party manager whose class name happened to contain `Docker`.
+  `ContainerPoolManager` now carries a `backend_name`, and the dispatch goes through the
+  registry like the other three.
+- **`SandboxBackendBase` rejected `None` for non-nullable config fields.** Core forwards
+  `runtime_configs=None` and `workdir="/sandbox"` unconditionally from
+  `ArtifactSandboxSession`; the built-ins each normalise by hand, and the new base class did
+  not. The result was a pydantic `ValidationError` — not even a `SandboxError` — from the one
+  consumer of the `ARTIFACTS` capability. `_build_config` now drops `None` for fields that
+  do not accept it.
+- **Capabilities were documented as enforced but only two of four were.** `ARTIFACTS` and
+  `EXISTING_CONTAINER` are now checked before construction, as §2.4 always claimed.
+- **Degenerate backend names failed open.** An entry point may legally be named `""`, and
+  `str(None)` is `"none"` — so a plugin could answer to `backend=""` or `backend=None`, which
+  is what a caller passes when a config value is unset. Names are now NFKC-folded and
+  validated against `^[a-z0-9][a-z0-9_]*$` on both the registration and lookup sides.
+- **Warning delivery could abort discovery.** `warnings.warn` inside `_discover` meant that
+  under `-W error`, a single shadowing plugin broke *every* backend and re-scanned metadata
+  on every call. Discovery is now pure; warnings are logged unconditionally and delivered
+  best-effort after the cache is committed.
+- **`SystemExit` from a plugin escaped failure isolation**, taking the host process down.
+  Both isolation points now catch `BaseException`, re-raising `KeyboardInterrupt`.
+- **`_get_records()` could return `None`** when `clear_cache()` landed between the
+  assignment and the return.

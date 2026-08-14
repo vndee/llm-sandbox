@@ -193,6 +193,10 @@ class ContainerPoolManager(ABC):
         self.lang = lang
         self.image = image
         self.session_kwargs = session_kwargs
+        # `backend_name` is how a pooled session finds its way back to the backend that
+        # built this pool. Built-in subclasses declare it; `create_pool_manager` stamps the
+        # resolved name so plugin pool managers get one without having to know about it.
+        self.backend_name: str = getattr(type(self), "backend_name", "")
 
         # Pool state
         self._pool: list[PooledContainer] = []

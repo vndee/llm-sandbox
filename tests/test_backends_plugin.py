@@ -235,7 +235,7 @@ class TestExceptionHierarchy:
             BackendNotFoundError("x", "message"),
             BackendLoadError("x", "message"),
             BackendNameConflictError("x", "message"),
-            BackendCapabilityError("x", "pooling"),
+            BackendCapabilityError("x", capability="pooling"),
         ],
     )
     def test_all_subclass_unsupported_backend_error(self, error: Exception) -> None:

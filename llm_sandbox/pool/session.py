@@ -2,8 +2,9 @@
 
 import logging
 from types import TracebackType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
+from llm_sandbox.backends.plugin import normalize_backend_name
 from llm_sandbox.const import EncodingErrorsType, SandboxBackend
 from llm_sandbox.data import ConsoleOutput, ExecutionResult, StreamCallback
 from llm_sandbox.pool.base import ContainerPoolManager, PooledContainer
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from llm_sandbox.core.session_base import BaseSession
 
 from llm_sandbox.pool.exceptions import SessionNotOpenError
+from llm_sandbox.registry import get_backend
 
 
 class DuplicateClientError(ValueError):
@@ -99,8 +101,9 @@ class PooledSandboxSession:
         self._pool_manager = pool_manager
         self._pooled_container: PooledContainer | None = None
 
-        # Infer backend from pool manager
-        self.backend = self._infer_backend_from_pool()
+        # The backend this pool was built for. A plain string, which compares equal to the
+        # matching SandboxBackend member for built-ins.
+        self.backend = self._resolve_backend_name()
 
         # Session parameters (stored for creating backend session later)
         self._verbose = verbose
@@ -131,27 +134,31 @@ class PooledSandboxSession:
             self._logger.addHandler(handler)
             self._logger.setLevel(logging.DEBUG)
 
-    def _infer_backend_from_pool(self) -> SandboxBackend:
-        """Infer backend type from pool manager class.
+    def _resolve_backend_name(self) -> str:
+        """Read the backend name the pool manager was built for.
+
+        Previously this guessed from the manager's class name, which silently misrouted any
+        manager whose name happened to contain "Docker" and made pooling unreachable for
+        plugin backends. `ContainerPoolManager` now carries the name, and
+        `llm_sandbox.pool.create_pool_manager` stamps it for managers that do not set it.
 
         Returns:
-            SandboxBackend enum value
+            str: The normalised backend name.
 
         Raises:
-            RuntimeError: If backend cannot be determined
+            RuntimeError: If the pool manager does not declare a backend name.
 
         """
-        pool_class_name = self._pool_manager.__class__.__name__
-
-        if "Docker" in pool_class_name:
-            return SandboxBackend.DOCKER
-        if "Kubernetes" in pool_class_name:
-            return SandboxBackend.KUBERNETES
-        if "Podman" in pool_class_name:
-            return SandboxBackend.PODMAN
-
-        msg = f"Cannot infer backend from pool manager class: {pool_class_name}"
-        raise RuntimeError(msg)
+        backend_name = getattr(self._pool_manager, "backend_name", "")
+        if not backend_name:
+            msg = (
+                f"Cannot infer backend from pool manager "
+                f"{type(self._pool_manager).__name__!r}: it does not declare `backend_name`. "
+                f"Build pool managers with llm_sandbox.pool.create_pool_manager(), which sets it, "
+                f"or set the attribute on your manager."
+            )
+            raise RuntimeError(msg)
+        return normalize_backend_name(str(backend_name))
 
     def open(self) -> None:
         """Open session by acquiring a container from the pool.
@@ -212,89 +219,38 @@ class PooledSandboxSession:
             RuntimeError: If backend is not supported
 
         """
-        match self.backend:
-            case SandboxBackend.DOCKER:
-                from llm_sandbox.docker import SandboxDockerSession
+        # Resolve first: an unknown backend should fail before anything is assembled.
+        provider = get_backend(self.backend)
 
-                # Validate that pool-managed parameters are not passed
-                session_kwargs = self._session_kwargs.copy()
-                if "client" in session_kwargs:
-                    raise DuplicateClientError
+        session_kwargs = self._session_kwargs.copy()
+        if "client" in session_kwargs:
+            raise DuplicateClientError
 
-                return SandboxDockerSession(
-                    client=self._pool_manager.client,
-                    image=self._image,
-                    lang=self._lang,
-                    verbose=self._verbose,
-                    stream=self._stream,
-                    workdir=self._workdir,
-                    security_policy=self._security_policy,
-                    default_timeout=self._default_timeout,
-                    execution_timeout=self._execution_timeout,
-                    session_timeout=self._session_timeout,
-                    container_id=container_id,  # Connect to existing pooled container
-                    skip_environment_setup=True,  # Pool already set up the environment
-                    encoding_errors=self._encoding_errors,
-                    **session_kwargs,
-                )
+        session_kwargs.update(
+            client=self._pool_manager.client,
+            image=self._image,
+            lang=self._lang,
+            verbose=self._verbose,
+            workdir=self._workdir,
+            security_policy=self._security_policy,
+            default_timeout=self._default_timeout,
+            execution_timeout=self._execution_timeout,
+            session_timeout=self._session_timeout,
+            container_id=container_id,  # Connect to the existing pooled container
+            skip_environment_setup=True,  # Pool already set up the environment
+            encoding_errors=self._encoding_errors,
+        )
 
-            case SandboxBackend.KUBERNETES:
-                from llm_sandbox.kubernetes import SandboxKubernetesSession
+        if self.backend == SandboxBackend.KUBERNETES:
+            # The Kubernetes session names its namespace differently and takes no `stream`.
+            session_kwargs["kube_namespace"] = self._session_kwargs.get("namespace") or getattr(
+                self._pool_manager, "namespace", "default"
+            )
+            session_kwargs.pop("namespace", None)
+        else:
+            session_kwargs["stream"] = self._stream
 
-                # Validate that pool-managed parameters are not passed
-                session_kwargs = self._session_kwargs.copy()
-                if "client" in session_kwargs:
-                    raise DuplicateClientError
-
-                namespace = session_kwargs.pop("namespace", None) or (
-                    self._pool_manager.namespace if hasattr(self._pool_manager, "namespace") else "default"
-                )
-
-                return SandboxKubernetesSession(
-                    client=self._pool_manager.client,
-                    kube_namespace=namespace,
-                    image=self._image,
-                    lang=self._lang,
-                    verbose=self._verbose,
-                    workdir=self._workdir,
-                    security_policy=self._security_policy,
-                    default_timeout=self._default_timeout,
-                    execution_timeout=self._execution_timeout,
-                    session_timeout=self._session_timeout,
-                    container_id=container_id,  # Connect to existing pooled pod
-                    skip_environment_setup=True,
-                    encoding_errors=self._encoding_errors,
-                    **session_kwargs,
-                )
-
-            case SandboxBackend.PODMAN:
-                from llm_sandbox.podman import SandboxPodmanSession
-
-                # Validate that pool-managed parameters are not passed
-                session_kwargs = self._session_kwargs.copy()
-                if "client" in session_kwargs:
-                    raise DuplicateClientError
-
-                return SandboxPodmanSession(
-                    client=self._pool_manager.client,
-                    image=self._image,
-                    lang=self._lang,
-                    verbose=self._verbose,
-                    stream=self._stream,
-                    workdir=self._workdir,
-                    security_policy=self._security_policy,
-                    default_timeout=self._default_timeout,
-                    execution_timeout=self._execution_timeout,
-                    session_timeout=self._session_timeout,
-                    container_id=container_id,  # Connect to existing pooled container
-                    skip_environment_setup=True,
-                    encoding_errors=self._encoding_errors,
-                    **session_kwargs,
-                )
-
-            case _:
-                msg = f"Unsupported backend: {self.backend}"
-                raise RuntimeError(msg)
+        return cast("BaseSession", provider.create_session(**session_kwargs))
 
     def run(
         self,
@@ -414,6 +370,10 @@ class PooledSandboxSession:
         This allows pooled sessions to support all methods/attributes
         of the underlying backend session.
         """
+        if "_backend_session" not in self.__dict__:
+            # Guard against infinite recursion: __getattr__ is only called for attributes
+            # that are absent, and reading self._backend_session here would re-enter it.
+            raise AttributeError(name)
         if self._backend_session is None:
             raise SessionNotOpenError
 

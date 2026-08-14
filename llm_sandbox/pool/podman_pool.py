@@ -17,6 +17,10 @@ class PodmanPoolManager(DockerPoolManager):
     The standard session logic handles all environment setup.
     """
 
+    # Must be declared explicitly: inheriting DockerPoolManager would otherwise route
+    # pooled Podman sessions to the Docker backend.
+    backend_name = "podman"
+
     def __init__(
         self,
         config: PoolConfig,

@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from llm_sandbox import registry
+from llm_sandbox.backends.plugin import ENTRY_POINT_GROUP
 
 #: A plugin that satisfies the contract completely.
 VALID_PLUGIN = """
@@ -84,6 +85,57 @@ class Backend(SandboxBackendPlugin):
     name: ClassVar[str] = "{name}"
 """
 
+#: A plugin that never declares `name`, which `require()` and the optional factories read.
+NO_NAME_PLUGIN = """
+from typing import Any, ClassVar
+
+from llm_sandbox.backends import SandboxBackendPlugin
+
+
+class Backend(SandboxBackendPlugin):
+    PLUGIN_API_VERSION: ClassVar[int] = 1
+
+    @classmethod
+    def create_session(cls, *args: Any, **kwargs: Any) -> Any:
+        return object()
+"""
+
+#: A plugin that calls sys.exit() while being imported, as one might on missing config.
+SYSTEM_EXIT_PLUGIN = """
+import sys
+
+sys.exit("plugin decided to exit during import")
+"""
+
+#: A plugin that declares POOLING and returns a working pool manager.
+POOLING_PLUGIN = """
+from typing import Any, ClassVar
+
+from llm_sandbox.backends import BackendCapability, SandboxBackendPlugin
+
+
+class FakePoolManager:
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+        self.lang = kwargs.get("lang", "python")
+        self.image = None
+        self.client = object()
+
+
+class Backend(SandboxBackendPlugin):
+    PLUGIN_API_VERSION: ClassVar[int] = 1
+    name: ClassVar[str] = "{name}"
+    capabilities: ClassVar[frozenset] = frozenset({{BackendCapability.POOLING}})
+
+    @classmethod
+    def create_session(cls, *args: Any, **kwargs: Any) -> Any:
+        return {{"backend": cls.name}}
+
+    @classmethod
+    def create_pool_manager(cls, **kwargs: Any) -> Any:
+        return FakePoolManager(**kwargs)
+"""
+
 #: A plugin whose declared name disagrees with its entry point name.
 MISMATCHED_NAME_PLUGIN = """
 from typing import Any, ClassVar
@@ -110,7 +162,7 @@ def write_distribution(
     source: str,
     entry_point_name: str,
     attribute: str = "Backend",
-    group: str = "llm_sandbox.backends",
+    group: str = ENTRY_POINT_GROUP,
 ) -> Path:
     """Write an importable module plus the ``.dist-info`` that registers its entry point.
 

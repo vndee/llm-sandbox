@@ -8,8 +8,11 @@ security scanning, timeouts, and file transfer.
 A real backend would talk to a container runtime or a remote API here. This one shells out.
 """
 
+import contextlib
 import io
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -21,6 +24,9 @@ from typing import Any
 # not on PATH, so the local runtime resolves it to the interpreter running llm-sandbox --
 # the kind of environment translation a real backend does too.
 _PYTHON_PREFIX = "python "
+
+#: How long to wait for a killed process group to be reaped before giving up.
+_KILL_GRACE_SECONDS = 5.0
 
 
 class LocalContainerAPI:
@@ -99,6 +105,10 @@ class LocalContainerAPI:
             cwd=workdir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            # Its own process group, so a timeout can kill the whole tree. Killing only the
+            # shell leaves grandchildren alive holding the inherited pipe, which hangs
+            # communicate() forever -- a timeout that does not actually cancel anything.
+            start_new_session=True,
         )
         with self._lock:
             self._processes.add(process)
@@ -161,6 +171,14 @@ class LocalContainerAPI:
         """
         with self._lock:
             processes = list(self._processes)
+
         for process in processes:
-            if process.poll() is None:
-                process.kill()
+            if process.poll() is not None:
+                continue
+            # Kill the group, not just the shell -- see start_new_session above.
+            with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=_KILL_GRACE_SECONDS)
+            with self._lock:
+                self._processes.discard(process)

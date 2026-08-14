@@ -9,12 +9,32 @@ The bridges are ``@final``: override the public name, never the underscore one.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, final
+from typing import Any, ClassVar, final, get_args
 
+from llm_sandbox.backends.plugin import BackendCapability
 from llm_sandbox.core.config import SessionConfig
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import StreamCallback
 from llm_sandbox.exceptions import BackendCapabilityError
+
+
+def _nullable_config_fields() -> frozenset[str]:
+    """Names of `SessionConfig` fields that accept ``None``.
+
+    Returns:
+        frozenset[str]: The nullable field names.
+
+    """
+    # get_args handles both `typing.Optional[X]` and the `X | None` form, which is a
+    # types.UnionType rather than a typing.Union on Python 3.10.
+    return frozenset(
+        name
+        for name, field in SessionConfig.model_fields.items()
+        if field.annotation is None or type(None) in get_args(field.annotation)
+    )
+
+
+_NULLABLE_CONFIG_FIELDS = _nullable_config_fields()
 
 
 class SandboxBackendBase(BaseSession, ABC):
@@ -46,6 +66,14 @@ class SandboxBackendBase(BaseSession, ABC):
 
     """
 
+    backend_name: ClassVar[str] = ""
+    """The backend name this session belongs to.
+
+    Set it to match your plugin's `SandboxBackendPlugin.name` so that diagnostics and
+    `llm_sandbox.exceptions.UnsupportedBackendError.backend` name the backend rather than
+    the session class. Defaults to empty, in which case the class name is used.
+    """
+
     def __init__(self, config: SessionConfig | None = None, **kwargs: Any) -> None:
         """Initialize the backend session.
 
@@ -71,6 +99,13 @@ class SandboxBackendBase(BaseSession, ABC):
     def _build_config(kwargs: dict[str, Any]) -> tuple[SessionConfig, dict[str, Any]]:
         """Split session configuration values out of a keyword argument mapping.
 
+        Core forwards ``None`` for several settings whose caller-side default is ``None``
+        but whose `SessionConfig` field is not nullable -- ``runtime_configs`` and
+        ``workdir`` both arrive that way from `llm_sandbox.ArtifactSandboxSession` and
+        `llm_sandbox.InteractiveSandboxSession`. The built-in backends each normalise these
+        by hand before constructing their config; doing it here means a plugin does not have
+        to know which settings need it.
+
         Args:
             kwargs (dict[str, Any]): The keyword arguments handed to the session.
 
@@ -80,8 +115,11 @@ class SandboxBackendBase(BaseSession, ABC):
 
         """
         remaining = dict(kwargs)
+        config_kwargs = {key: remaining.pop(key) for key in list(remaining) if key in SessionConfig.model_fields}
         config_kwargs = {
-            key: remaining.pop(key) for key in list(remaining) if key in SessionConfig.model_fields
+            key: value
+            for key, value in config_kwargs.items()
+            if value is not None or key in _NULLABLE_CONFIG_FIELDS
         }
         return SessionConfig(**config_kwargs), remaining
 
@@ -179,7 +217,10 @@ class SandboxBackendBase(BaseSession, ABC):
             BackendCapabilityError: If this backend cannot attach to existing runtimes.
 
         """
-        raise BackendCapabilityError(type(self).__name__, "existing_container")
+        raise BackendCapabilityError(
+            self.backend_name or type(self).__name__,
+            capability=BackendCapability.EXISTING_CONTAINER.value,
+        )
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:  # noqa: ARG002
         """Read a path out of the sandbox as an uncompressed tar archive.
@@ -199,7 +240,10 @@ class SandboxBackendBase(BaseSession, ABC):
             BackendCapabilityError: If this backend does not support artifact extraction.
 
         """
-        raise BackendCapabilityError(type(self).__name__, "artifacts")
+        raise BackendCapabilityError(
+            self.backend_name or type(self).__name__,
+            capability=BackendCapability.ARTIFACTS.value,
+        )
 
     # ------------------------------------------------------------------ #
     # Bridges onto BaseSession's private contract. Do not override.

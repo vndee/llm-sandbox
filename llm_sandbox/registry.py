@@ -16,7 +16,7 @@ sandbox, though -- by the time a plugin is installed, its build already ran. See
 ``docs/plugins/authoring.md``.
 """
 
-import difflib
+import contextlib
 import inspect
 import logging
 import threading
@@ -28,10 +28,12 @@ from typing import Any
 
 from llm_sandbox.backends.builtin import BUILTIN_BACKENDS
 from llm_sandbox.backends.plugin import (
+    BACKEND_NAME_PATTERN,
     ENTRY_POINT_GROUP,
     SUPPORTED_PLUGIN_API_VERSIONS,
     BackendCapability,
     BackendInfo,
+    BackendStatus,
     SandboxBackendPlugin,
     normalize_backend_name,
 )
@@ -84,7 +86,7 @@ class _PluginRecord:
 
 _lock = threading.Lock()
 _records: dict[str, _PluginRecord] | None = None
-_shadowed: list[BackendInfo] = []
+_shadowed: tuple[BackendInfo, ...] = ()
 _loaded: dict[str, type[SandboxBackendPlugin]] = {}
 
 
@@ -94,10 +96,10 @@ def clear_cache() -> None:
     Needed when plugins are installed into a running process, and by tests that register
     backends dynamically. Ordinary applications never call this.
     """
-    global _records  # noqa: PLW0603
+    global _records, _shadowed  # noqa: PLW0603
     with _lock:
         _records = None
-        _shadowed.clear()
+        _shadowed = ()
         _loaded.clear()
 
 
@@ -110,36 +112,56 @@ def _entry_points() -> list[EntryPoint]:
     """
     try:
         return list(entry_points(group=ENTRY_POINT_GROUP))
-    except Exception:  # noqa: BLE001 # pragma: no cover - defensive
+    except Exception as exc:  # noqa: BLE001
         # A corrupt or unreadable distribution on sys.path must not stop built-in backends
-        # from resolving.
-        logger.warning("Could not read %r entry points; no plugin backends available", ENTRY_POINT_GROUP)
+        # from resolving. Report the cause, or the user has nothing to act on.
+        logger.warning(
+            "Could not read %r entry points; no plugin backends available: %s: %s",
+            ENTRY_POINT_GROUP,
+            type(exc).__name__,
+            exc,
+        )
         return []
 
 
-def _discover() -> dict[str, _PluginRecord]:
+def _discover() -> tuple[dict[str, _PluginRecord], tuple[BackendInfo, ...], list[str]]:
     """Scan entry points and build the plugin record table. Imports nothing.
 
+    Pure with respect to module state, and emits no warnings: it returns the messages for
+    the caller to deliver *after* the record table is committed. Warning delivery runs
+    arbitrary user code (filters, ``showwarning``) and raises under ``-W error``, and neither
+    may be able to abort discovery or leave the cache unpopulated.
+
     Returns:
-        dict[str, _PluginRecord]: Records keyed by normalised backend name.
+        tuple[dict[str, _PluginRecord], tuple[BackendInfo, ...], list[str]]: Records keyed
+            by normalised backend name, shadowed registrations, and pending warnings.
 
     """
     candidates: dict[str, list[tuple[EntryPoint, str | None, str | None]]] = defaultdict(list)
     shadowed: list[BackendInfo] = []
+    pending: list[str] = []
 
     for entry_point in _entry_points():
         name = normalize_backend_name(entry_point.name)
         dist = getattr(entry_point, "dist", None)
         dist_name = getattr(dist, "name", None)
         dist_version = getattr(dist, "version", None)
+        source = f"{dist_name or 'an unknown distribution'}{' ' + dist_version if dist_version else ''}"
+
+        if not BACKEND_NAME_PATTERN.match(name):
+            # Refused rather than registered. An empty or exotic entry point name would
+            # otherwise answer to backend="" or a homoglyph, turning an unset config value
+            # into a silent hand-off of code execution.
+            pending.append(
+                f"Plugin backend {entry_point.name!r} from {source} has an unusable name and will be "
+                f"ignored. Backend names must match {BACKEND_NAME_PATTERN.pattern}."
+            )
+            continue
 
         if name in BUILTIN_BACKENDS:
-            warnings.warn(
-                f"Plugin backend {entry_point.name!r} from {dist_name or 'an unknown distribution'}"
-                f"{' ' + dist_version if dist_version else ''} shadows the built-in backend {name!r}"
-                f" and will be ignored. Built-in backends always win.",
-                BackendShadowWarning,
-                stacklevel=2,
+            pending.append(
+                f"Plugin backend {entry_point.name!r} from {source} shadows the built-in backend "
+                f"{name!r} and will be ignored. Built-in backends always win."
             )
             shadowed.append(
                 BackendInfo(
@@ -166,7 +188,9 @@ def _discover() -> dict[str, _PluginRecord]:
         # A conflict is recorded, not raised. Raising here would let one bad pair of plugins
         # break resolution for every other backend; instead it surfaces when that specific
         # name is requested.
-        conflicts = tuple(d or "<unknown distribution>" for _, d, _ in entries) if len(entries) > 1 else ()
+        conflicts = (
+            tuple(sorted({d or "<unknown distribution>" for _, d, _ in entries})) if len(entries) > 1 else ()
+        )
         records[name] = _PluginRecord(
             name=name,
             entry_point=entry_point,
@@ -175,9 +199,7 @@ def _discover() -> dict[str, _PluginRecord]:
             conflicts=conflicts,
         )
 
-    _shadowed.clear()
-    _shadowed.extend(shadowed)
-    return records
+    return records, tuple(shadowed), pending
 
 
 def _get_records() -> dict[str, _PluginRecord]:
@@ -187,12 +209,43 @@ def _get_records() -> dict[str, _PluginRecord]:
         dict[str, _PluginRecord]: Records keyed by normalised backend name.
 
     """
-    global _records  # noqa: PLW0603
-    if _records is None:
-        with _lock:
-            if _records is None:
-                _records = _discover()
-    return _records
+    global _records, _shadowed
+
+    records = _records
+    if records is not None:
+        return records
+
+    pending: list[str] = []
+    with _lock:
+        # Re-read under the lock, and bind to a local: a concurrent clear_cache() may set
+        # the global back to None between the assignment and the return.
+        records = _records
+        if records is None:
+            records, shadowed, pending = _discover()
+            _records, _shadowed = records, shadowed
+
+    _emit_discovery_warnings(pending)
+    return records
+
+
+def _emit_discovery_warnings(messages: list[str]) -> None:
+    """Deliver discovery warnings outside the lock, best effort.
+
+    Every message is logged unconditionally, because a shadowing attempt is a supply-chain
+    signal and ``warnings`` may be filtered to silence, deduplicated to once per location,
+    or configured to raise. The ``warnings`` call is then best effort: warning *policy* must
+    never decide whether a backend resolves.
+
+    Args:
+        messages (list[str]): Warning texts collected during discovery.
+
+    """
+    for message in messages:
+        logger.warning("%s", message)
+        # Best effort: a filter set to "error", or a custom showwarning that raises, must not
+        # decide whether a backend resolves. The logger call above is the guaranteed channel.
+        with contextlib.suppress(Exception):
+            warnings.warn(message, BackendShadowWarning, stacklevel=3)
 
 
 def _validate(obj: Any, record: _PluginRecord) -> type[SandboxBackendPlugin]:
@@ -226,6 +279,17 @@ def _validate(obj: Any, record: _PluginRecord) -> type[SandboxBackendPlugin]:
         raise BackendLoadError(
             record.name,
             f"Backend {record.name!r} from {source} is incomplete: it does not implement {missing}.",
+            record.distribution,
+        )
+
+    if not getattr(obj, "name", None):
+        # `require()` and the default optional factories all read `cls.name`. Without this
+        # check the failure is a bare AttributeError from deep inside a call, which is the
+        # exact outcome declaring PLUGIN_API_VERSION exists to prevent.
+        raise BackendLoadError(
+            record.name,
+            f"Backend {record.name!r} from {source} does not declare a `name` class attribute. "
+            f"Add `name = {record.name!r}` to the plugin class.",
             record.distribution,
         )
 
@@ -282,9 +346,11 @@ def _load(record: _PluginRecord) -> type[SandboxBackendPlugin]:
 
     try:
         obj = record.entry_point.load()
-    except BackendLoadError:
+    except (BackendLoadError, KeyboardInterrupt):
         raise
-    except Exception as exc:
+    except BaseException as exc:
+        # BaseException, not Exception: a plugin doing sys.exit() on missing config raises
+        # SystemExit, and failure isolation has to hold for that too.
         source = record.distribution or "<unknown distribution>"
         raise BackendLoadError(
             record.name,
@@ -325,13 +391,22 @@ def _unknown_backend_error(key: str, requested: str) -> BackendNotFoundError:
         )
         lines.append(f"Installed plugin backends: {installed}.")
 
+    import difflib
+
     close = difflib.get_close_matches(key, [*BUILTIN_BACKENDS, *records], n=1, cutoff=_DID_YOU_MEAN_CUTOFF)
     if close:
         lines.append(f"Did you mean {close[0]!r}?")
-    else:
+    elif BACKEND_NAME_PATTERN.match(key):
+        # Only suggest a command for a name that survived validation. This line is written to
+        # be pasted into a shell, so it must never carry through whatever the caller passed.
         lines.append(
             f"No installed package provides {requested!r}. Third-party backends ship as separate\n"
             f"packages — try: pip install llm-sandbox-{key.replace('_', '-')}"
+        )
+    else:
+        lines.append(
+            f"{requested!r} is not a usable backend name. Names must match "
+            f"{BACKEND_NAME_PATTERN.pattern}."
         )
 
     lines.append(f"See {INTEGRATIONS_URL}")
@@ -374,6 +449,12 @@ def get_backend(name: str) -> type[SandboxBackendPlugin]:
     # ever asks for "docker" is exactly the user who needs to hear about it. Metadata is
     # scanned once per process and cached; no plugin code is imported.
     records = _get_records()
+
+    if not BACKEND_NAME_PATTERN.match(key):
+        # Fail closed. `backend=None` and `backend=""` are what a caller passes when a config
+        # value or environment variable is unset, and they must never be able to select
+        # anything -- least of all a name an installed package chose to answer to.
+        raise _unknown_backend_error(key, requested)
 
     builtin = BUILTIN_BACKENDS.get(key)
     if builtin is not None:
@@ -431,7 +512,7 @@ def list_backends(load: bool = False) -> list[BackendInfo]:
 
     for name, record in sorted(_get_records().items()):
         capabilities: frozenset[BackendCapability] | None = None
-        status = "ok"
+        status: BackendStatus = "ok"
         detail: str | None = None
 
         if record.conflicts:
@@ -440,7 +521,9 @@ def list_backends(load: bool = False) -> list[BackendInfo]:
         elif load:
             try:
                 capabilities = frozenset(_load(record).capabilities)
-            except Exception as exc:  # noqa: BLE001
+            except KeyboardInterrupt:
+                raise
+            except BaseException as exc:  # noqa: BLE001
                 status = "error"
                 detail = str(exc)
 
@@ -457,5 +540,5 @@ def list_backends(load: bool = False) -> list[BackendInfo]:
             )
         )
 
-    infos.extend(_shadowed)
+    infos.extend(_shadowed)  # atomically swapped tuple; safe to read unlocked
     return infos

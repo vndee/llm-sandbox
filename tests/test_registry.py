@@ -1,6 +1,11 @@
 """Tests for backend discovery, resolution, and error reporting."""
 
+import contextlib
+import logging
 import sys
+import threading
+import time
+import warnings
 from pathlib import Path
 
 import pytest
@@ -21,8 +26,11 @@ from tests.plugin_helpers import (
     EXPLODING_PLUGIN,
     FUTURE_VERSION_PLUGIN,
     MISMATCHED_NAME_PLUGIN,
+    NO_NAME_PLUGIN,
     NO_VERSION_PLUGIN,
     NOT_A_PLUGIN,
+    POOLING_PLUGIN,
+    SYSTEM_EXIT_PLUGIN,
     VALID_PLUGIN,
     installed,
     write_distribution,
@@ -496,3 +504,288 @@ class TestCacheControl:
             assert "late" in {info.name for info in list_backends()}
 
         assert "late" not in {info.name for info in list_backends()}
+
+
+class TestHardenedNames:
+    """Degenerate and confusable names must fail closed, not select a plugin."""
+
+    @pytest.mark.parametrize("requested", [None, "", "   ", "  \t ", "foo; rm -rf /", "-", "_x"])
+    def test_unusable_names_never_resolve(self, requested: object) -> None:
+        """A name that is empty or malformed cannot select any backend.
+
+        `backend=""` and `backend=None` are what a caller passes when a config value or
+        environment variable is unset. Those must not be selectable by an installed package.
+        """
+        with pytest.raises(BackendNotFoundError):
+            get_backend(requested)  # type: ignore[arg-type]
+
+    def test_entry_point_with_empty_name_is_refused(self, tmp_path: Path) -> None:
+        """An entry point named '' is ignored rather than answering to backend=''."""
+        root = tmp_path / "site"
+        root.mkdir(parents=True)
+        (root / "empty_backend.py").write_text(VALID_PLUGIN.format(name="empty"))
+        dist_info = root / "llm_sandbox_empty-0.1.0.dist-info"
+        dist_info.mkdir()
+        (dist_info / "METADATA").write_text("Metadata-Version: 2.1\nName: llm-sandbox-empty\nVersion: 0.1.0\n")
+        (dist_info / "entry_points.txt").write_text("[llm_sandbox.backends]\n = empty_backend:Backend\n")
+
+        with installed(root), pytest.warns(BackendShadowWarning, match="unusable name"):
+            names = {info.name for info in list_backends()}
+
+        assert "" not in names
+
+        with installed(root), pytest.raises(BackendNotFoundError):
+            get_backend("")
+
+    def test_fullwidth_homoglyph_folds_onto_the_builtin(self) -> None:
+        """NFKC folding means a fullwidth homoglyph cannot pose as a separate backend."""
+        assert normalize_backend_name("ＤOCKER") == "docker"  # noqa: RUF001
+        assert get_backend("ＤOCKER") is DockerBackend  # noqa: RUF001
+
+    def test_shell_metacharacters_get_no_install_suggestion(self) -> None:
+        """The pip line is written to be pasted into a shell, so it never echoes junk."""
+        with pytest.raises(BackendNotFoundError) as excinfo:
+            get_backend("foo; rm -rf /")
+
+        message = str(excinfo.value)
+        assert "pip install" not in message
+        assert "not a usable backend name" in message
+
+
+class TestWarningDeliveryCannotBreakDiscovery:
+    """Warning policy must never decide whether a backend resolves."""
+
+    def test_warnings_as_errors_does_not_break_resolution(self, tmp_path: Path) -> None:
+        """With -W error and a shadowing plugin installed, every backend still resolves."""
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-impostor",
+            version="6.6.6",
+            module="impostor_backend",
+            source=VALID_PLUGIN,
+            entry_point_name="docker",
+        )
+        with installed(root), warnings.catch_warnings():
+            warnings.simplefilter("error")
+
+            assert get_backend("docker") is DockerBackend
+            assert get_backend("podman").name == "podman"
+            assert [info.name for info in list_backends() if info.is_builtin] == sorted(BUILTIN_BACKENDS)
+
+    def test_discovery_is_cached_even_when_a_warning_fires(self, tmp_path: Path) -> None:
+        """A shadowing plugin must not force a metadata re-scan on every call."""
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-impostor",
+            version="6.6.6",
+            module="impostor_backend",
+            source=VALID_PLUGIN,
+            entry_point_name="docker",
+        )
+        with installed(root), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with contextlib.suppress(Exception):
+                get_backend("docker")
+
+            scans = []
+            original = registry._entry_points
+
+            def counting() -> list[object]:
+                scans.append(1)
+                return original()
+
+            registry._entry_points = counting  # type: ignore[assignment]
+            try:
+                get_backend("docker")
+                get_backend("podman")
+            finally:
+                registry._entry_points = original  # type: ignore[assignment]
+
+        assert scans == [], "Discovery re-scanned metadata after a warning fired"
+
+    def test_shadow_attempt_is_logged_even_when_warnings_are_silenced(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A hijack attempt is a supply-chain signal, so it survives a warnings filter."""
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-impostor",
+            version="6.6.6",
+            module="impostor_backend",
+            source=VALID_PLUGIN,
+            entry_point_name="docker",
+        )
+        with (
+            installed(root),
+            warnings.catch_warnings(),
+            caplog.at_level(logging.WARNING, logger="llm_sandbox.registry"),
+        ):
+            warnings.simplefilter("ignore")
+            get_backend("docker")
+
+        assert "llm-sandbox-impostor" in caplog.text
+        assert "shadows the built-in" in caplog.text
+
+
+class TestFailureIsolationIsTotal:
+    """Isolation has to hold for BaseException too, not just Exception."""
+
+    def test_plugin_calling_sys_exit_does_not_kill_the_process(self, tmp_path: Path) -> None:
+        """SystemExit inherits BaseException; a plugin must not be able to exit the host."""
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-suicidal",
+            version="0.1.0",
+            module="suicidal_backend",
+            source=SYSTEM_EXIT_PLUGIN,
+            entry_point_name="suicidal",
+        )
+        with installed(root):
+            with pytest.raises(BackendLoadError, match="failed to load"):
+                get_backend("suicidal")
+
+            infos = {info.name: info for info in list_backends(load=True)}
+            assert infos["suicidal"].status == "error"
+            assert infos["docker"].status == "ok"
+
+    def test_plugin_without_a_name_is_rejected_at_load(self, tmp_path: Path) -> None:
+        """`name` is read by require() and the optional factories, so absence is fatal early."""
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-nameless",
+            version="0.1.0",
+            module="nameless_backend",
+            source=NO_NAME_PLUGIN,
+            entry_point_name="nameless",
+        )
+        with installed(root), pytest.raises(BackendLoadError, match="does not declare a `name`"):
+            get_backend("nameless")
+
+
+class TestConcurrency:
+    """Pool code creates sessions from worker threads, so the cache is used concurrently."""
+
+    def test_concurrent_resolution_is_consistent(self, tmp_path: Path) -> None:
+        """Many threads resolving at once agree, and discovery still runs once."""
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-tenki",
+            version="1.0.0",
+            module="tenki_backend",
+            source=VALID_PLUGIN,
+            entry_point_name="tenki",
+        )
+        with installed(root):
+            results: list[object] = []
+            errors: list[BaseException] = []
+
+            def resolve() -> None:
+                try:
+                    results.extend(get_backend(name) for name in ("docker", "tenki", "podman"))
+                except BaseException as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=resolve) for _ in range(16)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        assert not errors, f"Concurrent resolution raised: {errors}"
+        assert len(results) == 16 * 3
+
+    def test_clear_cache_racing_resolution_never_returns_none(self, tmp_path: Path) -> None:
+        """_get_records() must not hand back None when clear_cache() lands mid-call."""
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-tenki",
+            version="1.0.0",
+            module="tenki_backend",
+            source=VALID_PLUGIN,
+            entry_point_name="tenki",
+        )
+        errors: list[BaseException] = []
+        stop = threading.Event()
+
+        def clear() -> None:
+            while not stop.is_set():
+                registry.clear_cache()
+
+        def resolve() -> None:
+            try:
+                while not stop.is_set():
+                    get_backend("docker")
+                    list_backends()
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        with installed(root):
+            workers = [threading.Thread(target=clear) for _ in range(3)]
+            workers += [threading.Thread(target=resolve) for _ in range(3)]
+            for thread in workers:
+                thread.start()
+            time.sleep(0.75)
+            stop.set()
+            for thread in workers:
+                thread.join()
+
+        assert not errors, f"Racing clear_cache() with resolution raised: {errors}"
+
+
+class TestPluginPooling:
+    """POOLING must be reachable end to end, not just declarable."""
+
+    def test_plugin_pool_manager_is_created_and_stamped(self, tmp_path: Path) -> None:
+        """create_pool_manager routes to the plugin and stamps the resolved backend name."""
+        from llm_sandbox.pool import create_pool_manager
+
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-pooler",
+            version="0.1.0",
+            module="pooler_backend",
+            source=POOLING_PLUGIN,
+            entry_point_name="pooler",
+        )
+        with installed(root):
+            manager = create_pool_manager(backend="pooler", lang="python")
+
+            assert type(manager).__name__ == "FakePoolManager"
+            assert manager.backend_name == "pooler"
+
+    def test_pooled_session_routes_back_to_the_plugin(self, tmp_path: Path) -> None:
+        """A PooledSandboxSession built on a plugin pool resolves through the registry.
+
+        Previously this raised a bare RuntimeError from _infer_backend_from_pool, which made
+        the POOLING capability undeliverable for any third-party backend.
+        """
+        from llm_sandbox.pool import create_pool_manager
+        from llm_sandbox.pool.session import PooledSandboxSession
+
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-pooler",
+            version="0.1.0",
+            module="pooler_backend",
+            source=POOLING_PLUGIN,
+            entry_point_name="pooler",
+        )
+        with installed(root):
+            manager = create_pool_manager(backend="pooler", lang="python")
+            session = PooledSandboxSession(pool_manager=manager)
+
+            assert session.backend == "pooler"
+            assert session._create_backend_session("container-1") == {"backend": "pooler"}
+
+    def test_builtin_pool_managers_declare_their_own_name(self) -> None:
+        """PodmanPoolManager subclasses DockerPoolManager, so it must declare its own name."""
+        from llm_sandbox.pool.docker_pool import DockerPoolManager
+        from llm_sandbox.pool.kubernetes_pool import KubernetesPoolManager
+        from llm_sandbox.pool.podman_pool import PodmanPoolManager
+
+        assert DockerPoolManager.backend_name == "docker"
+        assert KubernetesPoolManager.backend_name == "kubernetes"
+        assert PodmanPoolManager.backend_name == "podman", (
+            "PodmanPoolManager inherits DockerPoolManager; without its own backend_name a "
+            "pooled Podman session would be routed to the Docker backend."
+        )

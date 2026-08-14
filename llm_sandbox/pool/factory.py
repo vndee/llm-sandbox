@@ -98,4 +98,10 @@ def create_pool_manager(
 
     provider = get_backend(str(backend))
     provider.require(BackendCapability.POOLING)
-    return provider.create_pool_manager(client=client, config=config, lang=lang, **kwargs)
+    manager = provider.create_pool_manager(client=client, config=config, lang=lang, **kwargs)
+
+    # Stamp the resolved name so a PooledSandboxSession can route back to this backend
+    # without having to guess it from the manager's class name.
+    if not getattr(manager, "backend_name", ""):
+        manager.backend_name = provider.name
+    return manager

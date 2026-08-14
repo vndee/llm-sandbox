@@ -324,10 +324,14 @@ class BackendComplianceTests(BackendInterfaceComplianceTests):
         source = tmp_path / "payload.txt"
         source.write_text(payload)
         destination = tmp_path / "returned.txt"
+        # Unique per run: for a host-executing backend this is a real host path, where a
+        # fixed name is both a collision between concurrent runs and a symlink-overwrite
+        # target on a shared machine.
+        remote = f"/tmp/llm_sandbox_compliance_{uuid.uuid4().hex}.txt"
 
         with self.make_session() as session:
-            session.copy_to_runtime(str(source), "/tmp/llm_sandbox_compliance.txt")
-            session.copy_from_runtime("/tmp/llm_sandbox_compliance.txt", str(destination))
+            session.copy_to_runtime(str(source), remote)
+            session.copy_from_runtime(remote, str(destination))
 
         assert destination.read_text() == payload, "File contents changed in transit."
 
@@ -353,10 +357,11 @@ class BackendComplianceTests(BackendInterfaceComplianceTests):
 
         source = tmp_path / "artifact.txt"
         source.write_text("artifact-payload")
+        remote = f"/tmp/llm_sandbox_artifact_{uuid.uuid4().hex}.txt"
 
         with self.make_session() as session:
-            session.copy_to_runtime(str(source), "/tmp/llm_sandbox_artifact.txt")
-            data, stat = session.get_archive("/tmp/llm_sandbox_artifact.txt")
+            session.copy_to_runtime(str(source), remote)
+            data, stat = session.get_archive(remote)
 
         assert isinstance(data, bytes), "get_archive() must return tar bytes."
         assert data, "get_archive() returned no data for a file that exists."

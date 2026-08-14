@@ -157,12 +157,14 @@ class BackendNameConflictError(UnsupportedBackendError):
 class BackendCapabilityError(UnsupportedBackendError):
     """Raised when a backend exists but does not support a requested capability."""
 
-    def __init__(self, backend: str, capability: str, message: str | None = None) -> None:
+    def __init__(self, backend: str, *, capability: str, message: str | None = None) -> None:
         """Initialize the BackendCapabilityError.
 
         Args:
             backend (str): The backend name.
-            capability (str): The capability that is not supported.
+            capability (str): The capability that is not supported. Keyword-only, so that a
+                generic ``type(exc)(exc.backend, msg)`` re-raise fails loudly rather than
+                silently binding the message to this argument.
             message (str | None): Optional override for the default wording.
 
         """

@@ -8,10 +8,13 @@ enforcement, timeouts, file transfer, the context manager protocol -- is inherit
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from llm_sandbox.backends import SandboxBackendBase
 from llm_sandbox.data import StreamCallback
+
+#: Core's default workdir. An absolute path inside a container, not on the host.
+CONTAINER_DEFAULT_WORKDIR = "/sandbox"
 
 
 class LocalSandboxSession(SandboxBackendBase):
@@ -24,17 +27,25 @@ class LocalSandboxSession(SandboxBackendBase):
 
     """
 
+    backend_name: ClassVar[str] = "example"
+
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the session.
 
         Args:
-            **kwargs: Session arguments. ``workdir`` defaults to a fresh temporary directory,
-                since the usual ``/sandbox`` default is not writable on a normal machine.
-                ``skip_environment_setup`` defaults to True because there is no container to
-                prepare; pass False to build a virtualenv and enable ``install()``.
+            **kwargs: Session arguments. ``workdir`` is replaced with a fresh temporary
+                directory unless the caller named one of their own, since core's default is a
+                path inside a container. ``skip_environment_setup`` defaults to True because
+                there is no container to prepare; pass False to build a virtualenv and enable
+                ``install()``.
 
         """
-        self._owns_workdir = "workdir" not in kwargs
+        # Core's workdir default is "/sandbox" -- an absolute path inside a container, which
+        # is not writable on a normal machine. `ArtifactSandboxSession` also passes it
+        # explicitly rather than leaving it unset, so "absent" is not enough to detect it.
+        # Any backend that executes somewhere other than a container has to map this.
+        requested_workdir = kwargs.get("workdir")
+        self._owns_workdir = requested_workdir in (None, CONTAINER_DEFAULT_WORKDIR)
         if self._owns_workdir:
             kwargs["workdir"] = tempfile.mkdtemp(prefix="llm-sandbox-example-")
         kwargs.setdefault("skip_environment_setup", True)
@@ -66,14 +77,19 @@ class LocalSandboxSession(SandboxBackendBase):
         Called on every exit path, including when the ``with`` body raises. Releasing
         resources here is the single most important thing a backend gets right.
         """
-        super().close()
-
-        if self.container is not None:
-            self.container_api.stop_container(self.container)
-            self.container = None
-
-        if self._owns_workdir:
-            shutil.rmtree(self.config.workdir, ignore_errors=True)
+        try:
+            super().close()
+        finally:
+            # Whatever the base teardown does, the runtime must be stopped and a directory
+            # we created must be removed. A backend that leaks on the error path is the
+            # failure mode that quietly costs its users money.
+            try:
+                if self.container is not None:
+                    self.container_api.stop_container(self.container)
+                    self.container = None
+            finally:
+                if self._owns_workdir:
+                    shutil.rmtree(self.config.workdir, ignore_errors=True)
 
     # ------------------------------------------------------------------ #
     # Required hooks
@@ -110,9 +126,6 @@ class LocalSandboxSession(SandboxBackendBase):
             tuple[str, str]: Decoded ``(stdout, stderr)``.
 
         """
-        if not isinstance(output, tuple) or len(output) != 2:  # noqa: PLR2004
-            return "", ""
-
         stdout, stderr = output
         errors = self.config.encoding_errors
         return (

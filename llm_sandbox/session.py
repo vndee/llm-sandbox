@@ -4,7 +4,7 @@ from importlib.util import find_spec
 from types import TracebackType
 from typing import Any
 
-from llm_sandbox.backends.plugin import normalize_backend_name
+from llm_sandbox.backends.plugin import BackendCapability, normalize_backend_name
 from llm_sandbox.registry import get_backend
 from llm_sandbox.security import SecurityPolicy
 
@@ -258,7 +258,14 @@ def create_session(
 
     # Resolve the backend. Built-ins resolve from a dict; plugin backends are imported here
     # and only here, so installing a plugin never costs anything until it is asked for.
-    return get_backend(str(backend)).create_session(*args, **kwargs)
+    provider = get_backend(str(backend))
+
+    # Check the capability before constructing, so an unsupported request fails cleanly
+    # rather than after a container has been created and billed.
+    if kwargs.get("container_id") is not None:
+        provider.require(BackendCapability.EXISTING_CONTAINER)
+
+    return provider.create_session(*args, **kwargs)
 
 
 class ArtifactSandboxSession:
@@ -473,6 +480,11 @@ class ArtifactSandboxSession:
             # Don't create _session when using pooled implementation
             self._session = None
         else:
+            # Artifact extraction needs get_archive(). Check before creating anything, so a
+            # backend that cannot do it fails here rather than mid-run with a live container.
+            if enable_plotting:
+                get_backend(str(backend)).require(BackendCapability.ARTIFACTS)
+
             # Create the base session (non-pooled)
             self._pooled_impl = None
             self._session = create_session(
