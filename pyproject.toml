@@ -33,6 +33,9 @@ podman = ["docker>=7.1.0", "podman>=5.4.0.1"]
 mcp-docker = ["docker>=7.1.0", "mcp>=1.28.1,<3"]
 mcp-podman = ["docker>=7.1.0", "mcp>=1.28.1,<3", "podman>=5.4.0.1"]
 mcp-k8s = ["kubernetes>=32.0.1", "mcp>=1.28.1,<3"]
+# Backend plugin authors install this to run llm_sandbox.testing.BackendComplianceTests
+# against their own backend. Core never imports it.
+testing = ["pytest>=7.2.0"]
 
 [dependency-groups]
 dev = [
@@ -119,6 +122,14 @@ unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "SLF001", "PLR2004", "PT019", "ARG002", "ANN201"]
+# The compliance kit is a pytest suite that happens to ship inside the package, so it needs
+# the same allowances as tests/ -- assertions above all.
+"llm_sandbox/testing/*" = ["S101", "SLF001", "PLR2004", "PT019"]
+# The reference plugin is a standalone distribution vendored for plugin authors to copy. It
+# is linted as a package in its own right, and its tests get the tests/ allowances. INP001 is
+# waived because a copied plugin lives in its own repository, where a tests/__init__.py that
+# only exists to satisfy this repo's lint config would be noise.
+"examples/plugins/*/tests/*" = ["S101", "SLF001", "PLR2004", "PT019", "ARG002", "ANN201", "INP001"]
 
 [tool.ruff.format]
 preview = true
@@ -140,6 +151,10 @@ ignore = ["DEP004"]
 # crewai, ag2, ...) that is intentionally not a project dependency: they are
 # illustrations, installed ad hoc by whoever runs one. Declaring all of them
 # would also be unresolvable, since several pin conflicting langchain versions.
+# The reference backend plugin is a separate distribution with its own pyproject.toml. Its
+# imports resolve against that project's dependencies, not this one's, so checking it here
+# reports its own package as an undeclared dependency of llm-sandbox.
+#
 # extend_exclude, not exclude: the latter replaces deptry's defaults, which
 # already skip tests/ and .venv.
-extend_exclude = ["examples/agent_sdks"]
+extend_exclude = ["examples/agent_sdks", "examples/plugins"]

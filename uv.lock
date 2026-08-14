@@ -2,10 +2,10 @@ version = 1
 revision = 3
 requires-python = ">=3.10, <4.0"
 resolution-markers = [
-    "python_full_version >= '3.12.4' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.12.4' and python_full_version < '3.14' and sys_platform != 'win32'",
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform != 'win32'",
+    "python_full_version >= '3.12.4' and python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.12.4' and python_full_version < '3.14' and sys_platform != 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.12.4'",
     "python_full_version == '3.11.*'",
     "python_full_version < '3.11'",
@@ -1533,6 +1533,9 @@ podman = [
     { name = "docker" },
     { name = "podman" },
 ]
+testing = [
+    { name = "pytest" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1573,8 +1576,9 @@ requires-dist = [
     { name = "podman", marker = "extra == 'mcp-podman'", specifier = ">=5.4.0.1" },
     { name = "podman", marker = "extra == 'podman'", specifier = ">=5.4.0.1" },
     { name = "pydantic", specifier = ">=2.11.5" },
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=7.2.0" },
 ]
-provides-extras = ["docker", "k8s", "podman", "mcp-docker", "mcp-podman", "mcp-k8s"]
+provides-extras = ["docker", "k8s", "podman", "mcp-docker", "mcp-podman", "mcp-k8s", "testing"]
 
 [package.metadata.requires-dev]
 dev = [

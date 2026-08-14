@@ -4,12 +4,14 @@ from importlib.util import find_spec
 from types import TracebackType
 from typing import Any
 
+from llm_sandbox.backends.plugin import normalize_backend_name
+from llm_sandbox.registry import get_backend
 from llm_sandbox.security import SecurityPolicy
 
 from .const import SandboxBackend, SupportedLanguage
 from .core.session_base import BaseSession
 from .data import ExecutionResult, StreamCallback
-from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
+from .exceptions import LanguageNotSupportPlotError, MissingDependencyError
 from .interactive import InteractiveSandboxSession
 from .pool.base import ContainerPoolManager
 from .pool.session import ArtifactPooledSandboxSession, PooledSandboxSession
@@ -24,21 +26,26 @@ __all__ = [
 ]
 
 
-def _check_dependency(backend: SandboxBackend) -> None:
-    """Check if required dependency is installed for the given backend."""
-    if backend in {SandboxBackend.DOCKER, SandboxBackend.MICROMAMBA} and not find_spec("docker"):
+def _check_dependency(backend: SandboxBackend | str) -> None:
+    """Check if required dependency is installed for the given backend.
+
+    Only built-in backends are checked. Plugin backends declare their own dependencies and
+    are responsible for reporting them.
+    """
+    name = normalize_backend_name(str(backend))
+    if name in {SandboxBackend.DOCKER, SandboxBackend.MICROMAMBA} and not find_spec("docker"):
         msg = "Docker backend requires 'docker' package. Install it with: pip install llm-sandbox[docker]"
         raise MissingDependencyError(msg)
-    if backend == SandboxBackend.KUBERNETES and not find_spec("kubernetes"):
+    if name == SandboxBackend.KUBERNETES and not find_spec("kubernetes"):
         msg = "Kubernetes backend requires 'kubernetes' package. Install it with: pip install llm-sandbox[k8s]"
         raise MissingDependencyError(msg)
-    if backend == SandboxBackend.PODMAN and not find_spec("podman"):
+    if name == SandboxBackend.PODMAN and not find_spec("podman"):
         msg = "Podman backend requires 'podman' package. Install it with: pip install llm-sandbox[podman]"
         raise MissingDependencyError(msg)
 
 
 def create_session(
-    backend: SandboxBackend = SandboxBackend.DOCKER,
+    backend: SandboxBackend | str = SandboxBackend.DOCKER,
     pool: ContainerPoolManager | None = None,
     *args: Any,
     **kwargs: Any,
@@ -50,11 +57,16 @@ def create_session(
     For backward compatibility, we also keep a `SandboxSession` alias for this function.
 
     Args:
-        backend (SandboxBackend): Container backend to use. Options:
+        backend (SandboxBackend | str): Container backend to use. Built-in options:
             - SandboxBackend.DOCKER (default)
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
+
+            Backends provided by an installed plugin are selected by name, e.g.
+            `backend="my-service"`. Names are case-insensitive and treat hyphens and
+            underscores as equivalent. Call `llm_sandbox.list_backends()` to see what is
+            available, and see INTEGRATIONS.md for the plugin policy.
         pool (ContainerPoolManager | None): Pool manager to use for container pooling.
             If provided, containers are acquired from the pool instead of being created new.
             Create a pool manager using `create_pool_manager()` from llm_sandbox.pool.
@@ -244,26 +256,9 @@ def create_session(
     # Check if required dependency is installed for non-pooled sessions
     _check_dependency(backend)
 
-    # Create the appropriate session based on backend
-    match backend:
-        case SandboxBackend.DOCKER:
-            from .docker import SandboxDockerSession
-
-            return SandboxDockerSession(*args, **kwargs)
-        case SandboxBackend.KUBERNETES:
-            from .kubernetes import SandboxKubernetesSession
-
-            return SandboxKubernetesSession(*args, **kwargs)
-        case SandboxBackend.PODMAN:
-            from .podman import SandboxPodmanSession
-
-            return SandboxPodmanSession(*args, **kwargs)
-        case SandboxBackend.MICROMAMBA:
-            from .micromamba import MicromambaSession
-
-            return MicromambaSession(*args, **kwargs)
-        case _:
-            raise UnsupportedBackendError(backend=backend)
+    # Resolve the backend. Built-ins resolve from a dict; plugin backends are imported here
+    # and only here, so installing a plugin never costs anything until it is asked for.
+    return get_backend(str(backend)).create_session(*args, **kwargs)
 
 
 class ArtifactSandboxSession:
@@ -271,7 +266,7 @@ class ArtifactSandboxSession:
 
     def __init__(
         self,
-        backend: SandboxBackend = SandboxBackend.DOCKER,
+        backend: SandboxBackend | str = SandboxBackend.DOCKER,
         image: str | None = None,
         dockerfile: str | None = None,
         lang: str = SupportedLanguage.PYTHON,

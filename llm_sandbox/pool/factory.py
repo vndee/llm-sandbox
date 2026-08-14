@@ -2,15 +2,16 @@
 
 from typing import Any
 
+from llm_sandbox.backends.plugin import BackendCapability
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
-from llm_sandbox.exceptions import UnsupportedBackendError
 from llm_sandbox.pool.base import ContainerPoolManager
 from llm_sandbox.pool.config import PoolConfig
+from llm_sandbox.registry import get_backend
 
 
 def create_pool_manager(
     client: Any | None = None,
-    backend: SandboxBackend = SandboxBackend.DOCKER,
+    backend: SandboxBackend | str = SandboxBackend.DOCKER,
     config: PoolConfig | None = None,
     lang: SupportedLanguage | str = SupportedLanguage.PYTHON,
     **kwargs: Any,
@@ -19,7 +20,8 @@ def create_pool_manager(
 
     Args:
         client: Client to use for container creation (optional)
-        backend: Container backend to use (docker, kubernetes, podman)
+        backend: Container backend to use (docker, kubernetes, podman), or the name of a
+            plugin backend that declares the ``pooling`` capability
         config: Pool configuration (uses defaults if None)
         lang: Programming language for containers
         **kwargs: Additional backend-specific arguments
@@ -28,7 +30,8 @@ def create_pool_manager(
         ContainerPoolManager instance for the specified backend
 
     Raises:
-        UnsupportedBackendError: If the backend is not supported
+        UnsupportedBackendError: If the backend is not supported, or does not declare the
+            ``pooling`` capability
         MissingDependencyError: If required backend dependency is not installed
 
     Examples:
@@ -93,22 +96,6 @@ def create_pool_manager(
     if config is None:
         config = PoolConfig()
 
-    # Create appropriate pool manager based on backend
-    match backend:
-        case SandboxBackend.DOCKER:
-            from llm_sandbox.pool.docker_pool import DockerPoolManager
-
-            return DockerPoolManager(client=client, config=config, lang=lang, **kwargs)
-
-        case SandboxBackend.KUBERNETES:
-            from llm_sandbox.pool.kubernetes_pool import KubernetesPoolManager
-
-            return KubernetesPoolManager(client=client, config=config, lang=lang, **kwargs)
-
-        case SandboxBackend.PODMAN:
-            from llm_sandbox.pool.podman_pool import PodmanPoolManager
-
-            return PodmanPoolManager(client=client, config=config, lang=lang, **kwargs)
-
-        case _:
-            raise UnsupportedBackendError(backend)
+    provider = get_backend(str(backend))
+    provider.require(BackendCapability.POOLING)
+    return provider.create_pool_manager(client=client, config=config, lang=lang, **kwargs)
