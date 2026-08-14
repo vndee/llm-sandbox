@@ -508,7 +508,7 @@ class TestCacheControl:
 class TestHardenedNames:
     """Degenerate and confusable names must fail closed, not select a plugin."""
 
-    @pytest.mark.parametrize("requested", [None, "", "   ", "  \t ", "foo; rm -rf /", "-", "_x"])
+    @pytest.mark.parametrize("requested", [None, "", "   ", "  \t ", "foo; rm -rf /", "-", "_x", 0, 1.5])
     def test_unusable_names_never_resolve(self, requested: object) -> None:
         """A name that is empty or malformed cannot select any backend.
 
@@ -535,6 +535,26 @@ class TestHardenedNames:
 
         with installed(root), pytest.raises(BackendNotFoundError):
             get_backend("")
+
+    def test_non_string_backend_cannot_select_a_plugin(self, tmp_path: Path) -> None:
+        """`backend=None` must not resolve, even when a plugin is registered as "none".
+
+        str(None) is "none", which is a syntactically valid backend name -- so coercing
+        before validating let an installed package answer to an unset config value.
+        """
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-none",
+            version="1.0.0",
+            module="none_backend",
+            source=VALID_PLUGIN,
+            entry_point_name="none",
+        )
+        with installed(root):
+            assert get_backend("none").name == "none"
+
+            with pytest.raises(BackendNotFoundError, match="must be a string"):
+                get_backend(None)  # type: ignore[arg-type]
 
     def test_fullwidth_homoglyph_folds_onto_the_builtin(self) -> None:
         """NFKC folding means a fullwidth homoglyph cannot pose as a separate backend."""
@@ -788,3 +808,49 @@ class TestPluginPooling:
             "PodmanPoolManager inherits DockerPoolManager; without its own backend_name a "
             "pooled Podman session would be routed to the Docker backend."
         )
+
+    def test_pooling_without_existing_container_is_rejected(self, tmp_path: Path) -> None:
+        """POOLING implies EXISTING_CONTAINER, because a pooled session attaches to one."""
+        from llm_sandbox.pool import create_pool_manager
+        from llm_sandbox.pool.session import PooledSandboxSession
+
+        source = POOLING_PLUGIN.replace(
+            "        BackendCapability.POOLING,\n        BackendCapability.EXISTING_CONTAINER,\n",
+            "        BackendCapability.POOLING,\n",
+        )
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-halfpool",
+            version="0.1.0",
+            module="halfpool_backend",
+            source=source,
+            entry_point_name="halfpool",
+        )
+        with installed(root):
+            manager = create_pool_manager(backend="halfpool", lang="python")
+            session = PooledSandboxSession(pool_manager=manager)
+
+            with pytest.raises(BackendCapabilityError, match="existing_container"):
+                session._create_backend_session("container-1")
+
+    def test_pool_manager_is_stamped_with_the_entry_point_name(self, tmp_path: Path) -> None:
+        """A plugin whose declared name differs is registered under its entry point name.
+
+        Stamping `provider.name` instead would record a name that does not resolve.
+        """
+        from llm_sandbox.pool import create_pool_manager
+
+        source = POOLING_PLUGIN.replace('name: ClassVar[str] = "{name}"', 'name: ClassVar[str] = "declared-elsewhere"')
+        root = write_distribution(
+            tmp_path / "site",
+            distribution="llm-sandbox-renamed",
+            version="0.1.0",
+            module="renamed_backend",
+            source=source,
+            entry_point_name="renamed",
+        )
+        with installed(root), pytest.warns(BackendNameMismatchWarning):
+            manager = create_pool_manager(backend="renamed", lang="python")
+
+            assert manager.backend_name == "renamed"
+            assert get_backend(manager.backend_name) is not None

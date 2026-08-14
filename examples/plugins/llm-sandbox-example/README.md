@@ -66,7 +66,7 @@ without breaking you.
 
 **The session** (`session.py`) is what users hold. Subclassing `SandboxBackendBase` means
 inheriting `run()`, `install()`, security policy enforcement, timeouts, file transfer, and
-the context manager protocol — you implement lifecycle plus six hooks.
+the context manager protocol — you implement lifecycle plus five hooks.
 
 **The runtime driver** (`runtime.py`) implements `ContainerAPI`: six methods that create a
 place to run things, run them, and move files in and out. Implement this and the two layers
@@ -93,7 +93,8 @@ job that does have access.
 2. Change `name` in `backend.py` and the entry point key in `pyproject.toml` to match.
 3. Replace `runtime.py` with calls to your service.
 4. Declare only the `capabilities` you actually implement. Declaring one you do not have is
-   worse than not declaring it: users get a half-built session instead of a clear error.
+   worse than not declaring it: core takes the declaration at its word and lets the call
+   through, so the failure surfaces later and further from the cause.
 5. Keep `PLUGIN_API_VERSION` accurate, and pin `llm-sandbox` to a compatible range.
 6. Delete this warning box and write an honest one about your own isolation guarantees.
 

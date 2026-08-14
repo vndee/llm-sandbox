@@ -4,7 +4,7 @@ import logging
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, cast
 
-from llm_sandbox.backends.plugin import normalize_backend_name
+from llm_sandbox.backends.plugin import BackendCapability, normalize_backend_name
 from llm_sandbox.const import EncodingErrorsType, SandboxBackend
 from llm_sandbox.data import ConsoleOutput, ExecutionResult, StreamCallback
 from llm_sandbox.pool.base import ContainerPoolManager, PooledContainer
@@ -221,6 +221,8 @@ class PooledSandboxSession:
         """
         # Resolve first: an unknown backend should fail before anything is assembled.
         provider = get_backend(self.backend)
+        # Every pooled session attaches to a container the pool already created.
+        provider.require(BackendCapability.EXISTING_CONTAINER)
 
         session_kwargs = self._session_kwargs.copy()
         if "client" in session_kwargs:

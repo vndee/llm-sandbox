@@ -107,7 +107,8 @@ import sys
 sys.exit("plugin decided to exit during import")
 """
 
-#: A plugin that declares POOLING and returns a working pool manager.
+#: A plugin that declares POOLING (and EXISTING_CONTAINER, which pooling requires) and
+#: returns a working pool manager.
 POOLING_PLUGIN = """
 from typing import Any, ClassVar
 
@@ -125,7 +126,10 @@ class FakePoolManager:
 class Backend(SandboxBackendPlugin):
     PLUGIN_API_VERSION: ClassVar[int] = 1
     name: ClassVar[str] = "{name}"
-    capabilities: ClassVar[frozenset] = frozenset({{BackendCapability.POOLING}})
+    capabilities: ClassVar[frozenset] = frozenset({{
+        BackendCapability.POOLING,
+        BackendCapability.EXISTING_CONTAINER,
+    }})
 
     @classmethod
     def create_session(cls, *args: Any, **kwargs: Any) -> Any:

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from llm_sandbox.backends.plugin import BackendCapability
+from llm_sandbox.backends.plugin import BackendCapability, normalize_backend_name
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
 from llm_sandbox.pool.base import ContainerPoolManager
 from llm_sandbox.pool.config import PoolConfig
@@ -96,12 +96,14 @@ def create_pool_manager(
     if config is None:
         config = PoolConfig()
 
-    provider = get_backend(str(backend))
+    resolved = normalize_backend_name(str(backend))
+    provider = get_backend(resolved)
     provider.require(BackendCapability.POOLING)
     manager = provider.create_pool_manager(client=client, config=config, lang=lang, **kwargs)
 
-    # Stamp the resolved name so a PooledSandboxSession can route back to this backend
-    # without having to guess it from the manager's class name.
+    # Stamp the name the registry resolved, not provider.name: a plugin whose declared name
+    # differs from its entry point name is registered under the entry point name, so that is
+    # the one that will resolve again later.
     if not getattr(manager, "backend_name", ""):
-        manager.backend_name = provider.name
+        manager.backend_name = resolved
     return manager

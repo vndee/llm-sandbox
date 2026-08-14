@@ -170,6 +170,14 @@ class ContainerPoolManager(ABC):
 
     """
 
+    backend_name: str = ""
+    """The backend this pool creates containers for.
+
+    How a pooled session routes back to the right backend. Built-in subclasses declare it;
+    `llm_sandbox.pool.create_pool_manager` stamps the resolved name onto any manager that
+    does not, so a plugin pool manager need not know about it.
+    """
+
     def __init__(
         self,
         client: Any,
@@ -193,10 +201,6 @@ class ContainerPoolManager(ABC):
         self.lang = lang
         self.image = image
         self.session_kwargs = session_kwargs
-        # `backend_name` is how a pooled session finds its way back to the backend that
-        # built this pool. Built-in subclasses declare it; `create_pool_manager` stamps the
-        # resolved name so plugin pool managers get one without having to know about it.
-        self.backend_name: str = getattr(type(self), "backend_name", "")
 
         # Pool state
         self._pool: list[PooledContainer] = []

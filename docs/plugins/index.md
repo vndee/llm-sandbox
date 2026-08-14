@@ -26,7 +26,8 @@ with SandboxSession(backend="<service>", lang="python") as session:
     trusting its authors, not us.
 
     Evaluate one the way you would evaluate any dependency that handles your secrets: read
-    the source, check who maintains it, and look at what it does with your data.
+    the source, check who maintains it and how actively, confirm it passes the compliance
+    kit, and look at what it sends off your machine.
 
     The built-in Docker, Podman, Kubernetes, and Micromamba backends are maintained and
     CI-tested in this repository. If your code must not leave your infrastructure, use those.

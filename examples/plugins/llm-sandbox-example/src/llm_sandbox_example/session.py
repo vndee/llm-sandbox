@@ -50,13 +50,20 @@ class LocalSandboxSession(SandboxBackendBase):
             kwargs["workdir"] = tempfile.mkdtemp(prefix="llm-sandbox-example-")
         kwargs.setdefault("skip_environment_setup", True)
 
-        super().__init__(**kwargs)
+        try:
+            super().__init__(**kwargs)
 
-        # Imported lazily so the module stays importable without a runtime present -- the
-        # same discipline a real backend needs for its vendor SDK.
-        from llm_sandbox_example.runtime import LocalContainerAPI
+            # Imported lazily so the module stays importable without a runtime present --
+            # the same discipline a real backend needs for its vendor SDK.
+            from llm_sandbox_example.runtime import LocalContainerAPI
 
-        self.container_api = LocalContainerAPI()
+            self.container_api = LocalContainerAPI()
+        except BaseException:
+            # close() never runs for a session that failed to construct, so anything
+            # allocated before the failure has to be released here.
+            if self._owns_workdir:
+                shutil.rmtree(kwargs["workdir"], ignore_errors=True)
+            raise
 
     # ------------------------------------------------------------------ #
     # Lifecycle

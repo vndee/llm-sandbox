@@ -145,7 +145,7 @@ Any new error must be a **subclass** so those keep passing — and so downstream
 
 ### 2.1 Group name
 
-```
+```text
 llm_sandbox.backends
 ```
 
@@ -350,7 +350,7 @@ here rather than left to the implementation.
 
 Nothing installed provides the name, and nothing is close:
 
-```
+```text
 Unknown backend 'tenki'.
 Built-in backends: docker, kubernetes, micromamba, podman.
 No installed package provides 'tenki'. Third-party backends ship as separate
@@ -360,7 +360,7 @@ See https://github.com/vndee/llm-sandbox/blob/main/INTEGRATIONS.md
 
 A plugin *is* installed and the name is a near miss (`difflib.get_close_matches`, stdlib):
 
-```
+```text
 Unknown backend 'tenkki'.
 Built-in backends: docker, kubernetes, micromamba, podman.
 Installed plugin backends: tenki (llm-sandbox-tenki 0.1.0).
@@ -782,3 +782,6 @@ See §5.2.
   Both isolation points now catch `BaseException`, re-raising `KeyboardInterrupt`.
 - **`_get_records()` could return `None`** when `clear_cache()` landed between the
   assignment and the return.
+
+All of the above are fixed on this branch, each with a regression test. The plugin API
+surface itself did not change as a result -- every correction was behind it.

@@ -57,7 +57,7 @@ A complete, runnable version of everything below lives in
 
 ## 1. Set up the project
 
-```
+```text
 llm-sandbox-myservice/
 ├── pyproject.toml
 ├── README.md
@@ -153,8 +153,8 @@ instantiates it — every method is a classmethod.
 ### What each declaration is for
 
 **`PLUGIN_API_VERSION`** — required. Which version of this interface you built against.
-Without it, a plugin built for an interface core no longer has fails as an `AttributeError`
-somewhere deep inside a session, which tells the user nothing. See
+Without it, a plugin built against an interface core no longer provides fails with an
+`AttributeError` somewhere deep inside a session, which tells the user nothing. See
 [Version compatibility](#version-compatibility).
 
 **`name`** — required. Your canonical backend name. The entry-point key is what users type,
@@ -172,12 +172,18 @@ are enforced: `ArtifactSandboxSession` requires `ARTIFACTS`, `container_id=` req
 |---|---|---|
 | `ARTIFACTS` | `ArtifactSandboxSession`, plot capture | `get_archive()` on the session |
 | `EXISTING_CONTAINER` | `container_id=` | `connect_to_existing_container()` |
-| `POOLING` | `create_pool_manager()` | `create_pool_manager()` on the descriptor |
+| `POOLING` | `create_pool_manager()` | `create_pool_manager()` on the descriptor, **and** `EXISTING_CONTAINER` |
 | `INTERACTIVE` | `InteractiveSandboxSession` | `create_interactive_session()` on the descriptor |
 
 Declaring a capability you do not have is worse than not declaring it. Leave
 `create_pool_manager` and `create_interactive_session` alone if you do not support them —
 the inherited defaults raise a clear `BackendCapabilityError`.
+
+!!! note "`POOLING` implies `EXISTING_CONTAINER`"
+
+    A pooled session attaches to a container the pool already created, so a backend that
+    declares `POOLING` must also declare `EXISTING_CONTAINER` and implement
+    `connect_to_existing_container()`. Core checks this before building a pooled session.
 
 !!! note "`INTERACTIVE` is the hard one"
 
@@ -189,7 +195,7 @@ the inherited defaults raise a clear `BackendCapabilityError`.
 
 Subclass `SandboxBackendBase` and you inherit `run()`, `install()`, security policy
 enforcement, session timeouts, file transfer, and the context manager protocol. You implement
-lifecycle plus six hooks.
+lifecycle plus five hooks.
 
 ```python title="src/llm_sandbox_myservice/session.py"
 from typing import Any
@@ -247,7 +253,11 @@ class MyServiceSession(SandboxBackendBase):
             self.client.cancel(self.container)
 
     def ensure_directory_exists(self, path: str) -> None:
-        self.container_api.execute_command(self.container, f"mkdir -p {path}")
+        exit_code, output = self.container_api.execute_command(self.container, f"mkdir -p {path}")
+        if exit_code != 0:
+            # Do not swallow this: the copy that follows will fail confusingly instead.
+            _, stderr = self.process_non_stream_output(output)
+            raise ContainerError(f"Could not create {path}: {stderr}")
 
     def ensure_ownership(self, paths: list[str]) -> None:
         """No-op when the sandbox always runs as the owning user."""

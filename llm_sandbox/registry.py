@@ -436,6 +436,15 @@ def get_backend(name: str) -> type[SandboxBackendPlugin]:
         ```
 
     """
+    if not isinstance(name, str):
+        # str(None) is "none", which is a syntactically valid backend name -- so coercing
+        # first would let an installed package answer to backend=None. Reject the type.
+        raise BackendNotFoundError(
+            str(name),
+            f"Backend must be a string or a SandboxBackend member, got {type(name).__name__}. "
+            f"Built-in backends: {', '.join(sorted(BUILTIN_BACKENDS))}.",
+        )
+
     requested = str(name)
     key = normalize_backend_name(requested)
 

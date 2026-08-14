@@ -29,6 +29,24 @@ _PYTHON_PREFIX = "python "
 _KILL_GRACE_SECONDS = 5.0
 
 
+def _kill_group(process: subprocess.Popen[bytes]) -> None:
+    """Kill a process and everything it spawned, then reap it.
+
+    Killing only the shell leaves grandchildren alive holding the inherited pipe, which
+    hangs communicate() forever -- a timeout that does not actually cancel anything.
+
+    Args:
+        process (subprocess.Popen[bytes]): The process to kill. Already-exited is fine.
+
+    """
+    if process.poll() is not None:
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=_KILL_GRACE_SECONDS)
+
+
 class LocalContainerAPI:
     """Run commands and move files in a local directory, via subprocesses.
 
@@ -114,6 +132,11 @@ class LocalContainerAPI:
             self._processes.add(process)
         try:
             stdout, stderr = process.communicate()
+        except BaseException:
+            # Killed rather than left running: an interrupted communicate() would otherwise
+            # orphan the whole group, and nothing else will come back for it.
+            _kill_group(process)
+            raise
         finally:
             with self._lock:
                 self._processes.discard(process)
@@ -173,12 +196,6 @@ class LocalContainerAPI:
             processes = list(self._processes)
 
         for process in processes:
-            if process.poll() is not None:
-                continue
-            # Kill the group, not just the shell -- see start_new_session above.
-            with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                process.wait(timeout=_KILL_GRACE_SECONDS)
+            _kill_group(process)
             with self._lock:
                 self._processes.discard(process)
