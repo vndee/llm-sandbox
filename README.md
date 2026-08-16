@@ -1006,4 +1006,4 @@ If you find LLM Sandbox useful, please consider giving it a star on GitHub!
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=vndee/llm-sandbox&type=Date)](https://www.star-history.com/#vndee/llm-sandbox&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=vndee/llm-sandbox&type=Date)](https://star-history.dera.page/#vndee/llm-sandbox&Date)
