@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from llm_sandbox.const import EncodingErrorsType, SupportedLanguage
+from llm_sandbox.const import EncodingErrorsType, RuntimeProfile, SupportedLanguage
 from llm_sandbox.security import SecurityPolicy
 
 
@@ -73,7 +73,16 @@ class SessionConfig(BaseModel):
         default={},
         description="Additional configurations for the container runtime, such as resource limits "
         "(e.g., `cpu_count`, `mem_limit`) or user (`user='1000:1000'`). "
-        "By default, containers run as the root user for maximum compatibility.",
+        "Values supplied here always take precedence over `runtime_profile` defaults; "
+        "explicitly setting a key to ``None`` omits the corresponding profile default.",
+    )
+    runtime_profile: RuntimeProfile = Field(
+        default=RuntimeProfile.COMPAT,
+        description="Hardening profile applied when generating runtime configuration. "
+        "``COMPAT`` (default) preserves historical root-by-default behavior. ``STRICT`` "
+        "applies non-root execution, dropped capabilities, ``no-new-privileges``, "
+        "network-off, and pid/memory limits for Docker/Podman, plus a non-root pod and "
+        "container ``securityContext`` for Kubernetes.",
     )
 
     # Environment setup customization
