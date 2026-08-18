@@ -750,9 +750,7 @@ class TestPodmanRuntimeProfile:
 
     @patch("llm_sandbox.podman.PodmanClient.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
-    def test_compat_profile_keeps_root(
-        self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock
-    ) -> None:
+    def test_compat_profile_keeps_root(self, mock_create_handler: MagicMock, mock_podman_from_env: MagicMock) -> None:
         """Default profile must keep historical user='root' kwarg."""
         mock_create_handler.return_value = MagicMock()
         mock_client = self._make_client(mock_podman_from_env)
