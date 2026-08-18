@@ -195,9 +195,7 @@ class TestInjectionAttempts:
         "language",
         ["javascript", "node", "go", "ruby", "r", "c", "java"],
     )
-    def test_all_languages_reject_injection(
-        self, payload: str, language: str
-    ) -> None:
+    def test_all_languages_reject_injection(self, payload: str, language: str) -> None:
         """Sweep: every other language rejects every injection payload."""
         with pytest.raises(ValidationError):
             validate_package_name(payload, language)
@@ -241,9 +239,7 @@ class TestEdgeCases:
     def test_leading_trailing_whitespace_trimmed(self) -> None:
         """Surrounding whitespace is stripped and the trimmed value returned."""
         assert validate_package_name("  requests  ", "python") == "requests"
-        assert (
-            validate_package_name("\tnumpy==1.26.0\n", "python") == "numpy==1.26.0"
-        )
+        assert validate_package_name("\tnumpy==1.26.0\n", "python") == "numpy==1.26.0"
 
     @pytest.mark.parametrize("language", ["PYTHON", "Python", "python", "PyThOn"])
     def test_language_lookup_is_case_insensitive(self, language: str) -> None:
@@ -276,7 +272,4 @@ class TestReturnValue:
     def test_returns_input_when_already_clean(self) -> None:
         """No-trim input is returned unchanged."""
         assert validate_package_name("lodash", "javascript") == "lodash"
-        assert (
-            validate_package_name("github.com/Azure/go-autorest", "go")
-            == "github.com/Azure/go-autorest"
-        )
+        assert validate_package_name("github.com/Azure/go-autorest", "go") == "github.com/Azure/go-autorest"
