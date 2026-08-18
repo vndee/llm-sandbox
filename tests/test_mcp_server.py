@@ -886,7 +886,9 @@ class TestBuildCommitImageTag:
 
     def test_build_commit_image_tag_unique_per_call(self) -> None:
         """Two calls produce different tags."""
-        assert _build_commit_image_tag("python") != _build_commit_image_tag("python")
+        first_tag = _build_commit_image_tag("python")
+        second_tag = _build_commit_image_tag("python")
+        assert first_tag != second_tag
 
 
 class TestGetSupportedLanguages:

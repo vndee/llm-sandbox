@@ -1187,9 +1187,7 @@ class TestSandboxDockerSessionEdgeCases:
         session._commit_container()
 
         # Commit must target the unique tag, never the source image tag.
-        mock_container.commit.assert_called_once_with(
-            repository="llm-sandbox-mcp/python", tag="abc123"
-        )
+        mock_container.commit.assert_called_once_with(repository="llm-sandbox-mcp/python", tag="abc123")
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
@@ -1210,9 +1208,7 @@ class TestSandboxDockerSessionEdgeCases:
 
         session._commit_container()
 
-        mock_container.commit.assert_called_once_with(
-            repository="llm-sandbox-mcp/python", tag="xyz"
-        )
+        mock_container.commit.assert_called_once_with(repository="llm-sandbox-mcp/python", tag="xyz")
 
     @patch("llm_sandbox.docker.docker.from_env")
     @patch("llm_sandbox.language_handlers.factory.LanguageHandlerFactory.create_handler")
