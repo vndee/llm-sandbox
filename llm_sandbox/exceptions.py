@@ -190,9 +190,7 @@ class SecurityPolicyViolation(SecurityViolationError):  # noqa: N818
         if self.severity_threshold is not None:
             threshold_part = f" (threshold: {self.severity_threshold.name})"
 
-        items = [
-            f"  - [{v.severity.name}] {v.description} (pattern: {v.pattern})" for v in self.violations
-        ]
+        items = [f"  - [{v.severity.name}] {v.description} (pattern: {v.pattern})" for v in self.violations]
         header = f"Security policy violation{threshold_part}: {len(self.violations)} issue(s) detected"
         return header + "\n" + "\n".join(items)
 

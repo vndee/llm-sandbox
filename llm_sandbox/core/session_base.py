@@ -139,7 +139,7 @@ class BaseSession(
             self._base_security_policy = self.config.security_policy.model_copy(deep=True)
 
         policy = self._base_security_policy.model_copy(deep=True)
-        for module in policy.restricted_modules:
+        for module in policy.restricted_modules or []:
             policy.add_pattern(
                 SecurityPattern(
                     pattern=self.language_handler.get_import_patterns(module.name),
