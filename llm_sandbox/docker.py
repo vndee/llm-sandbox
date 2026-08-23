@@ -94,6 +94,7 @@ class SandboxDockerSession(BaseSession):
         lang: str = SupportedLanguage.PYTHON,
         keep_template: bool = False,
         commit_container: bool = False,
+        commit_image_tag: str | None = None,
         verbose: bool = False,
         stream: bool = False,
         runtime_configs: dict | None = None,
@@ -116,6 +117,10 @@ class SandboxDockerSession(BaseSession):
             lang (str): The language to use.
             keep_template (bool): Whether to keep the template image.
             commit_container (bool): Whether to commit the container to a new image.
+            commit_image_tag (str | None): Optional explicit ``repository:tag`` target for commit.
+                When set and ``commit_container`` is True, the container is committed to this tag
+                instead of the source image's existing tag, so untrusted execution side effects
+                never overwrite the source image.
             verbose (bool): Whether to enable verbose output.
             stream (bool): Whether to stream the output.
             runtime_configs (dict | None): The runtime configurations to use.
@@ -164,6 +169,7 @@ class SandboxDockerSession(BaseSession):
         self.docker_image: Image
         self.keep_template: bool = keep_template
         self.commit_container: bool = commit_container
+        self.commit_image_tag: str | None = commit_image_tag
         self.is_create_template: bool = False
         self.stream: bool = stream
 
@@ -433,8 +439,16 @@ class SandboxDockerSession(BaseSession):
 
     def _commit_container(self) -> None:
         """Commit container to new image."""
-        if self.docker_image and self.docker_image.tags:
+        full_tag: str | None = None
+        # ``getattr`` keeps subclasses (e.g. SandboxPodmanSession) working without
+        # forcing every subclass to wire the new opt-in commit-tag through __init__.
+        explicit_tag = getattr(self, "commit_image_tag", None)
+        if explicit_tag:
+            full_tag = explicit_tag
+        elif self.docker_image and self.docker_image.tags:
             full_tag = self.docker_image.tags[-1]
+
+        if full_tag:
             repository, tag = full_tag.rsplit(":", 1) if ":" in full_tag else (full_tag, "latest")
             try:
                 self.container.commit(repository=repository, tag=tag)
