@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from llm_sandbox.const import SupportedLanguage
 from llm_sandbox.data import PlotOutput
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
+from llm_sandbox.security import validate_package_name
 
 from .base import AbstractLanguageHandler, LanguageConfig
 
@@ -56,6 +57,8 @@ class CppHandler(AbstractLanguageHandler):
             Command string to install the library
 
         """
+        # Reject shell-metacharacters before interpolation (issue #162).
+        library = validate_package_name(library, "cpp")
         if runtime_context and runtime_context.workdir:
             # Use dynamic workdir from runtime context
             workdir = runtime_context.workdir
