@@ -1502,7 +1502,7 @@ wheels = [
 
 [[package]]
 name = "llm-sandbox"
-version = "0.3.13"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic", version = "2.11.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
@@ -1532,6 +1532,9 @@ mcp-podman = [
 podman = [
     { name = "docker" },
     { name = "podman" },
+]
+testing = [
+    { name = "pytest" },
 ]
 
 [package.dev-dependencies]
@@ -1573,8 +1576,9 @@ requires-dist = [
     { name = "podman", marker = "extra == 'mcp-podman'", specifier = ">=5.4.0.1" },
     { name = "podman", marker = "extra == 'podman'", specifier = ">=5.4.0.1" },
     { name = "pydantic", specifier = ">=2.11.5" },
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=7.2.0" },
 ]
-provides-extras = ["docker", "k8s", "podman", "mcp-docker", "mcp-podman", "mcp-k8s"]
+provides-extras = ["docker", "k8s", "podman", "mcp-docker", "mcp-podman", "mcp-k8s", "testing"]
 
 [package.metadata.requires-dev]
 dev = [

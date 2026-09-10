@@ -19,6 +19,8 @@ class DockerPoolManager(ContainerPoolManager):
     environment setup (venv, pip, library installation, etc.).
     """
 
+    backend_name = "docker"
+
     def __init__(
         self,
         config: PoolConfig,

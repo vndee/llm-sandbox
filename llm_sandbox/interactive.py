@@ -16,13 +16,14 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from llm_sandbox.backends.plugin import BackendCapability
 from llm_sandbox.const import SandboxBackend, SupportedLanguage
 from llm_sandbox.core.session_base import BaseSession
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import ContainerError, LanguageNotSupportedError, NotOpenSessionError, SandboxTimeoutError
+from llm_sandbox.registry import get_backend
 
 from .const import StrEnum
-from .exceptions import UnsupportedBackendError
 
 RUNTIME_START_TIMEOUT = 30.0
 RESULT_POLL_INTERVAL = 0.2
@@ -64,7 +65,7 @@ class InteractiveSettings:
 
 
 def _create_backend_session(
-    backend: SandboxBackend,
+    backend: SandboxBackend | str,
     runtime_configs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> BaseSession:
@@ -79,27 +80,13 @@ def _create_backend_session(
         BaseSession: An instance of the appropriate backend session
 
     Raises:
-        UnsupportedBackendError: If the backend is not supported
+        UnsupportedBackendError: If the backend is not supported, or does not declare the
+            ``interactive`` capability.
 
     """
-    match backend:
-        case SandboxBackend.DOCKER:
-            from llm_sandbox.docker import SandboxDockerSession
-
-            return SandboxDockerSession(runtime_configs=runtime_configs, **kwargs)
-        case SandboxBackend.PODMAN:
-            from llm_sandbox.podman import SandboxPodmanSession
-
-            return SandboxPodmanSession(runtime_configs=runtime_configs, **kwargs)
-        case SandboxBackend.KUBERNETES:
-            from llm_sandbox.kubernetes import SandboxKubernetesSession
-
-            # Kubernetes backend doesn't support runtime_configs parameter
-            # Filter it out from kwargs if it's present to avoid TypeError
-            kubernetes_kwargs = {k: v for k, v in kwargs.items() if k != "runtime_configs"}
-            return SandboxKubernetesSession(**kubernetes_kwargs)
-        case _:
-            raise UnsupportedBackendError(backend=backend)
+    provider = get_backend(str(backend))
+    provider.require(BackendCapability.INTERACTIVE)
+    return provider.create_interactive_session(runtime_configs=runtime_configs, **kwargs)
 
 
 class InteractiveSandboxSession(BaseSession):
@@ -117,7 +104,7 @@ class InteractiveSandboxSession(BaseSession):
     def __init__(
         self,
         *,
-        backend: SandboxBackend = SandboxBackend.DOCKER,
+        backend: SandboxBackend | str = SandboxBackend.DOCKER,
         lang: str | SupportedLanguage = SupportedLanguage.PYTHON,
         kernel_type: KernelType | str = KernelType.IPYTHON,
         max_memory: str | None = "1GB",

@@ -1,3 +1,20 @@
+# Bandit configuration.
+#
+# llm_sandbox/testing is a pytest suite that ships inside the package, so plugin authors can
+# `from llm_sandbox.testing import BackendComplianceTests` and run it against their own
+# backend. Assertions are its entire purpose, so B101 (assert_used) fires on every check it
+# makes. tests/ is excluded for the same reason.
+#
+# pyproject.toml carries the twin exemption for ruff:
+#   [tool.ruff.lint.per-file-ignores]
+#   "llm_sandbox/testing/*" = ["S101", ...]
+#
+# This exempts those paths, not the rule: B101 stays active everywhere else.
+#
+# Two gotchas, both verified rather than assumed:
+#   - The INI key is `exclude`, mapping to --exclude. `exclude_dirs` is the TOML/YAML
+#     spelling and is silently ignored here.
+#   - The values are globs matched against discovered file paths, so the trailing /* is
+#     required; a bare directory name matches nothing and fails silently.
 [bandit]
-exclude = tests
-skips = B108
+exclude = llm_sandbox/testing/*,tests/*
