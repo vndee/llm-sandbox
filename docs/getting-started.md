@@ -421,6 +421,19 @@ df.to_csv('/sandbox/processed.csv', index=False)
     session.copy_from_runtime("/sandbox/processed.csv", "processed_data.csv")
 ```
 
+`copy_from_runtime()` imports regular files and directories only. Archive links
+and unsafe paths are skipped; special files such as FIFOs and devices cause a
+`SecurityError`. Archive ownership is ignored, and dangerous permission bits
+(including setuid, setgid, and group/other write permissions on regular files)
+are removed. Directory permissions follow the host's defaults.
+
+Extraction requires a Python build providing `tarfile.data_filter` (available
+in Python 3.12+ and backported to maintained Python 3.10/3.11 releases). If it is
+unavailable, update Python; copying fails with `SecurityError` instead of using
+unsafe extraction. Use a fresh destination directory that untrusted processes
+cannot modify. An extraction failure can leave partial output; discard that
+output before retrying.
+
 ### Real-Time Output Streaming
 
 By default, `run()` returns output only after execution completes. For long-running code, you can receive output in real time using the `on_stdout` and `on_stderr` callbacks:
