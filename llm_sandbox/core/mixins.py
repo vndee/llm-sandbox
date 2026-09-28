@@ -209,6 +209,12 @@ class FileOperationsMixin:
 
     def _extract_archive_safely(self, bits: bytes, dest: str) -> None:
         """Extract tar archive with security filtering and consistent structure."""
+        # Extraction filters are backported to maintained Python 3.10/3.11 builds.
+        # Never fall back to fully trusted extraction on an older installation.
+        if not hasattr(tarfile, "data_filter"):
+            msg = "Safe archive extraction requires a Python build with the tarfile data filter; update Python"
+            raise SecurityError(msg)
+
         tarstream = io.BytesIO(bits)
         with tarfile.open(fileobj=tarstream, mode="r") as tar:
             safe_members = self._filter_safe_members(tar.getmembers())
@@ -221,10 +227,16 @@ class FileOperationsMixin:
             extract_path = self._determine_extract_path(safe_members, dest)
 
             for member in safe_members:
-                tar.extract(member, path=extract_path)
+                try:
+                    # Explicitly sanitize permissions and ownership on every Python
+                    # version, including when the process-wide default is overridden.
+                    tar.extract(member, path=extract_path, filter=tarfile.data_filter)
+                except tarfile.FilterError as exc:
+                    msg = f"Unsafe archive member: {member.name}"
+                    raise SecurityError(msg) from exc
 
     def _filter_safe_members(self, members: list[Any]) -> list[Any]:
-        """Filter tar members to exclude unsafe paths and symlinks."""
+        """Exclude unsafe paths and links, and reject unsupported file types."""
         safe_members = []
         for member in members:
             if self._is_unsafe_path(member.name):
@@ -235,6 +247,9 @@ class FileOperationsMixin:
                 if self.verbose:
                     self.logger.warning("Skipping symlink: %s", member.name)
                 continue
+            if not (member.isfile() or member.isdir()):
+                msg = f"Unsupported archive member type: {member.name}"
+                raise SecurityError(msg)
             safe_members.append(member)
         return safe_members
 
