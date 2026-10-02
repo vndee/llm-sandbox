@@ -537,6 +537,7 @@ class TestPooledSessionCallbackPropagation:
             timeout=None,
             on_stdout=on_stdout,
             on_stderr=on_stderr,
+            enforce_security_policy=False,
         )
 
     def test_artifact_pooled_session_run_accepts_callbacks(self) -> None:
