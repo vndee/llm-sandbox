@@ -942,10 +942,38 @@ graph LR
 - **[Configuration](https://vndee.github.io/llm-sandbox/configuration/)** - Detailed configuration options
 - **[Security](https://vndee.github.io/llm-sandbox/security/)** - Security policies and best practices
 - **[Backends](https://vndee.github.io/llm-sandbox/backends/)** - Container backend details
+- **[Backend Plugins](https://vndee.github.io/llm-sandbox/plugins/)** - Community backends, and how to write one
 - **[Languages](https://vndee.github.io/llm-sandbox/languages/)** - Supported programming languages
 - **[Integrations](https://vndee.github.io/llm-sandbox/integrations/)** - LLM framework integrations
 - **[API Reference](https://vndee.github.io/llm-sandbox/api-reference/)** - Complete API documentation
 - **[Examples](https://vndee.github.io/llm-sandbox/examples/)** - Real-world usage examples
+
+## 🔌 Backend plugins
+
+Docker, Podman, Kubernetes, and Micromamba ship with LLM Sandbox. Other backends can be
+published as separate packages that register themselves through a public entry point:
+
+```bash
+pip install llm-sandbox-<service>
+```
+
+```python
+with SandboxSession(backend="<service>", lang="python") as session:
+    result = session.run("print('hello')")
+```
+
+```python
+import llm_sandbox
+
+llm_sandbox.list_backends()  # built-ins plus every installed plugin
+```
+
+Installing a backend plugin means running third-party code that executes code on your
+behalf — you are trusting that package's authors, not this project.
+
+- **[Community plugins](https://vndee.github.io/llm-sandbox/plugins/)** - what is available
+- **[Writing a plugin](https://vndee.github.io/llm-sandbox/plugins/authoring/)** - the full guide
+- **[INTEGRATIONS.md](INTEGRATIONS.md)** - what belongs in core versus a plugin
 
 ## 🤝 Contributing
 

@@ -75,6 +75,9 @@ nav:
       - LLM Integrations: integrations.md
       - MCP Integration: mcp-integration.md
       - Existing Container Support: existing-container-support.md
+  - Backend Plugins:
+      - Community Plugins: plugins/index.md
+      - Writing a Plugin: plugins/authoring.md
   - Examples: examples.md
   - API Reference: api-reference.md
   - Contributing: contributing.md

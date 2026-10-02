@@ -6,7 +6,7 @@ This document provides context and guidance for AI assistants working with the L
 
 **LLM Sandbox** is a lightweight and portable sandbox environment designed to run Large Language Model (LLM) generated code in a safe and isolated mode. It provides secure execution environments for AI-generated code while offering flexibility in container backends and comprehensive language support.
 
-**Version:** 0.3.13
+**Version:** 0.4.0
 **License:** MIT
 **Python Support:** 3.10+
 **Documentation:** https://vndee.github.io/llm-sandbox/

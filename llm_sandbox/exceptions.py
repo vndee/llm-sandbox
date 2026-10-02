@@ -100,9 +100,79 @@ class ImagePullError(SandboxError):
 class UnsupportedBackendError(SandboxError):
     """Raised when an unsupported backend is provided."""
 
-    def __init__(self, backend: str) -> None:
-        """Initialize the UnsupportedBackendError."""
-        super().__init__(f"Unsupported backend: {backend}")
+    def __init__(self, backend: str, message: str | None = None) -> None:
+        """Initialize the UnsupportedBackendError.
+
+        Args:
+            backend (str): The backend name that could not be used.
+            message (str | None): Optional pre-built message. When omitted, the default
+                ``"Unsupported backend: <backend>"`` wording is used. Subclasses raised by
+                the backend registry supply richer, multi-line guidance here.
+
+        """
+        super().__init__(message if message is not None else f"Unsupported backend: {backend}")
+        self.backend = backend
+
+
+class BackendNotFoundError(UnsupportedBackendError):
+    """Raised when no built-in backend or installed plugin provides the requested name."""
+
+
+class BackendLoadError(UnsupportedBackendError):
+    """Raised when a backend plugin entry point cannot be loaded or is malformed.
+
+    Loading failures are isolated to the backend that was requested: a broken plugin
+    never prevents other backends from resolving.
+    """
+
+    def __init__(self, backend: str, message: str, distribution: str | None = None) -> None:
+        """Initialize the BackendLoadError.
+
+        Args:
+            backend (str): The backend name that failed to load.
+            message (str): Description of what went wrong and what was expected.
+            distribution (str | None): The distribution providing the entry point, if known.
+
+        """
+        super().__init__(backend, message)
+        self.distribution = distribution
+
+
+class BackendNameConflictError(UnsupportedBackendError):
+    """Raised when two installed distributions register the same backend name."""
+
+    def __init__(self, backend: str, message: str, distributions: tuple[str, ...] = ()) -> None:
+        """Initialize the BackendNameConflictError.
+
+        Args:
+            backend (str): The contested backend name.
+            message (str): Description naming every distribution claiming the name.
+            distributions (tuple[str, ...]): The conflicting distribution names.
+
+        """
+        super().__init__(backend, message)
+        self.distributions = distributions
+
+
+class BackendCapabilityError(UnsupportedBackendError):
+    """Raised when a backend exists but does not support a requested capability."""
+
+    def __init__(self, backend: str, *, capability: str, message: str | None = None) -> None:
+        """Initialize the BackendCapabilityError.
+
+        Args:
+            backend (str): The backend name.
+            capability (str): The capability that is not supported. Keyword-only, so that a
+                generic ``type(exc)(exc.backend, msg)`` re-raise fails loudly rather than
+                silently binding the message to this argument.
+            message (str | None): Optional override for the default wording.
+
+        """
+        super().__init__(
+            backend,
+            message if message is not None else f"Backend {backend!r} does not support {capability!r}.",
+        )
+        self.capability = capability
 
 
 class MissingDependencyError(SandboxError):
