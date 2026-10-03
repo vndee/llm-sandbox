@@ -4,7 +4,7 @@ version = "0.3.13"
 description = "LLM Sandbox is a lightweight and portable sandbox environment designed to run large language model (LLM) generated code in a safe and isolated mode."
 authors = [{ name = "Duy Huynh", email = "vndee.huynh@gmail.com" }]
 readme = "README.md"
-keywords = ['python']
+keywords = ['sandbox', 'code-interpreter', 'code-execution', 'llm', 'ai-agents', 'mcp', 'docker', 'kubernetes', 'podman', 'security']
 requires-python = ">=3.10,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
