@@ -18,11 +18,12 @@ from llm_sandbox.exceptions import (
     LibraryInstallationNotSupportedError,
     NotOpenSessionError,
     SandboxTimeoutError,
+    SecurityPolicyViolation,
     SecurityViolationError,
 )
 from llm_sandbox.language_handlers.factory import LanguageHandlerFactory
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
-from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern
+from llm_sandbox.security import SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 
 PYTHON_VENV_DIR_NAME = ".sandbox-venv"
 PYTHON_PIP_CACHE_DIR_NAME = ".sandbox-pip-cache"
@@ -83,6 +84,11 @@ class BaseSession(
         self._python_env_dir = (workdir_path / PYTHON_VENV_DIR_NAME).as_posix()
         self._python_pip_cache_dir = (workdir_path / PYTHON_PIP_CACHE_DIR_NAME).as_posix()
 
+        # Pristine snapshot of the caller's security policy, taken lazily so that
+        # restricted-module patterns are derived fresh on every check instead of
+        # accumulating on (or leaking into) the caller's SecurityPolicy object.
+        self._base_security_policy: SecurityPolicy | None = None
+
     def _log(self, message: str, level: str = "info") -> None:
         """Log message if verbose."""
         if self.verbose:
@@ -120,17 +126,28 @@ class BaseSession(
             self._session_timer = None
 
     def _add_restricted_module_patterns(self) -> None:
-        """Add patterns for restricted modules to the security policy."""
+        """Derive import patterns for the policy's restricted modules.
+
+        Works on a private deep copy of the caller's pristine policy so repeated
+        checks neither accumulate duplicate patterns nor mutate the object the
+        caller passed in.
+        """
         if not self.config.security_policy or not self.config.security_policy.restricted_modules:
             return
 
-        for module in self.config.security_policy.restricted_modules:
-            pattern = SecurityPattern(
-                pattern=self.language_handler.get_import_patterns(module.name),
-                description=module.description,
-                severity=module.severity,
+        if self._base_security_policy is None:
+            self._base_security_policy = self.config.security_policy.model_copy(deep=True)
+
+        policy = self._base_security_policy.model_copy(deep=True)
+        for module in policy.restricted_modules or []:
+            policy.add_pattern(
+                SecurityPattern(
+                    pattern=self.language_handler.get_import_patterns(module.name),
+                    description=module.description,
+                    severity=module.severity,
+                )
             )
-            self.config.security_policy.add_pattern(pattern)
+        self.config.security_policy = policy
 
     def _check_pattern_violations(self, filtered_code: str) -> tuple[bool, list[SecurityPattern]]:
         """Check for pattern violations in the filtered code.
@@ -236,6 +253,28 @@ class BaseSession(
 
         """
         return self._check_security_policy(code)
+
+    def _enforce_security_policy(self, code: str) -> None:
+        """Run the security policy and raise if violations are present.
+
+        This helper is invoked by ``run(..., enforce_security_policy=True)`` and
+        by ``safe_run`` *before* any container interaction so policy-blocked
+        code never pays the container-spinup cost. It reuses ``is_safe`` so the
+        scanning logic stays in a single place.
+
+        Raises:
+            SecurityPolicyViolation: If a security policy is configured and the
+                code matches any pattern (or restricted-module import) at or
+                above the configured severity threshold.
+
+        """
+        if not self.config.security_policy:
+            return
+
+        is_safe, violations = self.is_safe(code)
+        if not is_safe:
+            threshold = self.config.security_policy.severity_threshold
+            raise SecurityPolicyViolation(violations=violations, severity_threshold=threshold)
 
     def install(self, libraries: list[str] | None = None) -> None:
         r"""Install libraries into the sandbox environment.
@@ -443,6 +482,7 @@ class BaseSession(
         timeout: float | None = None,
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
+        enforce_security_policy: bool = False,
     ) -> ConsoleOutput:
         r"""Run the provided code within the sandbox session.
 
@@ -467,6 +507,13 @@ class BaseSession(
                 worker thread; ensure your callback is thread-safe.
             on_stderr (StreamCallback | None): Optional callback invoked with each decoded stderr
                 chunk as it arrives during execution. Same threading note as ``on_stdout``.
+            enforce_security_policy (bool, optional): When ``True``, the configured
+                ``SecurityPolicy`` is enforced *before* any container interaction. If the
+                code matches any pattern (or restricted-module import) at or above the
+                configured severity threshold, a ``SecurityPolicyViolation`` is raised and
+                the code is never executed. Defaults to ``False`` for backwards
+                compatibility — callers wanting first-class enforcement should set this to
+                ``True`` (or use the ``safe_run`` wrapper).
 
         Returns:
             ConsoleOutput: An object containing the stdout, stderr, and exit code from the code execution.
@@ -474,8 +521,13 @@ class BaseSession(
         Raises:
             NotOpenSessionError: If the session (container) is not currently open/running.
             CommandFailedError: If any of the execution commands fail.
+            SecurityPolicyViolation: If ``enforce_security_policy=True`` and the code
+                violates the configured security policy.
 
         """
+        if enforce_security_policy:
+            self._enforce_security_policy(code)
+
         if not self.container or not self.is_open:
             raise NotOpenSessionError
 
@@ -539,6 +591,10 @@ class BaseSession(
         except SandboxTimeoutError:
             self._handle_timeout()
             raise
+
+    def safe_run(self, code: str, **kwargs: Any) -> ConsoleOutput:
+        r"""Run ``code`` with the configured security policy enforced (see :meth:`run`)."""
+        return self.run(code, enforce_security_policy=True, **kwargs)
 
     @abstractmethod
     def _handle_timeout(self) -> None:
