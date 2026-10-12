@@ -22,6 +22,8 @@ class KubernetesPoolManager(ContainerPoolManager):
     environment setup (venv, pip, library installation, etc.).
     """
 
+    backend_name = "kubernetes"
+
     def __init__(
         self,
         config: PoolConfig,

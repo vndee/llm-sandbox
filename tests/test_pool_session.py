@@ -556,17 +556,41 @@ class TestPooledSessionBackendCreation:
         finally:
             pool.close()
 
-    def test_infer_backend_failure(self) -> None:
-        """Test failure to infer backend from pool manager."""
+    def test_resolve_backend_name_failure(self) -> None:
+        """A pool manager that declares no backend_name is rejected with actionable guidance."""
         pool = MagicMock()
-        pool.__class__.__name__ = "UnknownPoolManager"
+        pool.backend_name = ""
 
-        # We need to bypass __init__ because it calls _infer_backend_from_pool
         session = PooledSandboxSession.__new__(PooledSandboxSession)
         session._pool_manager = pool
 
-        with pytest.raises(RuntimeError, match="Cannot infer backend"):
-            session._infer_backend_from_pool()
+        with pytest.raises(RuntimeError, match="does not declare `backend_name`"):
+            session._resolve_backend_name()
+
+    def test_resolve_backend_name_normalises(self) -> None:
+        """The declared name is normalised, so a plugin's hyphenated name resolves."""
+        pool = MagicMock()
+        pool.backend_name = "My-Service"
+
+        session = PooledSandboxSession.__new__(PooledSandboxSession)
+        session._pool_manager = pool
+
+        assert session._resolve_backend_name() == "my_service"
+
+    def test_backend_name_is_not_guessed_from_class_name(self) -> None:
+        """A manager whose class name merely contains 'Docker' is not routed to Docker.
+
+        The previous implementation matched on the class name as a substring, so any
+        third-party manager named e.g. MyDockerlikePoolManager was silently misrouted.
+        """
+        pool = MagicMock()
+        pool.__class__.__name__ = "MyDockerlikePoolManager"
+        pool.backend_name = "mydockerlike"
+
+        session = PooledSandboxSession.__new__(PooledSandboxSession)
+        session._pool_manager = pool
+
+        assert session._resolve_backend_name() == "mydockerlike"
 
     def test_open_no_pool_manager(self) -> None:
         """Test open raises RuntimeError if pool manager is missing."""
@@ -587,12 +611,19 @@ class TestPooledSessionBackendCreation:
         session.close()
 
     def test_create_backend_session_unsupported(self) -> None:
-        """Test _create_backend_session with unsupported backend."""
-        session = PooledSandboxSession.__new__(PooledSandboxSession)
-        session.backend = "unsupported"  # type: ignore[assignment]
-        session._session_kwargs = {}
+        """An unknown backend name surfaces the registry's typed error, not a bare RuntimeError."""
+        from llm_sandbox.exceptions import UnsupportedBackendError
 
-        with pytest.raises(RuntimeError, match="Unsupported backend"):
+        pool = MagicMock()
+        pool.backend_name = "unsupported"
+
+        session = PooledSandboxSession.__new__(PooledSandboxSession)
+        session._pool_manager = pool
+        session.backend = "unsupported"
+        session._session_kwargs = {}
+        session._stream = False
+
+        with pytest.raises(UnsupportedBackendError, match="Unknown backend"):
             session._create_backend_session("id")
 
     def test_methods_raise_if_not_open(self) -> None:
