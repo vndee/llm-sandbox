@@ -62,6 +62,8 @@ class SandboxBackend(StrEnum):
     KUBERNETES = "kubernetes"
     PODMAN = "podman"
     MICROMAMBA = "micromamba"
+    BUBBLEWRAP = "bubblewrap"
+    NSJAIL = "nsjail"
 
 
 class SupportedLanguage(StrEnum):

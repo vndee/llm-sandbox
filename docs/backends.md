@@ -1,16 +1,97 @@
-# Container Backends
+# Sandbox Backends
 
-LLM Sandbox supports multiple container backends to suit different infrastructure needs. This guide covers each backend's features, configuration, and best practices.
+LLM Sandbox supports container backends and local Linux sandboxes through the same session factory. This guide covers their requirements, configuration, and extension points.
 
 ## Overview
 
 Supported backends:
 
-| Backend | Use Case | Root Access | Orchestration | Performance |
-|---------|----------|-------------|---------------|-------------|
-| **Docker** | Development, single-host | Yes | Limited | High |
-| **Kubernetes** | Production, scalable | Configurable | Full | High |
-| **Podman** | Rootless security | No (rootless) | Limited | High |
+| Backend | Typical use | Runtime requirement | Images | Interactive / pooling |
+|---------|-------------|---------------------|--------|-----------------------|
+| **Docker** | Development, single host | Docker service and Python SDK | Yes | Yes / yes |
+| **Kubernetes** | Managed workers, orchestration | Cluster access and Python SDK | Yes | Yes / yes |
+| **Podman** | Rootless containers | Podman service and Python SDK | Yes | Yes / yes |
+| **Micromamba** | Containerized conda environments | Docker service and Python SDK | Yes | No / no |
+| **Bubblewrap** | Local Linux code execution | `bwrap` 0.8.0+, user namespaces, system libseccomp | No | No / no |
+| **NsJail** | Local Linux code execution | `nsjail`, user namespaces, Kafel and new mount API support | No | No / no |
+
+Capabilities describe adapter features, not proof that a host can run the backend or that a particular session enables every protection. Docker remains the default; choose local backends explicitly.
+
+## Local Linux Backends
+
+Bubblewrap and NsJail avoid container images and a container daemon. They start each command in an isolated process tree, mount a private session workspace, and expose selected host runtime files read-only. Both share the host Linux kernel.
+
+### Requirements
+
+- Linux with user namespaces and permission to create them. A host, outer container, or distribution security policy can deny this even when the executable is installed.
+- Bubblewrap: a working `bwrap` binary version 0.8.0 or newer with `--disable-userns` support, and system libseccomp for the default syscall filter. The filter compiler supports native x86-64 and AArch64 executables and rejects foreign syscall ABIs.
+- NsJail: a build with Kafel seccomp support and the new mount API selected by `--experimental_mnt new` (available in NsJail 3.6). The host must permit the required mount syscalls; upstream's automatic detection recommends Linux 6.3 or newer. The adapter always selects the new API to enforce recursive read-only mounts and fails if it is unavailable, without falling back to legacy mounts. Native x86-64 and AArch64 are supported; the build must recognize the configured syscall names.
+- Host language runtimes and compilers inside the configured read-only paths. Python defaults to `/usr/bin/python3` and needs the `venv`/`ensurepip` components when environment setup is enabled.
+- `prlimit` from util-linux when any resource limit is configured.
+
+For example, Debian/Ubuntu Bubblewrap prerequisites are:
+
+```bash
+sudo apt install bubblewrap libseccomp2 python3-venv
+pip install llm-sandbox
+```
+
+Check `bwrap --version` and `bwrap --help` for the required version and `--disable-userns` option. Older distribution packages, including Ubuntu 22.04's default package, need an upgrade or an [upstream build](https://github.com/containers/bubblewrap). Unsupported launcher options fail without reducing the policy.
+
+Install NsJail using your distribution package or the [upstream build instructions](https://github.com/google/nsjail). Neither adapter needs an optional Python container SDK. Installing prerequisites may require administrator access; ordinary sessions run as the current user.
+
+### Basic Usage
+
+```python
+from llm_sandbox import SandboxSession
+
+with SandboxSession(backend="bubblewrap", lang="python") as session:
+    result = session.run("print('Hello from Bubblewrap!')")
+    print(result.stdout)
+
+with SandboxSession(backend="nsjail", lang="python") as session:
+    result = session.run("print('Hello from NsJail!')")
+    print(result.stdout)
+```
+
+These examples do not require network access. Python setup creates a private virtual environment with system site packages visible, without upgrading pip. The library does not download a Python interpreter, compiler, root filesystem, or container image.
+
+### Shared API and Lifecycle
+
+Both adapters implement `run()`, `execute_command()`, `install()`, `copy_to_runtime()`, and `copy_from_runtime()`. File transfers are confined to the private session workspace, normally `/sandbox` inside the sandbox, and the session's private `/tmp`. Use those APIs to supply inputs and retrieve outputs.
+
+The workspace, installed packages, and private `/tmp` persist across commands until the session closes. The sandbox's `/tmp` is a separate session directory, not the host's `/tmp`. Each command gets a new PID namespace; background processes and interpreter state do not persist. Sessions do not expose arbitrary host writable bind mounts. `ArtifactSandboxSession(backend="bubblewrap", ...)` and the corresponding NsJail wrapper can extract artifacts when their language and plotting dependencies are available inside the sandbox.
+
+NsJail also mounts a private 64 MiB tmpfs at `/dev/shm` for POSIX shared memory and Python multiprocessing. This storage belongs to one command and is not the host's `/dev/shm`.
+
+Container-specific options, images, existing-container attachment, pooling, and `InteractiveSandboxSession` are unsupported for these adapters. Install host toolchains before opening a session; package operations that need to modify system runtime directories cannot work against read-only mounts. `install()` and `run(..., libraries=...)` require explicit host network access. For offline packages, copy a package source into the workspace and invoke the package manager explicitly with `execute_command()`.
+
+### Composing Isolation Layers
+
+The local backends combine complementary controls:
+
+| Layer | Responsibility |
+|-------|----------------|
+| Namespaces and mounts | Restrict the process tree, filesystem view, and network access |
+| Seccomp | Reject selected kernel operations independently of the programming language |
+| Private workspace, temporary directory, and clean environment | Limit writable host data and inherited environment secrets |
+| Timeouts, output caps, and optional POSIX resource limits | Bound command execution and selected per-process resources |
+| Host runtime provider | Supply the interpreter, compiler, libraries, and compatible versions |
+
+For Bubblewrap, the library compiles `SeccompPolicy` through system libseccomp and passes the filter to `bwrap --seccomp`. For NsJail, it translates the same syscall names into a Kafel policy. Default filters are denylists, not complete syscall allowlists. See [local security](security.md#local-linux-isolation-and-seccomp) for their scope and limitations, and [local configuration](configuration.md#local-linux-configuration) for overrides.
+
+Missing prerequisites, unsupported policy elements, and launch failures are errors. The library does not retry the command unsandboxed or select a weaker backend automatically.
+
+### Native Integration CI
+
+The `Native Linux backends` workflow builds pinned Bubblewrap and both NsJail 3.6 and a newer pinned revision on Ubuntu 22.04. It requires both backends to create the default offline Python environment with seccomp active before running real filesystem, network, syscall, lifecycle, and multiprocessing checks. A writable bind mount beneath a read-only runtime grant checks recursive protection on both NsJail versions. Its test runner treats skipped tests as failures so an unavailable sandbox cannot produce a passing integration job.
+
+On a host with both backends installed, run the integration gate below after preparing the nested-mount fixture as shown in `.github/workflows/native-backends.yml` and exporting `LLM_SANDBOX_TEST_READONLY_TREE` and `LLM_SANDBOX_TEST_WRITABLE_SOURCE`. The fixture requires permission to create a bind mount. Ordinary sandbox sessions do not require that setup.
+
+```bash
+uv run python .github/scripts/require_native_integration.py \
+  tests/test_bubblewrap.py tests/test_nsjail.py -m integration -ra
+```
 
 ## Docker Backend
 
@@ -755,68 +836,72 @@ unit = container.generate_systemd(
 
 ## Multi-Backend Support
 
-### Backend Fallback
+### Discovery and Explicit Selection
 
 ```python
-def create_session_with_fallback(**kwargs):
-    """Try multiple backends in order"""
-    backends = [
-        (SandboxBackend.DOCKER, {}),
-        (SandboxBackend.PODMAN, {"client": get_podman_client()}),
-        (SandboxBackend.KUBERNETES, {"kube_namespace": "default"}),
-    ]
+from llm_sandbox import SandboxSession, get_backend, list_backends
 
-    for backend, backend_kwargs in backends:
-        try:
-            return SandboxSession(
-                backend=backend,
-                **kwargs,
-                **backend_kwargs
-            )
-        except Exception as e:
-            print(f"Backend {backend} failed: {e}")
-            continue
+for definition in list_backends():
+    print(definition.name, definition.capabilities)
 
-    raise RuntimeError("No available backends")
+definition = get_backend("bubblewrap")
+print(definition.capabilities.platforms)  # ("linux",)
+
+with SandboxSession(backend=definition.name, lang="python") as session:
+    print(session.run("print(2 + 2)").stdout)
 ```
 
-### Backend Detection
+`list_backends()` returns an immutable snapshot of registered definitions. `get_backend()` resolves a name without importing its backend SDK or probing the host. `BackendDefinition` and `BackendCapabilities` are immutable metadata. Names are case-insensitive.
+
+Check the host by opening the selected backend with the intended configuration and running a representative workload. An executable's `--version` output alone does not demonstrate namespace or seccomp support. Any application-level fallback must preserve its required protections and be explicit to the caller; the session factory does not implement automatic fallback.
+
+### Registering an Adapter
 
 ```python
-import subprocess
+from llm_sandbox import BackendCapabilities, SandboxSession, register_backend
+from my_adapter import MySandboxSession  # Your BaseSession implementation
 
-def detect_available_backends():
-    """Detect which backends are available"""
-    available = []
+register_backend(
+    "my-sandbox",
+    MySandboxSession,
+    capabilities=BackendCapabilities(
+        platforms=("linux",),
+        filesystem_isolation=True,
+        network_isolation=True,
+    ),
+)
 
-    # Check Docker
-    try:
-        subprocess.run(["docker", "--version"],
-                      capture_output=True, check=True)
-        available.append(SandboxBackend.DOCKER)
-    except:
-        pass
-
-    # Check Podman
-    try:
-        subprocess.run(["podman", "--version"],
-                      capture_output=True, check=True)
-        available.append(SandboxBackend.PODMAN)
-    except:
-        pass
-
-    # Check Kubernetes
-    try:
-        subprocess.run(["kubectl", "version", "--client"],
-                      capture_output=True, check=True)
-        available.append(SandboxBackend.KUBERNETES)
-    except:
-        pass
-
-    return available
+with SandboxSession(backend="my-sandbox", lang="python") as session:
+    print(session.run("print('Custom backend')").stdout)
 ```
+
+The factory receives session arguments and must return a `BaseSession` implementation. Its dependencies, host validation, policy enforcement, and lifecycle are the adapter's responsibility. Registration does not run the factory and cannot overwrite built-in or previously registered names. Register adapters once during application startup. There is no automatic third-party plugin discovery.
+
+### Extension Roadmap
+
+The registry is the implemented extension point. The following are future candidates, not built-in adapters:
+
+| Candidate | Audience | Integration direction |
+|-----------|----------|-----------------------|
+| Landlock | Local Linux tools | Additional filesystem restrictions, with kernel ABI negotiation |
+| macOS Seatbelt | Desktop agents on macOS | Native process sandbox with OS compatibility checks |
+| Windows AppContainer / restricted tokens | Desktop agents on Windows | Native capabilities, ACLs, and process lifecycle controls |
+| Wasmtime / WASI | Plugins with controlled APIs | Runtime isolation and explicit host capabilities |
+| gVisor | Managed workers running native code | Userspace kernel boundary and runtime compatibility validation |
+| MicroVMs | Managed workloads requiring a VM boundary | Guest/runtime provisioning, resource control, and lifecycle management |
+
+Keep three decisions separate when adding adapters: the isolation mechanism, additional policy layers, and the runtime provider. For example, Bubblewrap plus seccomp is already implemented; adding Landlock would require an additional supported policy layer. Runtime packaging can evolve independently from isolation so desktop users can receive provisioned toolchains without needing Docker. Adapter metadata must describe actual features, and unsupported required protections must cause an error rather than silent degradation.
 
 ## Troubleshooting
+
+### Local Linux Issues
+
+- **Executable missing:** install `bubblewrap` or `nsjail` on the host and ensure it is on `PATH`.
+- **Namespace permission denied:** check the host or outer container policy and distribution restrictions. The library cannot override a host denial of user namespaces.
+- **Seccomp compilation fails:** check the installed libseccomp version for Bubblewrap or Kafel support for NsJail. Unknown requested syscall names are not silently ignored.
+- **Python environment setup fails:** install the host Python `venv` component and ensure the configured interpreter is under a mounted read-only path.
+- **Dependency download fails:** networking is disabled by default. `network="host"` permits full host networking; it is not a domain allowlist.
+- **Resource limit fails:** install util-linux for `prlimit` and check that the chosen limits allow the runtime to start. JavaScript and Java may reserve much more virtual memory than their resident memory usage.
 
 ### Docker Issues
 

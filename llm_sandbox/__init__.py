@@ -1,15 +1,20 @@
 """LLM Sandbox - A lightweight and portable LLM sandbox runtime."""
 
+from .backends import BackendCapabilities, BackendDefinition, get_backend, list_backends, register_backend
 from .const import DefaultImage, SandboxBackend, SupportedLanguage
 from .core.config import SessionConfig
 from .data import ConsoleOutput, ExecutionResult, FileType, PlotOutput, StreamCallback
 from .exceptions import ContainerError, ResourceError, SandboxError, SecurityError, ValidationError
 from .interactive import KernelType
+from .local.config import LocalSandboxConfig
 from .security import SecurityIssueSeverity, SecurityPattern, SecurityPolicy
+from .security.seccomp import SeccompPolicy
 from .session import ArtifactSandboxSession, InteractiveSandboxSession, SandboxSession, create_session
 
 __all__ = [
     "ArtifactSandboxSession",
+    "BackendCapabilities",
+    "BackendDefinition",
     "ConsoleOutput",
     "ContainerError",
     "DefaultImage",
@@ -17,11 +22,13 @@ __all__ = [
     "FileType",
     "InteractiveSandboxSession",
     "KernelType",
+    "LocalSandboxConfig",
     "PlotOutput",
     "ResourceError",
     "SandboxBackend",
     "SandboxError",
     "SandboxSession",
+    "SeccompPolicy",
     "SecurityError",
     "SecurityIssueSeverity",
     "SecurityPattern",
@@ -31,4 +38,7 @@ __all__ = [
     "SupportedLanguage",
     "ValidationError",
     "create_session",
+    "get_backend",
+    "list_backends",
+    "register_backend",
 ]

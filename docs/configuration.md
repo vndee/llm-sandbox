@@ -2,6 +2,101 @@
 
 This guide covers all configuration options available in LLM Sandbox.
 
+## Local Linux Configuration
+
+Select `backend="bubblewrap"` or `backend="nsjail"` and pass `sandbox_config=LocalSandboxConfig(...)`. These adapters use host toolchains and a private writable workspace instead of a container image. The Python package is sufficient on the library side; install the [system prerequisites](backends.md#requirements) separately.
+
+```python
+from llm_sandbox import LocalSandboxConfig, SandboxSession
+
+config = LocalSandboxConfig(
+    network="none",
+    cpu_time_limit=10,
+    file_size_limit=64 * 1024 * 1024,
+    open_files_limit=256,
+    max_output_bytes=1024 * 1024,
+)
+
+with SandboxSession(
+    backend="bubblewrap",  # Or "nsjail"
+    lang="python",
+    sandbox_config=config,
+    execution_timeout=20.0,
+) as session:
+    result = session.run("print('Offline local execution')")
+    print(result.stdout)
+```
+
+`LocalSandboxConfig` rejects unknown fields. Its fields are:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `network` | `"none"` | Isolated network; `"host"` explicitly grants full host networking |
+| `read_only_paths` | `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/ld.so.cache`, `/etc/alternatives` | Host runtime paths exposed read-only at the same sandbox paths |
+| `seccomp` | `SeccompPolicy()` | Syscall denylist; `None` explicitly disables this layer |
+| `python_executable` | `"/usr/bin/python3"` | Absolute interpreter path available inside the sandbox |
+| `env` | `{}` | Explicit environment additions; host environment variables are not inherited |
+| `max_output_bytes` | `8388608` | Captured command output cap in bytes |
+| `max_artifact_bytes` | `8388608` | Maximum regular-file payload for each extracted artifact, before archive overhead |
+| `memory_limit_bytes` | `None` | Per-process virtual address-space limit in bytes |
+| `cpu_time_limit` | `None` | Per-process CPU-time limit in seconds |
+| `file_size_limit` | `None` | Per-file size limit in bytes |
+| `open_files_limit` | `None` | Per-process open file descriptor limit; minimum 16 |
+
+Resource limits require `prlimit` from util-linux. They are POSIX process limits inherited by descendants, not aggregate cgroup quotas. In particular, a memory limit applies to virtual address space and may need to be much larger for Java or JavaScript than expected resident memory usage. `max_artifact_bytes` is per extracted file, not a combined limit across all plots. There is no session disk quota or process-count limit in this configuration.
+
+Local sessions default to `default_timeout=60.0`; `execution_timeout`, `session_timeout`, and per-`run()` timeouts remain available. Session-level `env_vars` entries override matching keys in `sandbox_config.env`. These values apply inside the sandbox; the trusted launcher receives a separate minimal environment. You can select a trusted launcher outside `PATH` with `bwrap_path` or `nsjail_path` on the matching session. Relative launcher paths are resolved when the session is constructed, before execution switches to the private workspace.
+
+### Runtime Paths and Workspace
+
+The default workspace is `/sandbox` inside the sandbox. `workdir` changes its sandbox location, not the host directory being granted. Only the library's private session workspace and temporary directory are writable on the host; copy input/output files with `copy_to_runtime()` and `copy_from_runtime()`. A separate private directory is mounted at `/tmp` and persists across commands in the session. It does not expose the host's `/tmp`.
+
+`read_only_paths` replaces the default list when supplied. Mounts must be absolute and must not overlap the workspace. Host root, virtual filesystems, and temporary directories cannot be exposed this way. Optional missing default paths are skipped for distribution compatibility; a missing caller-specified path raises an error.
+
+NsJail requires its new mount API to enforce read-only access recursively, including nested host mounts. Missing binary or kernel support fails explicitly. It also supplies a private 64 MiB tmpfs at `/dev/shm` for each command; shared-memory contents do not persist into the next invocation.
+
+With `network="host"`, the adapters also expose existing resolver and TLS trust paths read-only: `/etc/resolv.conf`, `/etc/hosts`, `/etc/nsswitch.conf`, `/etc/ssl/certs`, `/etc/ssl/openssl.cnf`, `/etc/pki/ca-trust`, `/etc/pki/tls/certs`, `/etc/pki/tls/cert.pem`, and `/etc/pki/tls/openssl.cnf`. Resolver symlinks expose their specific resolved file, not its containing host directory.
+
+To add a runtime installed under `/opt`, keep the defaults and explicitly expose its directory:
+
+```python
+from llm_sandbox import LocalSandboxConfig
+from llm_sandbox.local.config import DEFAULT_READ_ONLY_PATHS
+
+config = LocalSandboxConfig(
+    read_only_paths=(*DEFAULT_READ_ONLY_PATHS, "/opt/my-python"),
+    python_executable="/opt/my-python/bin/python3",
+)
+```
+
+That directory must exist and contain the interpreter and its required files. Read-only mounts still disclose their contents to executed code. Do not expose a home directory, credential store, or service socket to make a tool work.
+
+### Environment Setup and Packages
+
+Local Python setup creates a virtual environment in the private workspace with `--system-site-packages`, without a pip upgrade or network download. Host-installed Python packages under mounted runtime paths are therefore visible. Install the host interpreter's `venv`/`ensurepip` support first. Other languages use the existing language handlers and require a compatible host runtime/compiler in mounted paths; the sandbox does not provision those toolchains.
+
+`skip_environment_setup=True` skips automatic language setup and disables `install()` and `run(..., libraries=...)`, as with other backends. This mode requires a usable preconfigured runtime. A session's files and packages persist between commands, but processes and Python interpreter state do not.
+
+Network access is disabled by default. `install()` and `run(..., libraries=...)` reject package installation unless full host networking is explicitly enabled:
+
+```python
+from llm_sandbox import LocalSandboxConfig, SandboxSession
+
+# Grants full host networking, including reachable local services.
+# This is not a package-registry or domain allowlist.
+with SandboxSession(
+    backend="bubblewrap",
+    lang="python",
+    sandbox_config=LocalSandboxConfig(network="host"),
+) as session:
+    session.install(["requests"])
+    print(session.run("import requests; print(requests.__version__)").stdout)
+```
+
+You can instead supply offline package files in the workspace and invoke the package manager explicitly with `execute_command()`. System package installation that modifies read-only runtime paths is unsupported. Container-only configuration such as images, Dockerfiles, container attachment, and container pooling does not apply to these adapters. Interactive sessions are unsupported; the artifact wrapper works when its dependencies are installed inside the sandbox.
+
+See [local security and seccomp](security.md#local-linux-isolation-and-seccomp) before changing the default network, mount, or syscall policy. Missing prerequisites and unsupported requested controls fail without an unsandboxed fallback.
+
 ## Session Configuration
 
 ### Basic Parameters
