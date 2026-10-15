@@ -6,7 +6,8 @@ import errno
 import os
 import secrets
 import stat
-from contextlib import contextmanager, suppress
+from collections import deque
+from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -128,6 +129,107 @@ def safe_mkdir(path: Path) -> None:
     with _directory(path, create=True):
         # Entering the context validates every component and creates missing directories.
         pass
+
+
+@contextmanager
+def _cleanup_directory(parent_fd: int, name: str, expected: os.stat_result) -> Iterator[int]:
+    """Pin a directory before restoring owner permissions, including mode-000 entries."""
+    if not stat.S_ISDIR(expected.st_mode):
+        msg = f"Cleanup root must be a directory, not a link or special file: {name}"
+        raise SecurityError(msg)
+    flags = os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        path_fd = os.open(name, os.O_PATH | flags, dir_fd=parent_fd)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+            msg = f"Cleanup directory changed into a link or non-directory: {name}"
+            raise SecurityError(msg) from exc
+        raise
+    try:
+        if _identity(os.fstat(path_fd)) != _identity(expected):
+            msg = f"Cleanup directory changed while opening: {name}"
+            raise SecurityError(msg)
+        # Linux cannot fchmod an O_PATH descriptor. This trusted procfs reference
+        # reaches the pinned inode even when mode 000 prevents opening it for reading.
+        Path(f"/proc/self/fd/{path_fd}").chmod(0o700)
+        fd = os.open(".", os.O_RDONLY | flags, dir_fd=path_fd)
+    finally:
+        os.close(path_fd)
+    try:
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def _remove_cleanup_directory(parent_fd: int, name: str, expected: os.stat_result) -> None:
+    """Remove only the directory inode that was opened for cleanup."""
+    current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    if _identity(current) != _identity(expected):
+        msg = f"Cleanup directory changed before removal: {name}"
+        raise SecurityError(msg)
+    os.rmdir(name, dir_fd=parent_fd)
+
+
+def _lift_cleanup_directory(root_fd: int, parent_fd: int, name: str) -> str:
+    """Move a nested directory directly under the private root without allocating an inode."""
+    info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    # Moving a directory between parents also requires write permission on the
+    # directory itself so the kernel can update its '..' entry.
+    with _cleanup_directory(parent_fd, name, info):
+        while True:
+            destination = f".llm-sandbox-cleanup-{secrets.token_hex(16)}"
+            try:
+                os.stat(destination, dir_fd=root_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                break
+        # The private root has no concurrent writers once the payload is reaped.
+        # Avoid mkdir reservations: cleanup must also work when inode quotas are full.
+        os.rename(name, destination, src_dir_fd=parent_fd, dst_dir_fd=root_fd)
+    return destination
+
+
+def _empty_private_tree(root_fd: int) -> None:
+    """Flatten and remove a private tree using a constant number of descriptors."""
+    pending = deque(os.listdir(root_fd))
+    while pending:
+        name = pending.popleft()
+        info = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        if not stat.S_ISDIR(info.st_mode):
+            os.unlink(name, dir_fd=root_fd)
+            continue
+        with _cleanup_directory(root_fd, name, info) as directory_fd:
+            with os.scandir(directory_fd) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(_lift_cleanup_directory(root_fd, directory_fd, entry.name))
+                    else:
+                        os.unlink(entry.name, dir_fd=directory_fd)
+            _remove_cleanup_directory(root_fd, name, info)
+
+
+def safe_remove_tree(path: Path) -> None:
+    """Delete a private Linux sandbox tree without recursion or depth-dependent FDs.
+
+    The caller must first stop all sandbox processes and serialize cleanup with
+    other workspace operations. Directories are pinned before restoring owner
+    permissions; links and special files inside the tree are only unlinked.
+    Nested directories move to temporary names under the same private root, so
+    traversal never needs a pathname longer than a single component. Missing
+    roots are harmless; a symlink root or changed directory fails closed.
+    """
+    path = _host_path(path)
+    if not path.name:
+        msg = "The filesystem root cannot be removed as a private sandbox tree"
+        raise SecurityError(msg)
+    with ExitStack() as stack:
+        try:
+            parent_fd = stack.enter_context(_directory(path.parent))
+            info = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        with _cleanup_directory(parent_fd, path.name, info) as root_fd:
+            _empty_private_tree(root_fd)
+            _remove_cleanup_directory(parent_fd, path.name, info)
 
 
 def safe_read_file(path: Path, max_bytes: int) -> bytes:

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from llm_sandbox.exceptions import SandboxError, SecurityError
 from llm_sandbox.local import files
-from llm_sandbox.local.files import runtime_relative, safe_copy, safe_mkdir, safe_read_file
+from llm_sandbox.local.files import runtime_relative, safe_copy, safe_mkdir, safe_read_file, safe_remove_tree
 
 
 @pytest.mark.parametrize(
@@ -386,3 +388,165 @@ def test_safe_read_file_bounds_growing_files(tmp_path: Path, monkeypatch: pytest
     with pytest.raises(SandboxError, match="exceeds the 8-byte limit"):
         safe_read_file(source, 8)
     assert sum(consumed) == 9
+
+
+def test_remove_tree_handles_depth_beyond_path_and_descriptor_limits(tmp_path: Path) -> None:
+    """Deep payload trees cannot exhaust cleanup FDs, Python recursion, or pathname length."""
+    root = tmp_path / "deep-private-tree"
+    script = """
+import os
+import resource
+import sys
+from pathlib import Path
+from llm_sandbox.local.files import safe_remove_tree
+
+resource.setrlimit(resource.RLIMIT_NOFILE, (64, resource.getrlimit(resource.RLIMIT_NOFILE)[1]))
+root = Path(sys.argv[1])
+root.mkdir()
+fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+try:
+    for depth in range(1400):
+        name = f'directory-{depth:04d}'
+        os.mkdir(name, dir_fd=fd)
+        child = os.open(name, os.O_RDONLY | os.O_DIRECTORY, dir_fd=fd)
+        if depth % 100 == 0:
+            os.fchmod(fd, 0)
+        os.close(fd)
+        fd = child
+    leaf = os.open('leaf', os.O_WRONLY | os.O_CREAT, 0o400, dir_fd=fd)
+    os.write(leaf, b'private payload')
+    os.close(leaf)
+finally:
+    os.close(fd)
+cwd = os.getcwd()
+descriptors = len(os.listdir('/proc/self/fd'))
+safe_remove_tree(root)
+assert not root.exists()
+assert os.getcwd() == cwd
+assert len(os.listdir('/proc/self/fd')) == descriptors
+print('deep cleanup succeeded')
+"""
+    result = subprocess.run(  # noqa: S603 # Execute only the trusted test program above.
+        [sys.executable, "-c", script, str(root)], capture_output=True, text=True, check=False, timeout=30
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "deep cleanup succeeded\n"
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("mode", [0o000, 0o500, 0o555])
+def test_remove_tree_restores_permissions_on_root_and_nested_directories(tmp_path: Path, mode: int) -> None:
+    """Owner permissions are restored before scanning or moving inaccessible directories."""
+    root = tmp_path / "private-tree"
+    nested = root / "workspace" / "nested"
+    nested.mkdir(parents=True)
+    payload = nested / "readonly-file"
+    payload.write_text("private")
+    payload.chmod(0o400)
+    nested.chmod(mode)
+    nested.parent.chmod(mode)
+    root.chmod(mode)
+
+    safe_remove_tree(root)
+
+    assert not root.exists()
+
+
+def test_remove_tree_unlinks_links_and_special_files_without_touching_targets(tmp_path: Path) -> None:
+    """Hardlinks, symlinks, and FIFOs must never be opened or chmodded as files."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_text("untouched")
+    sentinel.chmod(0o444)
+    root = tmp_path / "private-tree"
+    workspace = root / "workspace"
+    workspace.mkdir(parents=True)
+    (workspace / "directory-link").symlink_to(outside, target_is_directory=True)
+    (workspace / "file-link").symlink_to(sentinel)
+    (workspace / "dangling-link").symlink_to(outside / "missing")
+    (workspace / "hardlink").hardlink_to(sentinel)
+    os.mkfifo(workspace / "fifo")
+    safe_remove_tree(root)
+
+    assert not root.exists()
+    assert sentinel.read_text() == "untouched"
+    assert stat.S_IMODE(sentinel.stat().st_mode) == 0o444
+    assert sentinel.stat().st_nlink == 1
+    assert list(outside.iterdir()) == [sentinel]
+
+
+def test_remove_tree_rejects_symlink_root_and_parent(tmp_path: Path) -> None:
+    """Neither the supplied root nor its ancestors may redirect cleanup elsewhere."""
+    outside = tmp_path / "outside"
+    nested = outside / "nested"
+    nested.mkdir(parents=True)
+    sentinel = nested / "sentinel"
+    sentinel.write_text("untouched")
+    link = tmp_path / "link"
+    link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(SecurityError):
+        safe_remove_tree(link)
+    with pytest.raises(SecurityError):
+        safe_remove_tree(link / "nested")
+
+    assert link.is_symlink()
+    assert sentinel.read_text() == "untouched"
+
+
+def test_remove_tree_rejects_directory_swapped_for_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A directory-to-symlink race must not chmod or remove an outside target."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_text("untouched")
+    outside.chmod(0o555)
+    root = tmp_path / "private-tree"
+    victim = root / "workspace" / "victim"
+    victim.mkdir(parents=True)
+    original_open = os.open
+
+    def swap_before_open(path: str, flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
+        if path == "victim" and flags & os.O_PATH:
+            victim.rmdir()
+            victim.symlink_to(outside, target_is_directory=True)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(files.os, "open", swap_before_open)
+        with pytest.raises(SecurityError, match="changed into a link"):
+            safe_remove_tree(root)
+
+    assert sentinel.read_text() == "untouched"
+    assert stat.S_IMODE(outside.stat().st_mode) == 0o555
+    safe_remove_tree(root)
+    outside.chmod(0o700)
+
+
+def test_remove_tree_does_not_allocate_directory_inodes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Flattening must not require an extra inode when the payload has exhausted a quota."""
+    root = tmp_path / "private-tree"
+    (root / "workspace" / "nested" / "deep").mkdir(parents=True)
+
+    def unexpected_mkdir(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Cleanup must not allocate a new directory inode")
+
+    monkeypatch.setattr(files.os, "mkdir", unexpected_mkdir)
+    safe_remove_tree(root)
+    assert not root.exists()
+
+
+def test_remove_tree_missing_root_is_idempotent(tmp_path: Path) -> None:
+    """Repeated cleanup, including an already missing ancestor, is harmless."""
+    root = tmp_path / "private-tree"
+    root.mkdir()
+    safe_remove_tree(root)
+    safe_remove_tree(root)
+    safe_remove_tree(root / "missing-child")
+
+
+def test_remove_tree_rejects_filesystem_root() -> None:
+    """The cleanup helper must never operate on the filesystem root."""
+    with pytest.raises(SecurityError, match="filesystem root"):
+        safe_remove_tree(Path("/"))

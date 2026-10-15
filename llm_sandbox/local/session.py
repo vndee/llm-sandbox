@@ -15,6 +15,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import weakref
 from abc import abstractmethod
 from contextlib import AbstractContextManager, suppress
 from pathlib import Path
@@ -35,7 +36,7 @@ from llm_sandbox.exceptions import (
 )
 from llm_sandbox.language_handlers.runtime_context import RuntimeContext
 from llm_sandbox.local.config import LocalSandboxConfig
-from llm_sandbox.local.files import runtime_relative, safe_copy, safe_mkdir, safe_read_file
+from llm_sandbox.local.files import runtime_relative, safe_copy, safe_mkdir, safe_read_file, safe_remove_tree
 from llm_sandbox.local.launch import apply_resource_limits
 
 if TYPE_CHECKING:
@@ -68,6 +69,19 @@ def _validate_environment(env_vars: dict[str, str] | None) -> dict[str, str]:
             msg = "Environment variable values must be strings without NUL"
             raise ValueError(msg)
     return explicit_env
+
+
+class _PrivateWorkspace:
+    """Own a temporary tree whose explicit and implicit cleanup use bounded descriptors."""
+
+    def __init__(self) -> None:
+        self.name = tempfile.mkdtemp(prefix="llm-sandbox-")
+        self._finalizer = weakref.finalize(self, safe_remove_tree, Path(self.name))
+
+    def cleanup(self) -> None:
+        """Keep ownership and the finalizer available if removal needs to be retried."""
+        safe_remove_tree(Path(self.name))
+        self._finalizer.detach()
 
 
 class LocalProcessSession(BaseSession):
@@ -143,7 +157,7 @@ class LocalProcessSession(BaseSession):
         self.stream = stream
         self.workspace: Path
         self.tempdir: Path
-        self._workspace_temp: tempfile.TemporaryDirectory[str] | None = None
+        self._workspace_temp: _PrivateWorkspace | None = None
         self._operation_lock = threading.RLock()
         self._process_lock = threading.Lock()
         self._active_process: subprocess.Popen[bytes] | None = None
@@ -186,7 +200,7 @@ class LocalProcessSession(BaseSession):
             with self._process_lock:
                 self._generation += 1
                 self._closing = False
-            self._workspace_temp = tempfile.TemporaryDirectory(prefix="llm-sandbox-")
+            self._workspace_temp = _PrivateWorkspace()
             private_root = Path(self._workspace_temp.name)
             private_root.chmod(0o700)
             self.workspace = private_root / "workspace"

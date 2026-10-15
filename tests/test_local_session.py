@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import base64
+import gc
 import io
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -14,6 +16,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -30,12 +33,12 @@ from llm_sandbox.exceptions import (
 )
 from llm_sandbox.language_handlers.python_handler import PythonHandler
 from llm_sandbox.local.config import LocalSandboxConfig
+from llm_sandbox.local.files import safe_remove_tree
 from llm_sandbox.local.session import LocalProcessSession
 from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPolicy
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from llm_sandbox.data import ConsoleOutput
 
@@ -82,6 +85,120 @@ def test_workspace_lifetime_and_regular_file_copy(tmp_path: Path) -> None:
     assert not tempdir.exists()
     assert not workspace.parent.exists()
     sandbox.close()
+
+
+def _make_deep_workspace_tree(workspace: Path, outside: Path) -> None:
+    """Build beyond PATH_MAX without retaining one descriptor per directory level."""
+    directory = os.open(workspace, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for _ in range(160):
+            name = "nested_workspace_directory_000000"
+            os.mkdir(name, dir_fd=directory)
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        os.symlink(outside, "outside-link", dir_fd=directory)
+        os.mkdir("leaf", dir_fd=directory)
+    finally:
+        os.close(directory)
+    (workspace / "outside-link").symlink_to(outside, target_is_directory=True)
+
+
+def _exercise_deep_workspace_cleanup(destination: str, mode: str) -> None:
+    """Run constrained cleanup in an expendable process, never changing pytest's limits."""
+    import resource  # This worker is Linux-only; the test module remains importable elsewhere.
+
+    outside = Path(destination) / "outside"
+    outside.mkdir()
+    marker = outside / "keep"
+    marker.write_text("outside data", encoding="utf-8")
+    sandbox = TrustedTestSession(skip_environment_setup=True, session_timeout=60 if mode == "timer" else None)
+    sandbox.open()
+    private_root = sandbox.workspace.parent
+    descriptor_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    recursion_limit = sys.getrecursionlimit()
+    try:
+        _make_deep_workspace_tree(sandbox.workspace, outside)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (64, descriptor_limit[1]))
+        sys.setrecursionlimit(100)
+        if mode == "execution-timeout":
+            with pytest.raises(SandboxTimeoutError):
+                sandbox.run("import time; time.sleep(20)", timeout=0.1)
+        elif mode == "timer":
+            timer = sandbox._session_timer
+            assert timer is not None
+            timer.function()
+        elif mode == "finalizer":
+            sandbox = None
+            gc.collect()
+        else:
+            sandbox.close()
+        assert not private_root.exists(), "Cleanup retained the session's private directory"
+        assert marker.read_text(encoding="utf-8") == "outside data"
+        if sandbox is not None:
+            assert not sandbox.is_open
+            assert sandbox._active_process is None
+            sandbox.open()
+            assert sandbox.run("print('reopened')").stdout == "reopened\n"
+            sandbox.close()
+    finally:
+        # Independently clean up failed regressions so pytest never inherits a
+        # deep fixture. Restored limits make the standard cleanup sufficient.
+        resource.setrlimit(resource.RLIMIT_NOFILE, descriptor_limit)
+        sys.setrecursionlimit(recursion_limit)
+        if private_root.exists():
+            shutil.rmtree(private_root)
+        if sandbox is not None:
+            sandbox.close()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires Linux directory descriptors and resource limits")
+@pytest.mark.parametrize("mode", ["close", "execution-timeout", "timer", "finalizer"])
+def test_deep_workspace_cleanup_under_low_descriptor_and_recursion_limits(tmp_path: Path, mode: str) -> None:
+    """All cleanup paths remove deep state, preserve external targets, and allow reuse."""
+    worker = (
+        "import sys; sys.path.insert(0, sys.argv[1]); "
+        "from test_local_session import _exercise_deep_workspace_cleanup; "
+        "_exercise_deep_workspace_cleanup(sys.argv[2], sys.argv[3])"
+    )
+    result = subprocess.run(  # noqa: S603 # Only the trusted test helper above runs in this subprocess.
+        [sys.executable, "-c", worker, str(Path(__file__).parent), str(tmp_path), mode],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "outside/keep").read_text(encoding="utf-8") == "outside data"
+
+
+def test_failed_workspace_cleanup_retains_owner_for_retry_and_reopen(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transient cleanup error preserves ownership until reopening successfully retries removal."""
+    with TrustedTestSession(skip_environment_setup=True) as sandbox:
+        owner = sandbox._workspace_temp
+        assert owner is not None
+        previous_root = sandbox.workspace.parent
+        failed = False
+
+        def fail_once(path: Path) -> None:
+            nonlocal failed
+            if not failed:
+                failed = True
+                msg = "temporary cleanup failure"
+                raise OSError(msg)
+            safe_remove_tree(path)
+
+        monkeypatch.setattr("llm_sandbox.local.session.safe_remove_tree", fail_once)
+        with pytest.raises(OSError, match="temporary cleanup failure"):
+            sandbox.close()
+        assert sandbox._workspace_temp is owner
+        assert owner._finalizer.alive
+        assert previous_root.exists()
+        sandbox.open()
+        assert not previous_root.exists()
+        assert not owner._finalizer.alive
+        assert sandbox._workspace_temp is not owner
+        assert sandbox.run("print('reopened after retry')").stdout == "reopened after retry\n"
 
 
 def test_explicit_environment_does_not_inherit_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
