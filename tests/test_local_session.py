@@ -221,9 +221,10 @@ def test_explicit_run_timeout_overrides_shorter_default() -> None:
 def test_timeout_still_kills_child_after_both_output_pipes_close() -> None:
     """Closing stdout and stderr must not bypass the supervisor's final wait deadline."""
     script = "import os,time;os.close(1);os.close(2);time.sleep(20)"
+    command = f"exec /usr/bin/python3 -c {shlex.quote(script)}"
     with TrustedTestSession(skip_environment_setup=True, execution_timeout=0.2) as sandbox:
         with pytest.raises(SandboxTimeoutError):
-            sandbox.execute_command(f"exec /usr/bin/python3 -c {shlex.quote(script)}")
+            sandbox.execute_command(command)
         assert sandbox._active_process is None
         assert sandbox.execute_command("printf recovered").stdout == "recovered"
 
@@ -273,8 +274,9 @@ def test_callback_exception_cleans_up_process(session: TrustedTestSession) -> No
 def test_invalid_output_encoding_kills_child_and_preserves_session(session: TrustedTestSession) -> None:
     """A decoder error must take the same cleanup path as process and callback failures."""
     script = "import os,time;os.write(1,b'\\xff');time.sleep(20)"
+    command = f"/usr/bin/python3 -c {shlex.quote(script)}"
     with pytest.raises(UnicodeDecodeError):
-        session.execute_command(f"/usr/bin/python3 -c {shlex.quote(script)}")
+        session.execute_command(command)
     assert session._active_process is None
     assert session.execute_command("printf recovered").stdout == "recovered"
 

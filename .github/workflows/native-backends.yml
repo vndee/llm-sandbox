@@ -91,7 +91,8 @@ jobs:
           enable-cache: "false"
 
       - name: Install Python dependencies
-        run: uv sync --frozen --all-extras
+        # Exercise the checked-out source; dependency installation accepts wheels only.
+        run: uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
 
       - name: Prepare a writable submount under a read-only runtime grant
         run: |
@@ -133,6 +134,8 @@ jobs:
           PY
 
       - name: Run real integration tests and reject all skips
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           .venv/bin/python .github/scripts/require_native_integration.py \
             tests/test_bubblewrap.py tests/test_nsjail.py -m integration -ra
