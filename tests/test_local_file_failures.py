@@ -162,18 +162,24 @@ def test_read_refuses_growth_after_eof(tmp_path: Path, monkeypatch: pytest.Monke
 def test_copy_refuses_destination_changes_before_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
 ) -> None:
-    """Atomic publication cannot overwrite a concurrently changed destination."""
+    """Atomic publication refuses a created, removed, or different destination inode."""
     source, destination = tmp_path / "source", tmp_path / "destination"
     source.write_bytes(b"input")
     if change != "create":
         destination.write_bytes(b"old")
+    replacement = tmp_path / "replacement"
+    if change == "replace":
+        # Allocate while the old file exists so the filesystem cannot reuse its inode.
+        replacement.write_bytes(b"competing")
     original_write = os.write
 
     def change_during_write(fd: int, content: bytes) -> int:
         written = original_write(fd, content)
-        if change != "create":
+        if change == "replace":
+            replacement.replace(destination)
+        elif change == "remove":
             destination.unlink()
-        if change != "remove":
+        else:
             destination.write_bytes(b"competing")
         return written
 

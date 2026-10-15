@@ -21,6 +21,7 @@ from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[2]
 _TARGETS = {"win_amd64": "x86_64-pc-windows-msvc", "win_arm64": "aarch64-pc-windows-msvc"}
+_MINIMUM_CACHE_MANIFEST_PARTS = 3  # Cache owner, crate version or Git revision, and manifest.
 _NOTICES = "THIRD_PARTY_NOTICES.txt"
 _LICENSE_NAMES = ("LICENSE", "LICENCE", "COPYING", "COPYRIGHT", "NOTICE")
 _SUPPLEMENTAL = {
@@ -62,7 +63,7 @@ def crate_scope(package: dict[str, Any], cargo_home: Path) -> tuple[Path, Path]:
         raise ValueError(msg)
     manifest = within(manifest, cache)
     relative = manifest.relative_to(cache)
-    if len(relative.parts) < 3 or manifest.name != "Cargo.toml":  # noqa: PLR2004 -- Cache owner, revision, manifest.
+    if len(relative.parts) < _MINIMUM_CACHE_MANIFEST_PARTS or manifest.name != "Cargo.toml":
         msg = f"Unexpected Cargo cache layout: {manifest}"
         raise ValueError(msg)
     scope = cache / relative.parts[0] / relative.parts[1]
@@ -139,7 +140,8 @@ def collect_notices(platform: str) -> None:
                 # Only copyright/license comments precede the first Rust item.
                 content = content.split("#!", 1)[0].split("//!", 1)[0]
             sections.append(f"\n--- {license_file.name} ---\n{content}\n")
-    repository_path(_NOTICES).write_text("".join(sections), encoding="utf-8")
+    with repository_path(_NOTICES).open("w", encoding="utf-8") as output:
+        output.write("".join(sections))
 
 
 def digest(path: Path) -> str:
@@ -203,7 +205,9 @@ def verify_wheel(platform: str, commit: str) -> None:
         "cargo_lock_sha256": digest(repository_path("native/windows-mxc/Cargo.lock")),
         "native_enforcement": "Not established by building; see the Windows native enforcement workflow.",
     }
-    repository_path("dist/BUILD_RECEIPT.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    with repository_path("dist/BUILD_RECEIPT.json").open("w", encoding="utf-8") as output:
+        json.dump(receipt, output, indent=2)
+        output.write("\n")
     write_install_requirements()
     checksums = "".join(
         f"{digest(within(path, destination))}  {path.name}\n"
