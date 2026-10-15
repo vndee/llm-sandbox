@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import os
@@ -317,6 +318,68 @@ def test_handshake_rejects_different_security_implementation(
     assert not sandbox.is_open
 
 
+@pytest.mark.parametrize("error", [SecurityError, FileNotFoundError])
+def test_rejected_artifact_read_keeps_worker_available(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    """A validated completed read rejection must not discard later safe artifacts."""
+    original = fake_transport.send
+
+    def respond(self: FakeTransport, message: dict[str, Any], *, deadline: float | None = None) -> None:
+        if message["op"] != "get":
+            original(self, message, deadline=deadline)
+            return
+        if message["params"]["path"] == "bad.png":
+            response = {"type": "error", "error": error.__name__, "message": "Artifact is unavailable"}
+        else:
+            response = {"type": "result", "value": base64.b64encode(b"safe plot").decode("ascii")}
+        self.responses.append({"id": message["id"], **response})
+
+    monkeypatch.setattr(fake_transport, "send", respond)
+    with Wsl2BubblewrapSession(distribution="Ubuntu", skip_environment_setup=True) as session:
+        with pytest.raises(error, match="unavailable"):
+            session.get_archive("bad.png")
+        assert session.is_open
+        archive, metadata = session.get_archive("good.png")
+        assert metadata["size"] == len(b"safe plot")
+        assert b"safe plot" in archive
+        assert not fake_transport.instances[-1].closed
+
+
+@pytest.mark.parametrize(
+    "malformation", ["missing_message", "wrong_message", "extra_field", "wrong_id", "unknown_error"]
+)
+def test_malformed_artifact_error_closes_worker(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch, malformation: str
+) -> None:
+    """Only the exact completed and explicitly recoverable errors permit another get request."""
+    original = fake_transport.send
+
+    def respond(self: FakeTransport, message: dict[str, Any], *, deadline: float | None = None) -> None:
+        if message["op"] != "get":
+            original(self, message, deadline=deadline)
+            return
+        response = {"id": message["id"], "type": "error", "error": "SecurityError", "message": "rejected"}
+        if malformation == "missing_message":
+            response.pop("message")
+        elif malformation == "wrong_message":
+            response["message"] = None
+        elif malformation == "extra_field":
+            response["unexpected"] = True
+        elif malformation == "wrong_id":
+            response["id"] = message["id"] + 1
+        else:
+            response["error"] = "UnknownError"
+        self.responses.append(response)
+
+    monkeypatch.setattr(fake_transport, "send", respond)
+    with Wsl2BubblewrapSession(distribution="Ubuntu", skip_environment_setup=True) as session:
+        with pytest.raises(SandboxError):
+            session.get_archive("bad.png")
+        assert not session.is_open
+        assert fake_transport.instances[-1].closed
+
+
 def test_fingerprint_covers_base_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """Equal distribution versions cannot hide differing transitive execution semantics."""
     expected = identity()
@@ -366,16 +429,17 @@ def test_close_during_probe_prevents_late_worker(
     assert not session.is_open
 
 
-def test_callback_exception_closes_guest(fake_transport: type[FakeTransport]) -> None:
+@pytest.mark.parametrize("error", [RuntimeError, SecurityError])
+def test_callback_exception_closes_guest(fake_transport: type[FakeTransport], error: type[Exception]) -> None:
     """An abandoned streamed result never leaves the remote command/session running."""
 
     def fail(_: str) -> None:
         msg = "callback failed"
-        raise RuntimeError(msg)
+        raise error(msg)
 
     sandbox = Wsl2BubblewrapSession(distribution="Ubuntu", skip_environment_setup=True)
     sandbox.open()
-    with pytest.raises(RuntimeError, match="callback failed"):
+    with pytest.raises(error, match="callback failed"):
         sandbox.execute_command("echo", on_stdout=fail)
     assert fake_transport.instances[-1].closed
     assert not sandbox.is_open
@@ -506,6 +570,18 @@ def test_real_wsl2_isolation_persistence_and_copies(real_wsl2: Wsl2BubblewrapSes
         session.copy_to_runtime(str(source), "upload.txt")
         session.copy_from_runtime("upload.txt", str(destination))
         assert destination.read_bytes() == b"roundtrip"
+        assert (
+            session.execute_command(
+                "mkdir -p /tmp/sandbox_plots; "
+                "printf first > /tmp/sandbox_plots/01_safe.png; "
+                "ln -s /etc/passwd /tmp/sandbox_plots/02_link.png; "
+                "mkdir /tmp/sandbox_plots/03_directory.png; "
+                "printf last > /tmp/sandbox_plots/04_safe.png"
+            ).exit_code
+            == 0
+        )
+        plots = session.language_handler.extract_plots(session, "/tmp/sandbox_plots")
+        assert [base64.b64decode(plot.content_base64) for plot in plots] == [b"first", b"last"]
 
 
 @pytest.mark.integration
@@ -538,6 +614,10 @@ def test_real_wsl2_download_rejects_nonregular_or_linked_files(
     with pytest.raises(SecurityError):
         real_wsl2.copy_from_runtime("target", destination_path)
     assert not destination.exists()
+    assert real_wsl2.is_open
+    assert real_wsl2.execute_command("printf safe > good").exit_code == 0
+    real_wsl2.copy_from_runtime("good", destination_path)
+    assert destination.read_bytes() == b"safe"
 
 
 @pytest.mark.integration

@@ -36,6 +36,7 @@ from llm_sandbox.local.config import LocalSandboxConfig
 from llm_sandbox.local.files import safe_remove_tree
 from llm_sandbox.local.session import LocalProcessSession
 from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPolicy
+from llm_sandbox.session import ArtifactSandboxSession
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -912,6 +913,40 @@ def test_python_handler_extracts_persistent_artifacts(
     plots = PythonHandler().extract_plots(session, "/tmp/sandbox_plots")
     assert len(plots) == 1
     assert base64.b64decode(plots[0].content_base64) == b"image"
+
+
+def test_artifact_run_skips_rejected_files_and_keeps_safe_plots(
+    session: TrustedTestSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unsafe matches cannot discard completed output or valid plots later in collection."""
+    plots_dir = session.tempdir / "sandbox_plots"
+    plots_dir.mkdir()
+    (plots_dir / "01_safe.png").write_bytes(b"first safe plot")
+    secret = tmp_path / "secret"
+    secret.write_bytes(b"host secret")
+    (plots_dir / "02_link.png").symlink_to(secret)
+    (plots_dir / "03_directory.png").mkdir()
+    (plots_dir / "04_safe.svg").write_bytes(b"last safe plot")
+    original_execute = session.execute_command
+
+    def virtual_output(command: str, *args: Any, **kwargs: Any) -> ConsoleOutput:
+        result = original_execute(command, *args, **kwargs)
+        if command.startswith("find "):
+            return replace(result, stdout=result.stdout.replace(str(session.tempdir), "/tmp"))
+        return result
+
+    monkeypatch.setattr(session, "execute_command", virtual_output)
+    monkeypatch.setattr(session.language_handler, "inject_plot_detection_code", lambda code: code)
+    monkeypatch.setattr("llm_sandbox.session.create_session", lambda **_kwargs: session)
+    wrapper = ArtifactSandboxSession(backend="bubblewrap")
+    result = wrapper.run("print('completed')")
+    assert result.exit_code == 0
+    assert result.stdout == "completed\n"
+    assert [base64.b64decode(plot.content_base64) for plot in result.plots] == [b"first safe plot", b"last safe plot"]
+    with pytest.raises(SecurityError):
+        session.get_archive("/tmp/sandbox_plots/02_link.png")
+    with pytest.raises(SecurityError):
+        session.get_archive("/tmp/sandbox_plots/03_directory.png")
 
 
 def test_get_archive_rejects_oversized_file() -> None:

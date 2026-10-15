@@ -56,6 +56,10 @@ _STARTUP_TIMEOUT = 30.0
 _DIAGNOSTIC_LIMIT = 8192
 _32_BIT_POINTER_BYTES = 4
 _WSL2_VERSION = 2
+_COMPLETED_READ_ERRORS: dict[str, type[SecurityError | FileNotFoundError]] = {
+    "SecurityError": SecurityError,
+    "FileNotFoundError": FileNotFoundError,
+}
 
 
 def _wsl_executable() -> Path:
@@ -537,17 +541,18 @@ class Wsl2BubblewrapSession(BaseSession):
         self._request_id += 1
         request_id = self._request_id
         deadline = time.monotonic() + timeout if timeout is not None else None
+        rejection: SecurityError | FileNotFoundError
         try:
             transport.send({"id": request_id, "op": operation, "params": params}, deadline=deadline)
             output_bytes = 0
             while True:
-                message = transport.receive(deadline)
-                if message.get("id") != request_id:
-                    msg = "WSL worker returned an unexpected request identifier"
-                    raise SandboxError(msg)
+                message = self._receive_response(transport, request_id, deadline)
                 if message.get("type") == "result":
                     return message.get("value")
                 if message.get("type") == "error":
+                    if self._is_completed_read_rejection(operation, message):
+                        rejection = _COMPLETED_READ_ERRORS[message["error"]](message["message"])
+                        break
                     exceptions = {
                         "SandboxTimeoutError": SandboxTimeoutError,
                         "SecurityError": SecurityError,
@@ -569,6 +574,28 @@ class Wsl2BubblewrapSession(BaseSession):
         except BaseException:
             self._close_transport(transport)
             raise
+        # A completed, validated read rejection leaves no command running. Keep
+        # the worker available so artifact collection can continue with safe files.
+        raise rejection
+
+    @staticmethod
+    def _receive_response(transport: _Transport, request_id: int, deadline: float | None) -> dict[str, Any]:
+        message = transport.receive(deadline)
+        if type(message.get("id")) is not int or message["id"] != request_id:
+            msg = "WSL worker returned an unexpected request identifier"
+            raise SandboxError(msg)
+        return message
+
+    @staticmethod
+    def _is_completed_read_rejection(operation: str, message: dict[str, Any]) -> bool:
+        return (
+            operation == "get"
+            and set(message) == {"type", "id", "error", "message"}
+            and isinstance(message["error"], str)
+            and message["error"] in _COMPLETED_READ_ERRORS
+            and isinstance(message["message"], str)
+            and len(message["message"]) <= _DIAGNOSTIC_LIMIT
+        )
 
     @staticmethod
     def _event_chunk(message: dict[str, Any]) -> str:
