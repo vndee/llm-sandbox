@@ -54,7 +54,7 @@ def test_full_duplex_input_cannot_deadlock_on_full_output_pipes(environment: dic
     code = "import sys; sys.stdout.write('x'*200000); sys.stdout.flush(); print(len(sys.stdin.buffer.read()))"
     output = ProcessSupervisor().run(python_command(code), env=environment, input=payload, timeout=5)
     assert output.exit_code == 0
-    assert output.stdout == "x" * 200000 + str(len(payload)) + "\n"
+    assert output.stdout == "x" * 200000 + str(len(payload)) + os.linesep
 
 
 def test_incremental_utf8_callbacks_on_both_pipes(environment: dict[str, str]) -> None:
@@ -84,7 +84,7 @@ def test_combined_output_limit_and_reuse_after_failure(environment: dict[str, st
     assert len(output.stdout) + len(output.stderr) == 1024
     with pytest.raises(SandboxError, match="output exceeded"):
         supervisor.run(python_command("import os;os.write(1,b'a'*512);os.write(2,b'b'*513)"), env=environment)
-    assert supervisor.run(python_command("print('recovered')"), env=environment).stdout == "recovered\n"
+    assert supervisor.run(python_command("print('recovered')"), env=environment).stdout == "recovered" + os.linesep
 
 
 @pytest.mark.parametrize("closed_pipes", [False, True])
@@ -124,7 +124,7 @@ def test_callback_failure_terminates_process_without_leaking_workers(environment
     with pytest.raises(ValueError, match="callback rejected"):
         supervisor.run(python_command("import time;print('ready');time.sleep(20)"), env=environment, on_stdout=fail)
     assert {thread.ident for thread in threading.enumerate()} == before
-    assert supervisor.run(python_command("print('alive')"), env=environment).stdout == "alive\n"
+    assert supervisor.run(python_command("print('alive')"), env=environment).stdout == "alive" + os.linesep
 
 
 def test_decode_failure_terminates_and_reaps_launcher(environment: dict[str, str]) -> None:
@@ -166,7 +166,7 @@ def test_cancel_from_another_thread_and_sticky_close(environment: dict[str, str]
             with pytest.raises(SandboxError, match="closed"):
                 supervisor.run(python_command("print('must not run')"), env=environment)
         else:
-            assert supervisor.run(python_command("print('reused')"), env=environment).stdout == "reused\n"
+            assert supervisor.run(python_command("print('reused')"), env=environment).stdout == "reused" + os.linesep
     finally:
         supervisor.close()
         worker.join(5)
@@ -238,7 +238,9 @@ def test_callback_cannot_reenter_supervisor(environment: dict[str, str]) -> None
 
 def test_managed_process_supports_persistent_stdin_protocol(environment: dict[str, str]) -> None:
     """Transport users can keep stdin open for multiple messages before explicit EOF."""
-    command = python_command("import sys; [print(line.strip().upper(),flush=True) for line in sys.stdin]")
+    command = python_command(
+        "import sys\nfor line in sys.stdin.buffer:\n sys.stdout.buffer.write(line.upper());sys.stdout.buffer.flush()"
+    )
     with ManagedProcess(command, env=environment, stdin_pipe=True) as managed:
         assert managed.process.stdin is not None
         assert managed.process.stdout is not None
@@ -357,6 +359,6 @@ def test_native_job_kills_descendant_in_new_process_group(environment: dict[str,
         "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,"
         "creationflags=subprocess.CREATE_NEW_PROCESS_GROUP);print('spawned')"
     )
-    assert ProcessSupervisor().run(python_command(parent), env=environment).stdout == "spawned\n"
+    assert ProcessSupervisor().run(python_command(parent), env=environment).stdout == "spawned" + os.linesep
     time.sleep(1.2)
     assert not marker.exists()

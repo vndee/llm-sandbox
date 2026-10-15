@@ -98,7 +98,7 @@ def _distribution_version(output: str, distribution: str) -> int:
 
 def _launcher_environment(executable: Path) -> dict[str, str]:
     """Supply only Windows loader necessities derived from the trusted system executable."""
-    root = PureWindowsPath(executable).parent.parent
+    root = PureWindowsPath(str(executable)).parent.parent
     return {"SystemRoot": str(root), "WINDIR": str(root), "SystemDrive": root.drive}
 
 

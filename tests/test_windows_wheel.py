@@ -53,7 +53,7 @@ def build_wheel(project: Path, binary: Path | None) -> Path:
     if binary is not None:
         environment["LLM_SANDBOX_MXC_BINARY"] = str(binary)
         notices = project.parent / "THIRD_PARTY_NOTICES.txt"
-        notices.write_text("Example dependency license notice\n", encoding="utf-8")
+        notices.write_bytes(b"Example dependency license notice\n")
         environment["LLM_SANDBOX_MXC_NOTICES"] = str(notices)
     result = subprocess.run(  # noqa: S603 # Fixed build tool and a test-generated project.
         [sys.executable, "-m", "hatchling", "build", "-t", "wheel"],

@@ -39,6 +39,7 @@ jobs:
       - name: Install only core and test dependencies
         run: uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
       - name: Install the current pure wheel for version metadata
+        id: install-package
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
             build_python=.venv/Scripts/python.exe
@@ -59,7 +60,7 @@ jobs:
             tests/test_windows_mxc.py tests/test_wsl2_bubblewrap.py tests/test_wsl2_transport.py \
             tests/test_windows_process.py tests/test_windows_files.py tests/test_windows_wheel.py
       - name: Require real Windows process and filesystem tests without skips
-        if: runner.os == 'Windows'
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.install-package.outcome == 'success' }}
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
