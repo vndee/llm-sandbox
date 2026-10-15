@@ -10,7 +10,7 @@ import re
 import selectors
 import shlex
 import signal
-import subprocess
+import subprocess  # nosec B404 # Required to supervise native sandbox launchers; no host shell is used.
 import tarfile
 import tempfile
 import threading
@@ -356,7 +356,9 @@ class LocalProcessSession(BaseSession):
                 self._require_open()
                 self._require_idle()
                 self._remaining_time()
-                process = subprocess.Popen(  # noqa: S603 # Only the native driver provides launcher argv.
+                # Drivers provide absolute trusted launcher paths, including the optional prlimit wrapper.
+                # The payload shell runs only inside the sandbox; the host launcher gets a clean environment.
+                process = subprocess.Popen(  # noqa: S603 # nosec B603
                     launch_argv,
                     shell=False,
                     stdin=subprocess.DEVNULL,

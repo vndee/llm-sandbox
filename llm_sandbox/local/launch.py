@@ -89,4 +89,6 @@ def apply_resource_limits(argv: list[str], config: LocalSandboxConfig) -> list[s
     if executable is None:
         msg = "Local resource limits require the 'prlimit' executable from util-linux"
         raise MissingDependencyError(msg)
-    return [executable, *flags, "--", *argv]
+    # Popen changes cwd to the writable workspace. Resolve relative PATH entries
+    # here so an untrusted workspace executable cannot replace the host helper.
+    return [str(Path(executable).resolve()), *flags, "--", *argv]

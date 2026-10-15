@@ -12,7 +12,7 @@ import platform
 import re
 import shutil
 import signal
-import subprocess
+import subprocess  # nosec B404 # Used for process typing and timeout handling; launching stays in LocalProcessSession.
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any

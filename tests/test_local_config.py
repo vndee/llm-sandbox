@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -179,6 +181,43 @@ def test_limits_use_exact_hard_and_soft_values_without_unit_conversion() -> None
         *original,
     ]
     assert original == ["/usr/bin/bwrap", "--", "/bin/true"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Requires executable POSIX symlinks")
+@pytest.mark.parametrize("path_entry", ["bin", "."])
+def test_relative_resource_helper_cannot_be_shadowed_by_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path_entry: str
+) -> None:
+    """Changing to a payload-owned cwd must not replace the trusted limit helper."""
+    caller = tmp_path / "caller"
+    workspace = tmp_path / "workspace"
+    (caller / path_entry).mkdir(parents=True, exist_ok=True)
+    (workspace / path_entry).mkdir(parents=True, exist_ok=True)
+    # Both fixtures ignore arguments and print markers; neither executes a workload.
+    trusted = tmp_path / "trusted-prlimit"
+    trusted.write_text("#!/bin/sh\nprintf 'trusted helper\\n'\n")
+    trusted.chmod(0o700)
+    (caller / path_entry / "prlimit").symlink_to(trusted)
+    shadow = workspace / path_entry / "prlimit"
+    shadow.write_text("#!/bin/sh\nprintf 'workspace helper\\n'\n")
+    shadow.chmod(0o700)
+    monkeypatch.chdir(caller)
+    monkeypatch.setenv("PATH", path_entry)
+
+    argv = apply_resource_limits(["/bin/true"], LocalSandboxConfig(open_files_limit=64))
+    result = subprocess.run(  # noqa: S603 # Only the two trusted marker fixtures can execute.
+        argv,
+        cwd=workspace,
+        env={"PATH": "/usr/bin:/bin"},
+        shell=False,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=5,
+    )
+
+    assert result.stdout == "trusted helper\n"
+    assert argv[0] == str(trusted.resolve())
 
 
 def test_requested_limits_fail_closed_without_prlimit() -> None:
