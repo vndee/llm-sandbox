@@ -156,7 +156,7 @@ class NsjailSession(LocalProcessSession):
 
         # A separate private directory preserves artifacts written to /tmp
         # across commands. Its host parent is never exposed inside the jail.
-        argv.extend(("--bindmount", _mount_argument(str(self.tempdir), "/tmp")))  # NOSONAR: Private mount target.
+        argv.extend(("--bindmount", _mount_argument(str(self.tempdir), "/tmp")))  # NOSONAR(S5443) Private mount target.
         for device in ("null", "zero", "random", "urandom"):
             path = f"/dev/{device}"
             argv.extend(("--bindmount_ro", _mount_argument(path, path)))

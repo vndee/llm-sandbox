@@ -63,7 +63,7 @@ class BubblewrapSession(LocalProcessSession):
             "/dev",
             "--bind",
             str(self.tempdir),
-            "/tmp",  # NOSONAR: Destination inside the sandbox, backed by self.tempdir's private directory.
+            "/tmp",  # NOSONAR(S5443) Destination inside the sandbox, backed by self.tempdir's private directory.
             "--bind",
             str(self.workspace),
             self.config.workdir,

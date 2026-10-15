@@ -161,7 +161,7 @@ class LocalProcessSession(BaseSession):
         return {
             "PATH": "/usr/local/bin:/usr/bin:/bin",
             "HOME": f"{self.config.workdir}/.home",
-            "TMPDIR": "/tmp",  # NOSONAR: Sandbox mount target backed by the private session directory.
+            "TMPDIR": "/tmp",  # NOSONAR(S5443) Sandbox mount target backed by the private session directory.
             "LANG": "C.UTF-8",
             "PYTHONUNBUFFERED": "1",
             **self.sandbox_config.env,
@@ -405,14 +405,7 @@ class LocalProcessSession(BaseSession):
                     if total_bytes > self.sandbox_config.max_output_bytes:
                         msg = f"Native sandbox output exceeded {self.sandbox_config.max_output_bytes} bytes"
                         raise SandboxError(msg)
-                    decoded = decoders[name].decode(chunk, final=not chunk)
-                    if decoded:
-                        buffers[name].append(decoded)
-                        callback = callbacks[name]
-                        if callback is not None:
-                            callback(decoded)
-                        elif self.stream and self.verbose:
-                            self._log(decoded)
+                    self._append_output(chunk, decoders[name], buffers[name], callbacks[name])
                     if not chunk:
                         selector.unregister(key.fileobj)
             try:
@@ -421,6 +414,23 @@ class LocalProcessSession(BaseSession):
                 msg = "Native sandbox execution exceeded its deadline"
                 raise SandboxTimeoutError(msg) from exc
         return ConsoleOutput(return_code, stderr="".join(buffers["stderr"]), stdout="".join(buffers["stdout"]))
+
+    def _append_output(
+        self,
+        chunk: bytes,
+        decoder: codecs.IncrementalDecoder,
+        buffer: list[str],
+        callback: StreamCallback | None,
+    ) -> None:
+        """Decode an already bounded chunk and deliver it to its buffer and callback."""
+        decoded = decoder.decode(chunk, final=not chunk)
+        if not decoded:
+            return
+        buffer.append(decoded)
+        if callback is not None:
+            callback(decoded)
+        elif self.stream and self.verbose:
+            self._log(decoded)
 
     def _require_success(self, command: str) -> None:
         output = self.execute_command(command)
@@ -492,8 +502,8 @@ class LocalProcessSession(BaseSession):
 
     def _runtime_host_path(self, path: str) -> Path:
         """Map only workspace-relative paths or explicit workspace and /tmp paths."""
-        if Path(path).is_absolute() and Path(path).is_relative_to("/tmp"):  # NOSONAR: Match only a sandbox path.
-            return self.tempdir / runtime_relative(path, "/tmp")  # NOSONAR: Map into the private host directory.
+        if Path(path).is_absolute() and Path(path).is_relative_to("/tmp"):  # NOSONAR(S5443) Match only a sandbox path.
+            return self.tempdir / runtime_relative(path, "/tmp")  # NOSONAR(S5443) Map into the private host directory.
         return self.workspace / runtime_relative(path, self.config.workdir)
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:

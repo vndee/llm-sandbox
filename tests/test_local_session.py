@@ -685,8 +685,9 @@ def test_unknown_options_fail_early() -> None:
 
 def test_closed_session_rejects_commands() -> None:
     """No path executes host commands if the native session has not opened."""
+    sandbox = TrustedTestSession()
     with pytest.raises(NotOpenSessionError):
-        TrustedTestSession().execute_command("true")
+        sandbox.execute_command("true")
 
 
 def test_empty_command_does_not_change_session_state(session: TrustedTestSession) -> None:
