@@ -13,7 +13,6 @@
 [![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg?token=EULWCESZAY)](https://codecov.io/gh/vndee/llm-sandbox)
 ![](https://badge.mcpx.dev?status=on 'MCP Enabled')
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21760525.svg)](https://doi.org/10.5281/zenodo.21760525)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/vndee/llm-sandbox)
 
 **LLM Sandbox** runs Large Language Model (LLM) generated code through a common API for container and local Linux and Windows sandbox backends. Choose an isolation backend for your deployment, configure its security controls, and reuse the same code execution and file APIs.
 
