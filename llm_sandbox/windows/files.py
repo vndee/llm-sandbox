@@ -51,6 +51,7 @@ _CHUNK_SIZE = 65536
 _FIRST_PRINTABLE_CHARACTER = 32
 _RESERVED_NAMES = frozenset({"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$"})
 _DEVICE_NUMBER = re.compile(r"(?:COM|LPT)[1-9¹²³]\Z", re.IGNORECASE)
+_NATIVE_WINDOWS_REQUIRED = "Windows filesystem helpers require a native Windows host"
 
 
 def _validate_components(path: PureWindowsPath) -> None:
@@ -118,14 +119,13 @@ class _SecurityAttributes(ctypes.Structure):
 
 def _windows_library(name: str) -> ctypes.CDLL:
     if sys.platform != "win32":
-        message = "Windows filesystem helpers require a native Windows host"
-        raise MissingDependencyError(message)
+        raise MissingDependencyError(_NATIVE_WINDOWS_REQUIRED)
     return ctypes.WinDLL(name, use_last_error=True)
 
 
 def _windows_error() -> OSError:
     if sys.platform != "win32":
-        return OSError("Windows filesystem helpers require a native Windows host")
+        return OSError(_NATIVE_WINDOWS_REQUIRED)
     return ctypes.WinError(ctypes.get_last_error())
 
 
@@ -168,8 +168,7 @@ class _WindowsAPI:
 @cache
 def _api() -> _WindowsAPI:
     if os.name != "nt":
-        message = "Windows filesystem helpers require a native Windows host"
-        raise MissingDependencyError(message)
+        raise MissingDependencyError(_NATIVE_WINDOWS_REQUIRED)
     return _WindowsAPI()
 
 

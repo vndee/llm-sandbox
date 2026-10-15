@@ -521,7 +521,7 @@ def test_native_failed_replacement_removes_partial_file(native_root: Path, monke
 @pytest.mark.integration
 @_WINDOWS
 def test_native_competing_hardlink_cannot_receive_output(native_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """CREATE_NEW refuses a link inserted in the gap after removing the previous output."""
+    """Strong parent pins block hardlink insertion before the guarded output open."""
     target, outside = native_root / "target", native_root / "outside"
     files.safe_write_file(target, b"old")
     files.safe_write_file(outside, b"untouched")
@@ -535,7 +535,29 @@ def test_native_competing_hardlink_cannot_receive_output(native_root: Path, monk
             yield entry
 
     monkeypatch.setattr(files, "_open_entry", insert_link)
+    with pytest.raises(PermissionError) as error:
+        files.safe_write_file(target, b"replacement")
+    assert error.value.winerror == 32  # The parent pin blocks the hardlink's directory-write open.
+    assert outside.read_bytes() == b"untouched"
+    assert not target.exists()
+
+
+@pytest.mark.integration
+@_WINDOWS
+def test_native_competing_file_is_never_overwritten(native_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CREATE_NEW refuses an ordinary file inserted after removing the previous output."""
+    target = native_root / "target"
+    files.safe_write_file(target, b"old")
+    open_entry = files._open_entry
+
+    @contextmanager
+    def insert_file(path: PureWindowsPath, **options: Any) -> Iterator[files._Entry]:
+        if options.get("create") and path == files.validate_host_path(target):
+            target.write_bytes(b"competing file")
+        with open_entry(path, **options) as entry:
+            yield entry
+
+    monkeypatch.setattr(files, "_open_entry", insert_file)
     with pytest.raises(FileExistsError):
         files.safe_write_file(target, b"replacement")
-    assert outside.read_bytes() == b"untouched"
-    assert target.read_bytes() == b"untouched"
+    assert target.read_bytes() == b"competing file"

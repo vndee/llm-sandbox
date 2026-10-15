@@ -51,7 +51,7 @@ def read_frame(pipe: IO[bytes]) -> dict[str, Any] | None:
         raise SandboxError(msg)
     try:
         message = json.loads(data)
-    except (ValueError, UnicodeError) as exc:
+    except ValueError as exc:
         msg = "Invalid WSL control message; verify the trusted guest worker installation"
         raise SandboxError(msg) from exc
     if not isinstance(message, dict):

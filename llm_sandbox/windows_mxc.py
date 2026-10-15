@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 
 _PROTOCOL_VERSION = 1
 _MAX_REQUEST_BYTES = 1_000_000
+_HOME_DIRECTORY = ".home"
 _SUPPORTED_LANGUAGES = {SupportedLanguage.PYTHON, SupportedLanguage.JAVASCRIPT}
 _SESSION_OPTIONS = {
     "verbose",
@@ -226,7 +227,7 @@ class WindowsMxcSession(BaseSession):
             owner = PrivateWorkspace()
             workspace = Path(owner.name)
             try:
-                safe_mkdir(workspace / ".home")
+                safe_mkdir(workspace / _HOME_DIRECTORY)
                 safe_mkdir(workspace / ".tmp")
             except BaseException:
                 owner.cleanup()
@@ -298,9 +299,9 @@ class WindowsMxcSession(BaseSession):
         environment = {
             **self._launcher_environment(),
             "PATH": f"{self._runtime.parent};{self._bootstrap_env['PATH']}",
-            "HOME": str(self.workspace / ".home"),
-            "USERPROFILE": str(self.workspace / ".home"),
-            "APPDATA": str(self.workspace / ".home"),
+            "HOME": str(self.workspace / _HOME_DIRECTORY),
+            "USERPROFILE": str(self.workspace / _HOME_DIRECTORY),
+            "APPDATA": str(self.workspace / _HOME_DIRECTORY),
             "PYTHONUNBUFFERED": "1",
             "PYTHONNOUSERSITE": "1",
             "PYTHONIOENCODING": "utf-8",

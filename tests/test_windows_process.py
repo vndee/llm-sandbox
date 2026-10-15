@@ -82,8 +82,9 @@ def test_combined_output_limit_and_reuse_after_failure(environment: dict[str, st
     supervisor = ProcessSupervisor(max_output_bytes=1024)
     output = supervisor.run(python_command("import os;os.write(1,b'a'*512);os.write(2,b'b'*512)"), env=environment)
     assert len(output.stdout) + len(output.stderr) == 1024
+    overflow_command = python_command("import os;os.write(1,b'a'*512);os.write(2,b'b'*513)")
     with pytest.raises(SandboxError, match="output exceeded"):
-        supervisor.run(python_command("import os;os.write(1,b'a'*512);os.write(2,b'b'*513)"), env=environment)
+        supervisor.run(overflow_command, env=environment)
     assert supervisor.run(python_command("print('recovered')"), env=environment).stdout == "recovered" + os.linesep
 
 
@@ -92,22 +93,21 @@ def test_deadline_terminates_process_and_pipe_threads(environment: dict[str, str
     """Timeouts remain effective even after the process closes both output streams."""
     before = {thread.ident for thread in threading.enumerate()}
     code = "import os,time;" + ("os.close(1);os.close(2);" if closed_pipes else "") + "time.sleep(20)"
+    command = python_command(code)
+    supervisor = ProcessSupervisor()
     with pytest.raises(SandboxTimeoutError):
-        ProcessSupervisor().run(python_command(code), env=environment, timeout=0.3)
+        supervisor.run(command, env=environment, timeout=0.3)
     assert {thread.ident for thread in threading.enumerate()} == before
 
 
 def test_deadline_cancels_a_writer_whose_child_never_reads_input(environment: dict[str, str]) -> None:
     """Closing a synchronous Windows input pipe cannot deadlock ahead of job termination."""
     before = {thread.ident for thread in threading.enumerate()}
+    command = python_command("import time;time.sleep(20)")
+    supervisor = ProcessSupervisor()
     started = time.monotonic()
     with pytest.raises(SandboxTimeoutError):
-        ProcessSupervisor().run(
-            python_command("import time;time.sleep(20)"),
-            env=environment,
-            input=b"x" * (1024 * 1024),
-            timeout=0.15,
-        )
+        supervisor.run(command, env=environment, input=b"x" * (1024 * 1024), timeout=0.15)
     assert time.monotonic() - started < 3
     assert {thread.ident for thread in threading.enumerate()} == before
 
@@ -121,16 +121,19 @@ def test_callback_failure_terminates_process_without_leaking_workers(environment
         raise ValueError(msg)
 
     supervisor = ProcessSupervisor()
+    command = python_command("import time;print('ready');time.sleep(20)")
     with pytest.raises(ValueError, match="callback rejected"):
-        supervisor.run(python_command("import time;print('ready');time.sleep(20)"), env=environment, on_stdout=fail)
+        supervisor.run(command, env=environment, on_stdout=fail)
     assert {thread.ident for thread in threading.enumerate()} == before
     assert supervisor.run(python_command("print('alive')"), env=environment).stdout == "alive" + os.linesep
 
 
 def test_decode_failure_terminates_and_reaps_launcher(environment: dict[str, str]) -> None:
     """Invalid output takes the same cleanup path as callback and deadline failures."""
+    supervisor = ProcessSupervisor()
+    command = python_command("import os,time;os.write(1,b'\\xff');time.sleep(20)")
     with pytest.raises(UnicodeDecodeError):
-        ProcessSupervisor().run(python_command("import os,time;os.write(1,b'\\xff');time.sleep(20)"), env=environment)
+        supervisor.run(command, env=environment)
 
 
 @pytest.mark.parametrize("permanent", [False, True])
@@ -163,8 +166,9 @@ def test_cancel_from_another_thread_and_sticky_close(environment: dict[str, str]
         assert len(errors) == 1
         assert isinstance(errors[0], SandboxError)
         if permanent:
+            command = python_command("print('must not run')")
             with pytest.raises(SandboxError, match="closed"):
-                supervisor.run(python_command("print('must not run')"), env=environment)
+                supervisor.run(command, env=environment)
         else:
             assert supervisor.run(python_command("print('reused')"), env=environment).stdout == "reused" + os.linesep
     finally:
@@ -228,12 +232,14 @@ def test_close_waits_for_inflight_creation_and_kills_late_launcher(
 def test_callback_cannot_reenter_supervisor(environment: dict[str, str]) -> None:
     """Reentry cannot replace the process handle used by cancellation."""
     supervisor = ProcessSupervisor()
+    command = python_command("import time;print('ready');time.sleep(20)")
+    nested_command = python_command("pass")
+
+    def reenter(_: str) -> None:
+        supervisor.run(nested_command, env=environment)
+
     with pytest.raises(SandboxError, match="already running"):
-        supervisor.run(
-            python_command("import time;print('ready');time.sleep(20)"),
-            env=environment,
-            on_stdout=lambda _: supervisor.run(python_command("pass"), env=environment),
-        )
+        supervisor.run(command, env=environment, on_stdout=reenter)
 
 
 def test_managed_process_supports_persistent_stdin_protocol(environment: dict[str, str]) -> None:
@@ -258,8 +264,9 @@ def test_resolver_ignores_relative_search_directories(tmp_path: Path, monkeypatc
     candidate.write_text("untrusted", encoding="utf-8")
     candidate.chmod(0o700)
     monkeypatch.chdir(tmp_path)
+    search_path = os.pathsep.join(["", ".", "relative"])
     with pytest.raises(MissingDependencyError):
-        resolve_executable(name, search_path=os.pathsep.join(["", ".", "relative"]))
+        resolve_executable(name, search_path=search_path)
     assert resolve_executable(sys.executable).is_absolute()
 
 
@@ -276,8 +283,10 @@ def test_resolver_rejects_batch_files(tmp_path: Path, extension: str) -> None:
 @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
 def test_invalid_timeout_rejected_before_process_creation(environment: dict[str, str], timeout: float) -> None:
     """Invalid deadlines never implicitly become unlimited execution."""
+    supervisor = ProcessSupervisor()
+    command = python_command("pass")
     with pytest.raises(ValueError, match="timeout"):
-        ProcessSupervisor().run(python_command("pass"), env=environment, timeout=timeout)
+        supervisor.run(command, env=environment, timeout=timeout)
 
 
 def test_job_assignment_failure_kills_launcher_before_return(
@@ -309,8 +318,9 @@ def test_job_assignment_failure_kills_launcher_before_return(
     monkeypatch.setattr(process_module, "_WINDOWS", True)
     monkeypatch.setattr(process_module, "_WindowsJob", RejectedJob)
     monkeypatch.setattr(process_module.subprocess, "Popen", spawn)
+    command = python_command("import time;time.sleep(20)")
     with pytest.raises(OSError, match="job assignment rejected"):
-        ManagedProcess(python_command("import time;time.sleep(20)"), env=environment)
+        ManagedProcess(command, env=environment)
     assert calls == ["assign", "job-close"]
     assert processes[0].poll() is not None
 

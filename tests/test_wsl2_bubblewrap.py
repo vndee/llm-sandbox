@@ -150,8 +150,9 @@ def test_nested_windows_mount_is_rejected(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("llm_sandbox.local.wsl_worker.read_only_mounts", lambda *_: (("/usr", "/usr"),))
     monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: "1 0 0:1 / /usr/shared rw - 9p C: rw\n")
     monkeypatch.setattr(Path, "resolve", lambda path, **_kwargs: path)
+    config = LocalSandboxConfig()
     with pytest.raises(SecurityError, match="shared filesystem"):
-        _validate_mounts(LocalSandboxConfig(), "/sandbox")
+        _validate_mounts(config, "/sandbox")
 
 
 def test_windows_launcher_environment_contains_no_host_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -170,8 +171,9 @@ def test_windows_tmp_mount_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("llm_sandbox.local.wsl_worker.read_only_mounts", lambda *_: ())
     monkeypatch.setattr(Path, "resolve", lambda path, **_kwargs: path)
     monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: "1 0 0:1 / /tmp rw - 9p C: rw\n")
+    config = LocalSandboxConfig()
     with pytest.raises(SecurityError, match="shared filesystem"):
-        _validate_mounts(LocalSandboxConfig(), "/sandbox")
+        _validate_mounts(config, "/sandbox")
 
 
 @pytest.mark.parametrize("filesystem", ["tmpfs", "9p"])
@@ -183,11 +185,12 @@ def test_exact_wsl_resolver_file_grant(monkeypatch: pytest.MonkeyPatch, filesyst
     monkeypatch.setattr(Path, "resolve", lambda path, **_kwargs: path)
     monkeypatch.setattr(Path, "is_file", lambda _: True)
     monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: f"1 0 0:1 / /mnt/wsl rw - {filesystem} none rw\n")
+    config = LocalSandboxConfig(network="host")
     if filesystem == "9p":
         with pytest.raises(SecurityError, match="shared filesystem"):
-            _validate_mounts(LocalSandboxConfig(network="host"), "/sandbox")
+            _validate_mounts(config, "/sandbox")
     else:
-        _validate_mounts(LocalSandboxConfig(network="host"), "/sandbox")
+        _validate_mounts(config, "/sandbox")
 
 
 def test_tmp_symlink_to_root_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -195,8 +198,9 @@ def test_tmp_symlink_to_root_is_rejected(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr("llm_sandbox.local.wsl_worker.read_only_mounts", lambda *_: ())
     monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: "")
     monkeypatch.setattr(Path, "resolve", lambda _path, **_kwargs: Path("/"))
+    config = LocalSandboxConfig()
     with pytest.raises(SecurityError, match="integration path"):
-        _validate_mounts(LocalSandboxConfig(), "/sandbox")
+        _validate_mounts(config, "/sandbox")
 
 
 def test_interop_bind_mount_beneath_runtime_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -204,8 +208,9 @@ def test_interop_bind_mount_beneath_runtime_is_rejected(monkeypatch: pytest.Monk
     monkeypatch.setattr("llm_sandbox.local.wsl_worker.read_only_mounts", lambda *_: (("/usr", "/usr"),))
     monkeypatch.setattr(Path, "resolve", lambda path, **_kwargs: path)
     monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: "1 0 0:1 / /usr/interop rw - tmpfs tmpfs rw\n")
+    config = LocalSandboxConfig()
     with pytest.raises(SecurityError, match="Nested runtime mounts"):
-        _validate_mounts(LocalSandboxConfig(), "/sandbox")
+        _validate_mounts(config, "/sandbox")
 
 
 def test_wsl_driver_mount_is_masked_readonly(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -251,11 +256,12 @@ def test_only_standard_wsl_driver_submount_is_exempted(monkeypatch: pytest.Monke
     monkeypatch.setattr("llm_sandbox.local.wsl_worker.read_only_mounts", lambda *_: (("/usr", "/usr"),))
     monkeypatch.setattr(Path, "resolve", lambda path, **_kwargs: path)
     monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: f"1 0 0:1 / {mountpoint} rw - 9p none rw\n")
+    config = LocalSandboxConfig()
     if mountpoint == "/usr/unrelated":
         with pytest.raises(SecurityError, match="shared filesystem"):
-            _validate_mounts(LocalSandboxConfig(), "/sandbox")
+            _validate_mounts(config, "/sandbox")
     else:
-        _validate_mounts(LocalSandboxConfig(), "/sandbox")
+        _validate_mounts(config, "/sandbox")
 
 
 def test_wsl1_preflight_fails_before_worker_launch(windows_launcher: None, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ARG001
@@ -264,8 +270,9 @@ def test_wsl1_preflight_fails_before_worker_launch(windows_launcher: None, monke
         "llm_sandbox.windows.process.ProcessSupervisor.run",
         lambda *_args, **_kwargs: ConsoleOutput(stdout="Ubuntu Running 1\n"),
     )
+    session = Wsl2BubblewrapSession(distribution="Ubuntu")
     with pytest.raises(MissingDependencyError, match="must use WSL2"):
-        Wsl2BubblewrapSession(distribution="Ubuntu").open()
+        session.open()
 
 
 @pytest.mark.parametrize("path", ["/mnt/c/secret", "../file", "/tmp/../etc/passwd", r"C:\secret", "//server/share"])
@@ -378,8 +385,9 @@ def test_protocol_rejects_unstructured_and_oversized_records(monkeypatch: pytest
     """A malformed worker cannot allocate unbounded input or impersonate a response."""
     monkeypatch.setattr("llm_sandbox.local.wsl_protocol.MAX_FRAME_BYTES", 32)
     for data in (b"not-json\n", b"[]\n", b"x" * 33, b"{}"):
+        pipe = io.BytesIO(data)
         with pytest.raises(SandboxError):
-            read_frame(io.BytesIO(data))
+            read_frame(pipe)
     with pytest.raises(SandboxError):
         encode_frame({"value": "x" * 50})
 
@@ -526,8 +534,9 @@ def test_real_wsl2_download_rejects_nonregular_or_linked_files(
     commands = {"symlink": "ln -s original target", "hardlink": "ln original target", "directory": "mkdir target"}
     assert real_wsl2.execute_command("printf private > original; " + commands[kind]).exit_code == 0
     destination = tmp_path / "download"
+    destination_path = str(destination)
     with pytest.raises(SecurityError):
-        real_wsl2.copy_from_runtime("target", str(destination))
+        real_wsl2.copy_from_runtime("target", destination_path)
     assert not destination.exists()
 
 

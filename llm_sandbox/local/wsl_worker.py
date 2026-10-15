@@ -53,6 +53,20 @@ def _wsl_driver_directory() -> Path | None:
     return path if path.exists() else None
 
 
+def _validate_runtime_source(source: str, destination: str, masked: Path | None) -> Path:
+    """Permit the exact Linux resolver file while rejecting integration directories."""
+    path = Path(source)
+    resolver = destination == "/etc/resolv.conf" and path.is_relative_to("/mnt/wsl") and path.is_file()
+    if (
+        path == Path("/")
+        or (masked is not None and path.is_relative_to(masked))
+        or (not resolver and (path.parts[1] in {"mnt", "run", "media"} or path == Path("/init")))
+    ):
+        msg = f"WSL host integration path cannot be mounted: {source}"
+        raise SecurityError(msg)
+    return path
+
+
 def _validate_mounts(config: LocalSandboxConfig, workdir: str) -> None:
     """Refuse indirect Windows mounts, including nested mounts beneath /usr."""
     mounts = read_only_mounts(config, workdir)
@@ -69,18 +83,11 @@ def _validate_mounts(config: LocalSandboxConfig, workdir: str) -> None:
             windows_mounts.append(mountpoint)
     # tempfile's root must also be backed by the guest, not a symlink or
     # administrator-provided bind mount of a Windows drive.
-    private_temp = str(Path("/tmp").resolve(strict=True))
+    guest_temp = "/tmp"  # NOSONAR(S5443) Validated below before mkdtemp allocates private guest state.
+    private_temp = str(Path(guest_temp).resolve(strict=True))
     masked = _wsl_driver_directory()
-    for source, destination in [*mounts, (private_temp, "/tmp")]:
-        path = Path(source)
-        resolver = destination == "/etc/resolv.conf" and path.is_relative_to("/mnt/wsl") and path.is_file()
-        if (
-            path == Path("/")
-            or (masked is not None and path.is_relative_to(masked))
-            or (not resolver and (path.parts[1] in {"mnt", "run", "media"} or path == Path("/init")))
-        ):
-            msg = f"WSL host integration path cannot be mounted: {source}"
-            raise SecurityError(msg)
+    for source, destination in [*mounts, (private_temp, guest_temp)]:
+        path = _validate_runtime_source(source, destination, masked)
         if any(
             path.is_relative_to(mount)
             or (mount.is_relative_to(path) and (masked is None or not mount.is_relative_to(masked)))

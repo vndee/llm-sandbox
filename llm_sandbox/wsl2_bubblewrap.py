@@ -107,12 +107,41 @@ def _runtime_path(path: str, workdir: str) -> str:
     if not path or "\0" in path or ".." in candidate.parts or "\\" in path or path.startswith("//"):
         msg = "Runtime paths must be Linux paths without traversal, backslashes or NUL"
         raise SecurityError(msg)
+    private_temp = PurePosixPath("/tmp")  # NOSONAR(S5443) Guest virtual path backed by the session's private directory.
     if candidate.is_absolute() and not (
-        candidate.is_relative_to(PurePosixPath(workdir)) or candidate.is_relative_to(PurePosixPath("/tmp"))
+        candidate.is_relative_to(PurePosixPath(workdir)) or candidate.is_relative_to(private_temp)
     ):
         msg = "Runtime path must stay inside the private workspace or /tmp"
         raise SecurityError(msg)
     return str(candidate)
+
+
+def _validate_session_options(config: SessionConfig, environment: dict[str, str]) -> None:
+    """Reject ambiguous guest paths, invalid deadlines and malformed explicit environment entries."""
+    workdir = PurePosixPath(config.workdir)
+    if (
+        re.fullmatch(r"/[A-Za-z0-9_./-]+", config.workdir) is None
+        or ".." in workdir.parts
+        or workdir == PurePosixPath("/")
+        or workdir.parts[1] in {"mnt", "run", "media", "proc", "dev", "sys", "tmp"}
+    ):
+        msg = "workdir must be an absolute private Linux path without traversal"
+        raise ValueError(msg)
+    for timeout in (config.default_timeout, config.execution_timeout, config.session_timeout):
+        if timeout is not None and (timeout <= 0 or not math.isfinite(timeout)):
+            msg = "Timeouts must be finite and positive, or None"
+            raise ValueError(msg)
+    for key, value in environment.items():
+        if (
+            not isinstance(key, str)
+            or not key
+            or "=" in key
+            or "\0" in key
+            or not isinstance(value, str)
+            or "\0" in value
+        ):
+            msg = "Invalid sandbox environment entry"
+            raise ValueError(msg)
 
 
 @dataclass
@@ -204,25 +233,29 @@ class _Transport:
             # closes a Windows CRT descriptor while its synchronous write holds it.
             self._writing.set()
             try:
-                pipe = self.process.stdin
-                if self.stopped.is_set() or pipe is None:
-                    raise NotOpenSessionError
-                data = memoryview(frame.data)
-                while data:
-                    if self.stopped.is_set():
-                        raise NotOpenSessionError
-                    written = pipe.write(data)
-                    if not written:
-                        msg = "WSL worker input closed"
-                        raise SandboxError(msg)
-                    data = data[written:]
-                pipe.flush()
+                self._write_frame(frame)
             except (OSError, ValueError, SandboxError) as exc:
                 frame.error = self._write_error = exc
                 return
             finally:
                 self._writing.clear()
                 frame.completed.set()
+
+    def _write_frame(self, frame: _OutboundFrame) -> None:
+        """Finish partial pipe writes while the writer owns the published busy state."""
+        pipe = self.process.stdin
+        if self.stopped.is_set() or pipe is None:
+            raise NotOpenSessionError
+        data = memoryview(frame.data)
+        while data:
+            if self.stopped.is_set():
+                raise NotOpenSessionError
+            written = pipe.write(data)
+            if not written:
+                msg = "WSL worker input closed"
+                raise SandboxError(msg)
+            data = data[written:]
+        pipe.flush()
 
     def _check_send(self, deadline: float | None) -> None:
         if self.stopped.is_set():
@@ -345,30 +378,7 @@ class Wsl2BubblewrapSession(BaseSession):
         if kwargs.get("workdir") is None:
             kwargs["workdir"] = "/sandbox"
         config = SessionConfig(**kwargs)
-        workdir = PurePosixPath(config.workdir)
-        if (
-            re.fullmatch(r"/[A-Za-z0-9_./-]+", config.workdir) is None
-            or ".." in workdir.parts
-            or workdir == PurePosixPath("/")
-            or workdir.parts[1] in {"mnt", "run", "media", "proc", "dev", "sys", "tmp"}
-        ):
-            msg = "workdir must be an absolute private Linux path without traversal"
-            raise ValueError(msg)
-        for value in (config.default_timeout, config.execution_timeout, config.session_timeout):
-            if value is not None and (value <= 0 or not math.isfinite(value)):
-                msg = "Timeouts must be finite and positive, or None"
-                raise ValueError(msg)
-        for key, value in self._explicit_env.items():
-            if (
-                not isinstance(key, str)
-                or not key
-                or "=" in key
-                or "\0" in key
-                or not isinstance(value, str)
-                or "\0" in value
-            ):
-                msg = "Invalid sandbox environment entry"
-                raise ValueError(msg)
+        _validate_session_options(config, self._explicit_env)
         validate_policy(self.sandbox_config, self._explicit_env)
         super().__init__(config, libraries=libraries)
         self._transport: _Transport | None = None
@@ -549,30 +559,40 @@ class Wsl2BubblewrapSession(BaseSession):
                     raise exceptions.get(str(message.get("error")), SandboxError)(
                         message.get("message", "WSL worker failed")
                     )
-                if (
-                    message.get("type") != "event"
-                    or message.get("stream") not in {"stdout", "stderr"}
-                    or not isinstance(message.get("data"), str)
-                ):
-                    msg = "Unexpected WSL worker response"
-                    raise SandboxError(msg)
-                chunk = message["data"]
+                chunk = self._event_chunk(message)
                 output_bytes += len(chunk.encode("utf-8", errors="surrogatepass"))
                 if output_bytes > self.sandbox_config.max_output_bytes * 4:
                     msg = "WSL output events exceeded the transport limit"
                     raise SandboxError(msg)
                 callback = on_stdout if message["stream"] == "stdout" else on_stderr
-                if callback is not None:
-                    self._in_callback = True
-                    try:
-                        callback(chunk)
-                    finally:
-                        self._in_callback = False
-                elif self.stream and self.verbose:
-                    self._log(chunk)
+                self._emit_output(chunk, callback)
         except BaseException:
             self._close_transport(transport)
             raise
+
+    @staticmethod
+    def _event_chunk(message: dict[str, Any]) -> str:
+        """Validate output records before counting or delivering their payload text."""
+        chunk = message.get("data")
+        if (
+            message.get("type") != "event"
+            or message.get("stream") not in {"stdout", "stderr"}
+            or not isinstance(chunk, str)
+        ):
+            msg = "Unexpected WSL worker response"
+            raise SandboxError(msg)
+        return chunk
+
+    def _emit_output(self, chunk: str, callback: StreamCallback | None) -> None:
+        """Run stream callbacks with the reentry guard restored even after an exception."""
+        if callback is not None:
+            self._in_callback = True
+            try:
+                callback(chunk)
+            finally:
+                self._in_callback = False
+        elif self.stream and self.verbose:
+            self._log(chunk)
 
     def execute_command(
         self,
@@ -696,8 +716,7 @@ class Wsl2BubblewrapSession(BaseSession):
     def _process_stream_output(
         self,
         output: Any,
-        on_stdout: StreamCallback | None = None,
-        on_stderr: StreamCallback | None = None,
+        on_stdout: StreamCallback | None = None,  # noqa: ARG002 # Preserve the BaseSession method signature.
+        on_stderr: StreamCallback | None = None,  # noqa: ARG002
     ) -> tuple[str, str]:
-        msg = "WSL output uses the framed worker protocol"
-        raise NotImplementedError(msg)
+        return self._process_non_stream_output(output)

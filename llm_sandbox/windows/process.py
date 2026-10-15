@@ -49,6 +49,24 @@ def _windows_error() -> OSError:
     return ctypes.WinError(ctypes.get_last_error())
 
 
+def _executable_candidates(path: Path, search_path: str | None) -> list[Path]:
+    """Plan absolute candidates without treating the current directory as a search grant."""
+    if path.is_absolute():
+        return [path]
+    if path.parent != Path():
+        msg = "An explicit launcher path must be absolute"
+        raise ValueError(msg)
+    names = [str(path)]
+    if _WINDOWS and not path.suffix:
+        names = [str(path) + ".exe", str(path) + ".com"]
+    return [
+        Path(directory) / name
+        for directory in (search_path if search_path is not None else os.environ.get("PATH", "")).split(os.pathsep)
+        if directory and Path(directory).is_absolute()
+        for name in names
+    ]
+
+
 def resolve_executable(executable: str | Path, *, search_path: str | None = None) -> Path:
     """Resolve a regular executable without implicitly searching the current directory.
 
@@ -60,23 +78,7 @@ def resolve_executable(executable: str | Path, *, search_path: str | None = None
     if not value or "\0" in value:
         msg = "Launcher executable must be a nonempty path without NUL"
         raise ValueError(msg)
-    path = Path(value)
-    if path.is_absolute():
-        candidates = [path]
-    elif path.parent != Path():
-        msg = "An explicit launcher path must be absolute"
-        raise ValueError(msg)
-    else:
-        names = [value]
-        if _WINDOWS and not path.suffix:
-            names = [value + ".exe", value + ".com"]
-        candidates = [
-            Path(directory) / name
-            for directory in (search_path if search_path is not None else os.environ.get("PATH", "")).split(os.pathsep)
-            if directory and Path(directory).is_absolute()
-            for name in names
-        ]
-    for candidate in candidates:
+    for candidate in _executable_candidates(Path(value), search_path):
         try:
             resolved = candidate.resolve(strict=True)
         except OSError:
@@ -476,15 +478,20 @@ class ProcessSupervisor:
                 if total > self.max_output_bytes:
                     msg = f"Native process output exceeded {self.max_output_bytes} bytes"
                     raise SandboxError(msg)
-                decoded = decoders[name].decode(chunk, final=not chunk)
-                if decoded:
-                    buffers[name].append(decoded)
-                    callback = callbacks[name]
-                    if callback is not None:
-                        callback(decoded)
+                self._append_output(chunk, decoders[name], buffers[name], callbacks[name])
                 if not chunk:
                     remaining -= 1
             self._check_run(state, deadline)
             return ConsoleOutput(process.wait(), stderr="".join(buffers["stderr"]), stdout="".join(buffers["stdout"]))
         finally:
             pump.close()
+
+    @staticmethod
+    def _append_output(
+        chunk: bytes, decoder: codecs.IncrementalDecoder, buffer: list[str], callback: StreamCallback | None
+    ) -> None:
+        decoded = decoder.decode(chunk, final=not chunk)
+        if decoded:
+            buffer.append(decoded)
+            if callback is not None:
+                callback(decoded)
