@@ -40,6 +40,7 @@ jobs:
         run: uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
       - name: Install the current pure wheel for version metadata
         id: install-package
+        # External dependencies are locked above; install only this checkout's wheel offline.
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
             build_python=.venv/Scripts/python.exe
@@ -47,7 +48,7 @@ jobs:
             build_python=.venv/bin/python
           fi
           "$build_python" -m hatchling build -t wheel
-          uv pip install --no-deps --no-build dist/*-py3-none-any.whl
+          uv pip install --offline --no-deps --no-build dist/*-py3-none-any.whl
       - name: Run portable API, protocol, policy and wheel tests
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
@@ -56,6 +57,7 @@ jobs:
             test_python=.venv/bin/python
           fi
           "$test_python" -m pytest -q -m 'not integration' \
+            --cov=llm_sandbox --cov-config=pyproject.toml --cov-report=xml:coverage-adapters.xml \
             tests/test_backend_registry.py tests/test_const.py \
             tests/test_windows_mxc.py tests/test_wsl2_bubblewrap.py tests/test_wsl2_transport.py \
             tests/test_windows_process.py tests/test_windows_files.py tests/test_windows_wheel.py
@@ -65,7 +67,25 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           .venv/Scripts/python.exe .github/scripts/require_native_integration.py \
-            tests/test_windows_process.py tests/test_windows_files.py -m integration -ra
+            tests/test_windows_process.py tests/test_windows_files.py -m integration -ra \
+            --cov=llm_sandbox --cov-append --cov-config=pyproject.toml --cov-report=xml:coverage-adapters.xml
+      - name: Retain adapter and native Win32 coverage
+        if: ${{ !cancelled() && hashFiles('coverage-adapters.xml') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-adapters-${{ matrix.os }}
+          path: coverage-adapters.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload adapter and native Win32 coverage to Codecov
+        if: ${{ !cancelled() && hashFiles('coverage-adapters.xml') != '' }}
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          files: coverage-adapters.xml
+          disable_search: true
+          name: adapters-${{ matrix.os }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   helper-wheel:
     name: Windows helper and wheel (${{ matrix.platform }})
@@ -153,7 +173,7 @@ jobs:
       - name: Install the wheel and resolve its bundled helper without a source checkout import
         run: |
           $wheel = Get-ChildItem dist/*.whl | Select-Object -ExpandProperty FullName
-          uv pip install --no-deps --no-build $wheel
+          uv pip install --offline --no-deps --no-build $wheel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .venv/Scripts/python.exe -I -c "from llm_sandbox import SandboxSession; SandboxSession(backend='windows-mxc', skip_environment_setup=True); print('Installed wheel resolves its bundled helper')"
       - name: Require native PSEC tests if this ephemeral host supports it
@@ -161,7 +181,24 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
           LLM_SANDBOX_RUN_MXC_INTEGRATION: "1"
-        run: .venv/Scripts/python.exe .github/scripts/require_native_integration.py tests/test_windows_mxc.py -m integration -ra
+        run: .venv/Scripts/python.exe .github/scripts/require_native_integration.py tests/test_windows_mxc.py -m integration -ra --cov=llm_sandbox --cov-config=pyproject.toml --cov-report=xml:coverage-mxc.xml
+      - name: Retain actual PSEC enforcement coverage
+        if: ${{ !cancelled() && hashFiles('coverage-mxc.xml') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-mxc-${{ matrix.platform }}
+          path: coverage-mxc.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload actual PSEC enforcement coverage to Codecov
+        if: ${{ !cancelled() && hashFiles('coverage-mxc.xml') != '' }}
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          files: coverage-mxc.xml
+          disable_search: true
+          name: native-mxc-${{ matrix.platform }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload reviewable wheel, licenses and checksums
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

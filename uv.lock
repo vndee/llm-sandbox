@@ -1579,6 +1579,7 @@ dev = [
 native-tests = [
     { name = "hatchling" },
     { name = "pytest" },
+    { name = "pytest-cov" },
 ]
 
 [package.metadata]
@@ -1626,6 +1627,7 @@ dev = [
 native-tests = [
     { name = "hatchling", specifier = ">=1.27,<2" },
     { name = "pytest", specifier = ">=7.2.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
 ]
 
 [[package]]

@@ -53,7 +53,7 @@ jobs:
           .venv/Scripts/python.exe -m hatchling build -t wheel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $wheel = Get-ChildItem dist/*-py3-none-any.whl | Select-Object -ExpandProperty FullName
-          uv pip install --no-deps --no-build $wheel
+          uv pip install --offline --no-deps --no-build $wheel
       - name: Build the helper from pinned source
         run: |
           rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
@@ -109,7 +109,7 @@ jobs:
           .venv/Scripts/python.exe -m hatchling build -t wheel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $wheel = Get-ChildItem dist/*-py3-none-any.whl | Select-Object -ExpandProperty FullName
-          uv pip install --no-deps --no-build $wheel
+          uv pip install --offline --no-deps --no-build $wheel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file guest-requirements.txt
       - name: Install the current wheel into a private Linux filesystem venv

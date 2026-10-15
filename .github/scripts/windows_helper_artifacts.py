@@ -1,4 +1,10 @@
-"""Collect pinned dependency notices and verify actual Windows wheel artifacts."""
+"""Collect pinned dependency notices and verify actual Windows wheel artifacts.
+
+This standalone build tool is not exposed through the sandbox, MCP, or an agent
+tool API. Paths are trusted CI/operator inputs, including Cargo and Rust source
+directories outside the checkout. It runs with the builder's existing filesystem
+permissions; payload code and sandbox requests never supply these arguments.
+"""
 
 # ruff: noqa: INP001 -- Standalone CI entry point.
 
