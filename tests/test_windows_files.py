@@ -265,6 +265,8 @@ def test_native_junctions_rejected_and_cleaned_without_following(native_root: Pa
     link = sandbox / "junction"
     _junction(link, outside)
     with pytest.raises(SecurityError, match="Reparse"):
+        files.safe_remove_tree(link)
+    with pytest.raises(SecurityError, match="Reparse"):
         files.safe_read_file(link / "marker", 100)
     with pytest.raises(SecurityError, match="Reparse"):
         files.safe_mkdir(link / "new")
@@ -444,6 +446,7 @@ def test_trusted_hardlink_opt_in_never_allows_reparse(monkeypatch: pytest.Monkey
             {r"C:\DESTIN~1": 2, r"C:\destination-long": 2, r"C:\DESTIN~1\source": 3},
         ),
         (r"C:\long-file", r"C:\LONG-F~1", {r"C:\long-file": 2, r"C:\LONG-F~1": 2}),
+        ("C:\\", r"D:\output", {"D:\\": 1}),
     ],
 )
 def test_native_identities_reject_alias_overlap(
@@ -561,3 +564,306 @@ def test_native_competing_file_is_never_overwritten(native_root: Path, monkeypat
     with pytest.raises(FileExistsError):
         files.safe_write_file(target, b"replacement")
     assert target.read_bytes() == b"competing file"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Checks the native library loader guard")
+def test_direct_library_loader_rejects_non_windows() -> None:
+    """Calling the loader directly cannot bypass the native-host requirement."""
+    with pytest.raises(MissingDependencyError, match="native Windows"):
+        files._windows_library("kernel32")
+
+
+@pytest.mark.parametrize("max_bytes", [0, -1])
+def test_read_requires_a_positive_byte_budget(max_bytes: int) -> None:
+    """An ineffective artifact budget is refused before opening any host file."""
+    with pytest.raises(ValueError, match="positive"):
+        files.safe_read_file(Path(r"C:\artifact"), max_bytes)
+
+
+@pytest.mark.parametrize(
+    ("source", "destination"),
+    [(r"C:\tree", r"c:\TREE"), (r"C:\tree", r"C:\tree\child"), (r"C:\tree\child", r"C:\tree")],
+)
+def test_copy_rejects_textual_overlap_without_io(source: str, destination: str) -> None:
+    """Same paths and ancestor relationships cannot delete the input or recurse into output."""
+    with pytest.raises(SecurityError, match="overlap"):
+        files.safe_copy(Path(source), Path(destination))
+
+
+def test_cleanup_cannot_remove_a_drive_root() -> None:
+    """Even an otherwise valid host path cannot authorize volume-root cleanup."""
+    with pytest.raises(SecurityError, match="drive root"):
+        files.safe_remove_tree(Path("C:\\"))
+
+
+@pytest.mark.parametrize("prefix", ["", ".", r"nested\prefix", "nested/prefix"])
+def test_private_workspace_prefix_cannot_select_another_directory(monkeypatch: pytest.MonkeyPatch, prefix: str) -> None:
+    """Workspace names cannot become empty names, current directories, or nested paths."""
+    monkeypatch.setattr(files, "_api", Mock())
+    creator = Mock()
+    monkeypatch.setattr(files, "_create_directory", creator)
+    with pytest.raises(SecurityError, match="single Windows filename"):
+        files.PrivateWorkspace(prefix=prefix)
+    creator.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["query_size", "read_token", "convert_sid"])
+def test_token_query_failure_closes_acquired_token(monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
+    """Failures while constructing a private ACL release the token without using a guessed SID."""
+    kernel, security = Mock(), Mock()
+    kernel.GetCurrentProcess.return_value = 1
+    expected = PermissionError("injected token query failure")
+
+    def open_token(_process: int, _access: int, destination: Any) -> int:
+        ctypes.cast(destination, ctypes.POINTER(ctypes.c_void_p))[0] = 77
+        return 1
+
+    def query_token(_token: Any, _kind: int, buffer: Any, _size: Any, size_out: Any) -> int:
+        if buffer is None:
+            ctypes.cast(size_out, ctypes.POINTER(ctypes.c_uint32))[0] = 0 if failure == "query_size" else 16
+            return 0
+        if failure == "read_token":
+            return 0
+        ctypes.cast(buffer, ctypes.POINTER(ctypes.c_void_p))[0] = 123
+        return 1
+
+    security.OpenProcessToken.side_effect = open_token
+    security.GetTokenInformation.side_effect = query_token
+    security.ConvertSidToStringSidW.return_value = 0
+    monkeypatch.setattr(files, "_api", lambda: SimpleNamespace(kernel=kernel, security=security))
+    monkeypatch.setattr(files, "_windows_error", lambda: expected)
+    with pytest.raises(PermissionError, match="token query") as caught:
+        files._current_user_sid()
+    assert caught.value is expected
+    assert kernel.CloseHandle.call_args.args[0].value == 77
+    kernel.LocalFree.assert_not_called()
+    if failure != "convert_sid":
+        security.ConvertSidToStringSidW.assert_not_called()
+
+
+def test_private_acl_failure_never_creates_unprotected_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Failure to build the protected DACL prevents creation rather than falling back to inheritance."""
+    kernel, security = Mock(), Mock()
+    security.ConvertStringSecurityDescriptorToSecurityDescriptorW.return_value = 0
+    monkeypatch.setattr(files, "_api", lambda: SimpleNamespace(kernel=kernel, security=security))
+    monkeypatch.setattr(files, "_current_user_sid", lambda: "S-1-5-21-1-2-3-1000")
+    expected = PermissionError("injected ACL conversion failure")
+    monkeypatch.setattr(files, "_windows_error", lambda: expected)
+    with pytest.raises(PermissionError, match="ACL conversion"):
+        files._create_directory(PureWindowsPath(r"C:\private"))
+    kernel.CreateDirectoryW.assert_not_called()
+
+
+def test_metadata_query_failure_releases_open_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A handle whose identity cannot be checked is closed and never exposed to callers."""
+    kernel = _mock_kernel(monkeypatch)
+    kernel.GetFileInformationByHandle.side_effect = None
+    kernel.GetFileInformationByHandle.return_value = 0
+    with pytest.raises(OSError), files._open_entry(PureWindowsPath(r"C:\unverified")):  # noqa: PT011
+        pytest.fail("An unverified handle was returned")
+    kernel.CloseHandle.assert_called_once_with(17)
+
+
+@pytest.mark.parametrize("progress", [0, 2])
+def test_native_write_progress_is_required_and_partial_writes_are_completed(
+    monkeypatch: pytest.MonkeyPatch, progress: int
+) -> None:
+    """A short WriteFile result cannot lose bytes, and a zero-byte result cannot spin indefinitely."""
+    kernel = _mock_kernel(monkeypatch)
+    received = bytearray()
+
+    def write_file(_handle: int, data: bytes, requested: int, count: Any, _overlapped: Any) -> int:
+        written = min(progress, requested)
+        received.extend(data[:written])
+        ctypes.cast(count, ctypes.POINTER(ctypes.c_uint32))[0] = written
+        return 1
+
+    kernel.WriteFile.side_effect = write_file
+    entry = files._Entry(17, files._FileInfo())
+    if not progress:
+        with pytest.raises(OSError, match="no progress"):
+            files._write_all(entry, [b"payload"])
+        assert not received
+    else:
+        files._write_all(entry, [b"first", b"", b"second"])
+        assert received == b"firstsecond"
+
+
+def test_read_budget_is_enforced_beyond_initial_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Extra data returned after the size check still cannot escape the artifact byte limit."""
+    kernel = _mock_kernel(monkeypatch)
+    chunks = iter([b"abc", b"def"])
+
+    @contextmanager
+    def pinned_parent(_path: PureWindowsPath) -> Iterator[None]:
+        yield None
+
+    def read_file(_handle: int, buffer: Any, _requested: int, count: Any, _overlapped: Any) -> int:
+        data = next(chunks)
+        ctypes.memmove(buffer, data, len(data))
+        ctypes.cast(count, ctypes.POINTER(ctypes.c_uint32))[0] = len(data)
+        return 1
+
+    kernel.ReadFile.side_effect = read_file
+    monkeypatch.setattr(files, "_pin_directory", pinned_parent)
+    with pytest.raises(SandboxError, match="4-byte limit"):
+        files.safe_read_file(Path(r"C:\artifact"), 4)
+    kernel.CloseHandle.assert_called_once_with(17)
+
+
+@pytest.mark.integration
+@_WINDOWS
+def test_native_file_parent_and_directory_output_refused(native_root: Path) -> None:
+    """Transfers never traverse a regular-file parent or replace a directory with file bytes."""
+    parent = native_root / "file-parent"
+    parent.write_bytes(b"untouched")
+    with pytest.raises(SecurityError, match="Expected a directory"):
+        files.safe_mkdir(parent / "child")
+    with pytest.raises(SecurityError, match="expected directory"):
+        files.safe_remove_tree(parent)
+    directory = native_root / "directory-output"
+    files.safe_mkdir(directory)
+    with pytest.raises(SecurityError, match="replace a directory"):
+        files.safe_write_file(directory, b"replacement")
+    assert parent.read_bytes() == b"untouched"
+    assert directory.is_dir()
+    assert list(directory.iterdir()) == []
+
+
+@pytest.mark.integration
+@_WINDOWS
+@pytest.mark.parametrize("is_directory", [False, True])
+def test_native_existing_type_must_match_requested_type(native_root: Path, is_directory: bool) -> None:
+    """Trusted validation still rejects an entry of the wrong requested kind."""
+    path = native_root / "entry"
+    if is_directory:
+        files.safe_mkdir(path)
+    else:
+        files.safe_write_file(path, b"untouched")
+    with pytest.raises(SecurityError, match="Unexpected filesystem entry type"):
+        files.validate_existing(path, directory=not is_directory)
+    files.validate_existing(path, directory=is_directory)
+    assert path.is_dir() == is_directory
+
+
+@pytest.mark.integration
+@_WINDOWS
+def test_native_destination_tree_links_refused_before_copy(native_root: Path) -> None:
+    """Merging cannot retain an unsafe junction already present in the destination tree."""
+    source, destination, outside = (native_root / name for name in ("source", "destination", "outside"))
+    files.safe_write_file(source / "new", b"source")
+    files.safe_write_file(outside / "marker", b"untouched")
+    files.safe_mkdir(destination)
+    _junction(destination / "retained-link", outside)
+    with pytest.raises(SecurityError, match="Reparse"):
+        files.safe_copy(source, destination)
+    assert not (destination / "new").exists()
+    assert (outside / "marker").read_bytes() == b"untouched"
+
+
+@pytest.mark.integration
+@_WINDOWS
+def test_native_ambiguous_child_name_refused_before_copy(native_root: Path) -> None:
+    """Literal NTFS trailing-dot entries cannot become different Win32 destination names."""
+    source, destination = native_root / "source", native_root / "destination"
+    files.safe_mkdir(source)
+    ambiguous = Path(files._native_path(PureWindowsPath(str(source / "trailing."))))
+    ambiguous.write_bytes(b"payload")
+    with pytest.raises(SecurityError, match="Unsafe Windows path component"):
+        files.safe_copy(source, destination)
+    assert ambiguous.read_bytes() == b"payload"
+    assert not destination.exists()
+
+
+@pytest.mark.integration
+@_WINDOWS
+def test_native_cleanup_rechecks_identity_before_final_unlink(
+    native_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replacement after walking the root is preserved by the final handle identity check."""
+    root, moved = native_root / "root", native_root / "moved"
+    files.safe_write_file(root / "payload", b"content")
+    remove_entry = files._remove_entry
+
+    def replace_before_unlink(path: PureWindowsPath, expected: tuple[int, int, int] | None = None) -> None:
+        if path == files.validate_host_path(root) and expected is not None:
+            root.rename(moved)
+            root.mkdir()
+            (root / "marker").write_bytes(b"not-owned")
+        remove_entry(path, expected)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(files, "_remove_entry", replace_before_unlink)
+        with pytest.raises(SecurityError, match="replaced before cleanup"):
+            files.safe_remove_tree(root)
+    assert (root / "marker").read_bytes() == b"not-owned"
+    assert moved.is_dir()
+    assert not (moved / "payload").exists()
+
+
+@pytest.mark.integration
+@_WINDOWS
+def test_native_workspace_name_collision_preserves_existing_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A random-name collision retries creation without adopting or deleting the existing owner."""
+    prefix = "llm-sandbox-collision-"
+    original = files.PrivateWorkspace(prefix=prefix)
+    existing = Path(original.name)
+    marker = existing / "marker"
+    files.safe_write_file(marker, b"untouched")
+    fresh_token = files.secrets.token_hex(16)
+    tokens = Mock(side_effect=[existing.name[len(prefix) :], fresh_token])
+    replacement = None
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(files.secrets, "token_hex", tokens)
+            replacement = files.PrivateWorkspace(prefix=prefix)
+        assert replacement.name != original.name
+        assert marker.read_bytes() == b"untouched"
+        assert tokens.call_count == 2
+        replacement.cleanup()
+        assert marker.read_bytes() == b"untouched"
+    finally:
+        if replacement is not None:
+            replacement.cleanup()
+        original.cleanup()
+
+
+@pytest.mark.parametrize("invalid", [None, ctypes.c_void_p(-1).value])
+def test_invalid_native_handle_never_reaches_metadata_or_close(
+    monkeypatch: pytest.MonkeyPatch, invalid: int | None
+) -> None:
+    """A failed native open cannot become a usable entry or an invalid CloseHandle call."""
+    kernel = _mock_kernel(monkeypatch)
+    kernel.CreateFileW.return_value = invalid
+    with pytest.raises(OSError), files._open_entry(PureWindowsPath(r"C:\missing")):  # noqa: PT011
+        pytest.fail("An invalid native handle was returned")
+    kernel.GetFileInformationByHandle.assert_not_called()
+    kernel.CloseHandle.assert_not_called()
+
+
+@pytest.mark.integration
+@_WINDOWS
+def test_native_partial_cleanup_failure_keeps_original_write_error(
+    native_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup failure never masks the failed transfer or writes through a different host object."""
+    target, retained = native_root / "target", native_root / "retained"
+    files.safe_write_file(target, b"old")
+    files.safe_write_file(retained, b"untouched")
+    write_all = files._write_all
+    original = OSError("injected original write failure")
+    cleanup_error = PermissionError("injected cleanup refusal")
+    with monkeypatch.context() as patch:
+
+        def fail_after_partial(entry: files._Entry, _chunks: Any) -> None:
+            write_all(entry, [b"partial"])
+            patch.setattr(files, "_delete", Mock(side_effect=cleanup_error))
+            raise original
+
+        patch.setattr(files, "_write_all", fail_after_partial)
+        with pytest.raises(OSError, match="original write failure") as caught:
+            files.safe_write_file(target, b"replacement")
+    assert caught.value is original
+    assert target.read_bytes() == b"partial"
+    assert _private_acl(target) == {"S-1-5-18", files._current_user_sid()}
+    assert retained.read_bytes() == b"untouched"

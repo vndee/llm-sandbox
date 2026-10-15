@@ -1,9 +1,9 @@
 """Collect pinned dependency notices and verify actual Windows wheel artifacts.
 
-This standalone build tool is not exposed through the sandbox, MCP, or an agent
-tool API. Paths are trusted CI/operator inputs, including Cargo and Rust source
-directories outside the checkout. It runs with the builder's existing filesystem
-permissions; payload code and sandbox requests never supply these arguments.
+The CLI accepts operations, supported architectures and a commit ID, never paths.
+Artifact locations are fixed within this checkout. License sources come from
+locked Cargo metadata and the pinned Rust toolchain, with canonical containment
+checks before reading them. Custom Cargo/Rust installation directories still work.
 """
 
 # ruff: noqa: INP001 -- Standalone CI entry point.
@@ -11,12 +11,17 @@ permissions; payload code and sandbox requests never supply these arguments.
 import argparse
 import hashlib
 import json
+import os
+import re
 import shutil
+import subprocess  # nosec B404 # Pinned build tools use explicit argv and shell=False.
 import zipfile
 from pathlib import Path
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[2]
+_TARGETS = {"win_amd64": "x86_64-pc-windows-msvc", "win_arm64": "aarch64-pc-windows-msvc"}
+_NOTICES = "THIRD_PARTY_NOTICES.txt"
 _LICENSE_NAMES = ("LICENSE", "LICENCE", "COPYING", "COPYRIGHT", "NOTICE")
 _SUPPLEMENTAL = {
     ("flatbuffers", "25.12.19"): "flatbuffers-25.12.19.txt",
@@ -25,50 +30,116 @@ _SUPPLEMENTAL = {
 }
 
 
-def license_files(package: dict[str, Any]) -> list[Path]:
+def within(path: Path, root: Path) -> Path:
+    """Reject traversal and symlinks outside an explicitly allowed source root."""
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root.resolve()):
+        msg = f"Build path escapes its allowed root: {path}"
+        raise ValueError(msg)
+    return resolved
+
+
+def repository_path(relative: str) -> Path:
+    """Resolve a fixed artifact location without following links out of the checkout."""
+    return within(_ROOT / relative, _ROOT)
+
+
+def crate_scope(package: dict[str, Any], cargo_home: Path) -> tuple[Path, Path]:
+    """Constrain registry crates and Git packages to their resolved source archive."""
+    manifest = Path(package["manifest_path"]).resolve(strict=True)
+    source = package.get("source")
+    if source is None:
+        if manifest != repository_path("native/windows-mxc/Cargo.toml"):
+            msg = "Unexpected local Cargo package"
+            raise ValueError(msg)
+        return manifest.parent, _ROOT
+    if source.startswith("registry+"):
+        cache = within(cargo_home / "registry/src", cargo_home)
+    elif source.startswith("git+"):
+        cache = within(cargo_home / "git/checkouts", cargo_home)
+    else:
+        msg = f"Unsupported Cargo source: {source}"
+        raise ValueError(msg)
+    manifest = within(manifest, cache)
+    relative = manifest.relative_to(cache)
+    if len(relative.parts) < 3 or manifest.name != "Cargo.toml":  # noqa: PLR2004 -- Cache owner, revision, manifest.
+        msg = f"Unexpected Cargo cache layout: {manifest}"
+        raise ValueError(msg)
+    scope = cache / relative.parts[0] / relative.parts[1]
+    return manifest.parent, scope
+
+
+def license_files(package: dict[str, Any], cargo_home: Path) -> list[Path]:
     """Find crate notices, allowing pinned supplements for incomplete archives."""
-    manifest = Path(package["manifest_path"])
-    root = manifest.parent
+    root, scope = crate_scope(package, cargo_home)
     files: list[Path] = []
     if package.get("license_file"):
-        files.append(root / package["license_file"])
-    for directory in (root, *list(root.parents)[:5]):
+        files.append(within(root / package["license_file"], scope))
+    for directory in (root, *root.parents):
+        if not directory.is_relative_to(scope):
+            break
         found = [
-            entry for entry in directory.iterdir() if entry.is_file() and entry.name.upper().startswith(_LICENSE_NAMES)
+            within(entry, scope)
+            for entry in directory.iterdir()
+            if entry.is_file() and entry.name.upper().startswith(_LICENSE_NAMES)
         ]
         if found:
             files.extend(sorted(found))
             break
     supplement = _SUPPLEMENTAL.get((package["name"], package["version"]))
     if supplement:
-        files.append(_ROOT / ".github" / "licenses" / supplement)
+        files.append(repository_path(f".github/licenses/{supplement}"))
         # Preserve the crate's own copyright header alongside the full license.
-        files.append(root / "src" / "lib.rs")
+        files.append(within(root / "src/lib.rs", scope))
     if not files:
         msg = f"Missing license text for {package['name']} {package['version']}"
         raise ValueError(msg)
     return list(dict.fromkeys(files))
 
 
-def collect_notices(metadata_path: Path, output: Path, rust_sysroot: Path) -> None:
+def tool_output(command: list[str]) -> str:
+    """Read a fixed tool invocation; no CLI argument becomes a shell command."""
+    # Callers use pinned tools and allowlisted target constants, never a command from the CLI.
+    return subprocess.run(  # noqa: S603 # nosec B603
+        command, cwd=_ROOT, shell=False, check=True, capture_output=True, text=True, encoding="utf-8", timeout=120
+    ).stdout.strip()
+
+
+def collect_notices(platform: str) -> None:
     """Write license text from the exact Cargo-resolved sources without fetching."""
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
+    target = _TARGETS[platform]
+    metadata = json.loads(
+        tool_output([
+            "cargo",
+            "+1.93.0",
+            "metadata",
+            "--locked",
+            "--offline",
+            "--format-version",
+            "1",
+            "--filter-platform",
+            target,
+            "--manifest-path",
+            "native/windows-mxc/Cargo.toml",
+        ])
+    )
+    cargo_home = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")).resolve(strict=True)
+    rust_sysroot = Path(tool_output(["rustc", "+1.93.0", "--print", "sysroot"])).resolve(strict=True)
     sections = ["Windows MXC helper dependency notices. Includes build-time dependencies.\n"]
-    rust_notices = rust_sysroot / "share/doc/rust/COPYRIGHT-library.html"
+    rust_notices = within(rust_sysroot / "share/doc/rust/COPYRIGHT-library.html", rust_sysroot)
     sections.append("\nRust standard library notices (upstream HTML):\n" + rust_notices.read_text(encoding="utf-8"))
     for package in sorted(metadata["packages"], key=lambda item: (item["name"], item["version"])):
         sections.append(
             f"\n{'=' * 72}\n{package['name']} {package['version']}\n"
             f"License: {package.get('license')}\nSource: {package.get('source') or 'this repository'}\n"
         )
-        for license_file in license_files(package):
+        for license_file in license_files(package, cargo_home):
             content = license_file.read_text(encoding="utf-8")
             if license_file.name == "lib.rs":
                 # Only copyright/license comments precede the first Rust item.
                 content = content.split("#!", 1)[0].split("//!", 1)[0]
             sections.append(f"\n--- {license_file.name} ---\n{content}\n")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("".join(sections), encoding="utf-8")
+    repository_path(_NOTICES).write_text("".join(sections), encoding="utf-8")
 
 
 def digest(path: Path) -> str:
@@ -76,13 +147,39 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def verify_wheel(binary: Path, notices: Path, platform: str, commit: str, destination: Path) -> None:
-    """Validate wheel contents, then write checksums and a build receipt."""
-    wheels = list(destination.glob("*.whl"))
-    if len(wheels) != 1 or not wheels[0].name.endswith(f"-py3-none-{platform}.whl"):
-        msg = f"Expected exactly one py3-none-{platform} wheel: {wheels}"
+def wheel_path() -> Path:
+    """Require a single wheel with a filename safe for a requirements entry."""
+    wheels = list(repository_path("dist").glob("*.whl"))
+    if len(wheels) != 1 or not re.fullmatch(
+        r"llm_sandbox-[A-Za-z0-9_.!+]+-py3-none-(?:any|win_amd64|win_arm64)\.whl", wheels[0].name
+    ):
+        msg = f"Expected exactly one llm-sandbox wheel: {wheels}"
         raise ValueError(msg)
-    wheel = wheels[0]
+    return within(wheels[0], repository_path("dist"))
+
+
+def write_install_requirements() -> None:
+    """Pin the local wheel's version and bytes for an offline hash-checked install."""
+    wheel = wheel_path()
+    version = wheel.name.split("-")[1]
+    repository_path("dist/wheel-requirements.txt").write_text(
+        f"llm-sandbox=={version} --hash=sha256:{digest(wheel)}\n", encoding="utf-8"
+    )
+
+
+def verify_wheel(platform: str, commit: str) -> None:
+    """Validate wheel contents, then write checksums and a build receipt."""
+    target = _TARGETS[platform]
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        msg = "Expected a full lowercase Git commit ID"
+        raise ValueError(msg)
+    binary = repository_path(f"native/windows-mxc/target/{target}/release/llm-sandbox-mxc.exe")
+    notices = repository_path(_NOTICES)
+    destination = repository_path("dist")
+    wheel = wheel_path()
+    if not wheel.name.endswith(f"-py3-none-{platform}.whl"):
+        msg = f"Expected a py3-none-{platform} wheel: {wheel}"
+        raise ValueError(msg)
     with zipfile.ZipFile(wheel) as archive:
         if archive.read("llm_sandbox/bin/llm-sandbox-mxc.exe") != binary.read_bytes():
             msg = "Wheel helper differs from the built executable"
@@ -95,25 +192,25 @@ def verify_wheel(binary: Path, notices: Path, platform: str, commit: str, destin
         if "Root-Is-Purelib: false" not in metadata or f"Tag: py3-none-{platform}" not in metadata:
             msg = "Native helper wheel has incorrect installation metadata"
             raise ValueError(msg)
-    shutil.copyfile(_ROOT / "LICENSE", destination / "LICENSE")
-    if notices.resolve() != (destination / "THIRD_PARTY_NOTICES.txt").resolve():
-        shutil.copyfile(notices, destination / "THIRD_PARTY_NOTICES.txt")
+    shutil.copyfile(repository_path("LICENSE"), repository_path("dist/LICENSE"))
+    shutil.copyfile(notices, repository_path(f"dist/{_NOTICES}"))
     receipt = {
         "source_commit": commit,
         "platform": platform,
         "helper_sha256": digest(binary),
         "wheel": wheel.name,
         "wheel_sha256": digest(wheel),
-        "cargo_lock_sha256": digest(_ROOT / "native/windows-mxc/Cargo.lock"),
+        "cargo_lock_sha256": digest(repository_path("native/windows-mxc/Cargo.lock")),
         "native_enforcement": "Not established by building; see the Windows native enforcement workflow.",
     }
-    (destination / "BUILD_RECEIPT.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    repository_path("dist/BUILD_RECEIPT.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    write_install_requirements()
     checksums = "".join(
-        f"{digest(path)}  {path.name}\n"
+        f"{digest(within(path, destination))}  {path.name}\n"
         for path in sorted(destination.iterdir())
         if path.is_file() and path.name != "SHA256SUMS"
     )
-    (destination / "SHA256SUMS").write_text(checksums, encoding="utf-8")
+    repository_path("dist/SHA256SUMS").write_text(checksums, encoding="utf-8")
 
 
 def main() -> None:
@@ -121,20 +218,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="operation", required=True)
     notices_parser = subcommands.add_parser("notices")
-    notices_parser.add_argument("metadata", type=Path)
-    notices_parser.add_argument("output", type=Path)
-    notices_parser.add_argument("rust_sysroot", type=Path)
+    notices_parser.add_argument("platform", choices=tuple(_TARGETS))
     verify_parser = subcommands.add_parser("verify")
-    verify_parser.add_argument("binary", type=Path)
-    verify_parser.add_argument("notices", type=Path)
-    verify_parser.add_argument("platform", choices=("win_amd64", "win_arm64"))
+    verify_parser.add_argument("platform", choices=tuple(_TARGETS))
     verify_parser.add_argument("commit")
-    verify_parser.add_argument("destination", type=Path)
+    subcommands.add_parser("install-requirements")
     args = parser.parse_args()
     if args.operation == "notices":
-        collect_notices(args.metadata, args.output, args.rust_sysroot)
+        collect_notices(args.platform)
+    elif args.operation == "verify":
+        verify_wheel(args.platform, args.commit)
     else:
-        verify_wheel(args.binary, args.notices, args.platform, args.commit, args.destination)
+        write_install_requirements()
 
 
 if __name__ == "__main__":

@@ -52,8 +52,9 @@ jobs:
           Remove-Item Env:LLM_SANDBOX_MXC_NOTICES -ErrorAction SilentlyContinue
           .venv/Scripts/python.exe -m hatchling build -t wheel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $wheel = Get-ChildItem dist/*-py3-none-any.whl | Select-Object -ExpandProperty FullName
-          uv pip install --offline --no-deps --no-build $wheel
+          .venv/Scripts/python.exe .github/scripts/windows_helper_artifacts.py install-requirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv pip install --offline --no-deps --no-build --no-index --find-links dist --require-hashes -r dist/wheel-requirements.txt
       - name: Build the helper from pinned source
         run: |
           rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
@@ -108,8 +109,9 @@ jobs:
           Remove-Item Env:LLM_SANDBOX_MXC_NOTICES -ErrorAction SilentlyContinue
           .venv/Scripts/python.exe -m hatchling build -t wheel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $wheel = Get-ChildItem dist/*-py3-none-any.whl | Select-Object -ExpandProperty FullName
-          uv pip install --offline --no-deps --no-build $wheel
+          .venv/Scripts/python.exe .github/scripts/windows_helper_artifacts.py install-requirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv pip install --offline --no-deps --no-build --no-index --find-links dist --require-hashes -r dist/wheel-requirements.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file guest-requirements.txt
       - name: Install the current wheel into a private Linux filesystem venv
@@ -120,7 +122,9 @@ jobs:
           $distro = $env:LLM_SANDBOX_WSL2_DISTRO
           $wheel = Get-ChildItem dist/*-py3-none-any.whl | Select-Object -ExpandProperty FullName
           if (@($wheel).Count -ne 1) { throw "Expected exactly one pure wheel" }
-          $guestWheel = & $wsl --distribution $distro --exec wslpath -a $wheel
+          $guestWheelRequirements = & $wsl --distribution $distro --exec wslpath -a (Resolve-Path dist/wheel-requirements.txt).Path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $guestWheelDirectory = & $wsl --distribution $distro --exec wslpath -a (Resolve-Path dist).Path
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $requirements = (Resolve-Path guest-requirements.txt).Path
           $guestRequirements = & $wsl --distribution $distro --exec wslpath -a $requirements
@@ -133,7 +137,7 @@ jobs:
           $guestPython = "$guestVenv/bin/python"
           & $wsl --distribution $distro --exec $guestPython -m pip install --only-binary=:all: --require-hashes -r $guestRequirements
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $wsl --distribution $distro --exec $guestPython -m pip install --no-deps --only-binary=:all: $guestWheel
+          & $wsl --distribution $distro --exec $guestPython -m pip install --no-deps --only-binary=:all: --no-index --find-links $guestWheelDirectory --require-hashes -r $guestWheelRequirements
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "LLM_SANDBOX_WSL2_PYTHON=$guestPython" >> $env:GITHUB_ENV
       - name: Run native security and lifecycle tests; reject every skip

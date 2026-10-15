@@ -12,6 +12,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest.mock import Mock
 
@@ -19,7 +20,9 @@ import pytest
 
 from llm_sandbox.data import ConsoleOutput
 from llm_sandbox.exceptions import (
+    CommandEmptyError,
     MissingDependencyError,
+    NotOpenSessionError,
     SandboxError,
     SandboxTimeoutError,
     SecurityError,
@@ -34,6 +37,7 @@ from llm_sandbox.wsl2_bubblewrap import (
     _distribution_version,
     _launcher_environment,
     _runtime_path,
+    _wsl_executable,
 )
 
 if TYPE_CHECKING:
@@ -443,6 +447,341 @@ def test_callback_exception_closes_guest(fake_transport: type[FakeTransport], er
         sandbox.execute_command("echo", on_stdout=fail)
     assert fake_transport.instances[-1].closed
     assert not sandbox.is_open
+
+
+@pytest.mark.parametrize(("pointer_bytes", "native_present"), [(8, True), (4, True), (4, False)])
+def test_wsl_launcher_uses_system_api_not_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pointer_bytes: int, native_present: bool
+) -> None:
+    """Both native and WOW64 clients resolve only the trusted Windows system launcher."""
+    system = tmp_path / "System32"
+    system.mkdir()
+    (system / "wsl.exe").touch()
+    native = tmp_path / "Sysnative" / "wsl.exe"
+    if native_present:
+        native.parent.mkdir()
+        native.touch()
+
+    def system_directory(buffer: Any, _length: int) -> int:
+        buffer.value = str(system)
+        return len(str(system))
+
+    kernel = Mock(GetSystemDirectoryW=Mock(side_effect=system_directory))
+    monkeypatch.setattr("llm_sandbox.wsl2_bubblewrap.sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr("llm_sandbox.wsl2_bubblewrap.ctypes.WinDLL", lambda *_args, **_kwargs: kernel, raising=False)
+    monkeypatch.setattr("llm_sandbox.wsl2_bubblewrap.ctypes.sizeof", lambda _: pointer_bytes)
+    monkeypatch.setenv("PATH", str(tmp_path / "untrusted"))
+    expected = native if pointer_bytes == 4 and native_present else system / "wsl.exe"
+    assert _wsl_executable() == expected
+    kernel.GetSystemDirectoryW.assert_called_once()
+
+
+@pytest.mark.parametrize("failure", ["api_error", "truncated", "missing_launcher"])
+def test_wsl_launcher_resolution_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
+    """A broken system API or absent wsl.exe never falls back to a caller-provided PATH."""
+
+    def system_directory(buffer: Any, length: int) -> int:
+        buffer.value = str(tmp_path / "System32")
+        return {"api_error": 0, "truncated": length, "missing_launcher": len(buffer.value)}[failure]
+
+    kernel = Mock(GetSystemDirectoryW=Mock(side_effect=system_directory))
+    monkeypatch.setattr("llm_sandbox.wsl2_bubblewrap.sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr("llm_sandbox.wsl2_bubblewrap.ctypes.WinDLL", lambda *_args, **_kwargs: kernel, raising=False)
+    with pytest.raises(MissingDependencyError):
+        _wsl_executable()
+
+
+@pytest.mark.parametrize(
+    ("options", "exception"),
+    [
+        ({"workdir": "/"}, ValueError),
+        ({"workdir": "/mnt/private"}, ValueError),
+        ({"workdir": "/sandbox/../escape"}, ValueError),
+        ({"default_timeout": 0}, ValueError),
+        ({"execution_timeout": float("inf")}, ValueError),
+        ({"session_timeout": float("nan")}, ValueError),
+        ({"env_vars": {"": "value"}}, ValueError),
+        ({"env_vars": {"KEY": "value\0"}}, ValueError),
+        ({"env_vars": {"KEY": 1}}, ValueError),
+        ({"image": "container:latest"}, ValueError),
+        ({"unrecognized_option": True}, TypeError),
+    ],
+)
+def test_invalid_client_policy_fails_before_worker_creation(
+    fake_transport: type[FakeTransport], options: dict[str, Any], exception: type[Exception]
+) -> None:
+    """Path, deadline, environment and backend-option mistakes cannot reach guest execution."""
+    with pytest.raises(exception):
+        Wsl2BubblewrapSession(distribution="Ubuntu", **options)
+    assert not fake_transport.instances
+
+
+def test_client_api_preserves_operation_data_and_file_limits(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The Windows boundary receives bounded bytes while commands/install stay in guest RPC."""
+    payload = b"input\x00bytes"
+    read = Mock(return_value=payload)
+    write = Mock()
+    monkeypatch.setattr("llm_sandbox.windows.files.safe_read_file", read)
+    monkeypatch.setattr("llm_sandbox.windows.files.safe_write_file", write)
+    original = fake_transport.send
+
+    def respond(self: FakeTransport, message: dict[str, Any], *, deadline: float | None = None) -> None:
+        original(self, message, deadline=deadline)
+        if message["op"] == "get":
+            self.responses[-1]["value"] = base64.b64encode(payload).decode("ascii")
+
+    monkeypatch.setattr(fake_transport, "send", respond)
+    config = LocalSandboxConfig(max_artifact_bytes=32, env={"ALLOWED": "yes"})
+    with Wsl2BubblewrapSession(
+        distribution="Ubuntu",
+        sandbox_config=config,
+        workdir="/workspace",
+        env_vars={"EXPLICIT": "value"},
+        default_timeout=None,
+    ) as session:
+        output = session.run("print('guest')", libraries=["example"], timeout=5)
+        assert output.exit_code == 0
+        session.execute_command("pwd", workdir="/workspace/subdir")
+        session.install(["example"])
+        session.copy_to_runtime(str(tmp_path / "input"), "/tmp/input")
+        session.copy_from_runtime("output", str(tmp_path / "output"))
+        session._ensure_directory_exists("subdir")
+        session._ensure_ownership(["subdir", "/tmp/input"])
+        requests = fake_transport.instances[-1].sent
+        assert [request["op"] for request in requests] == ["open", "run", "execute", "install", "put", "get", "mkdir"]
+        assert requests[1]["params"] == {"code": "print('guest')", "libraries": ["example"], "timeout": 5}
+        assert requests[4]["params"] == {"path": "/tmp/input", "data": base64.b64encode(payload).decode("ascii")}
+        assert requests[0]["params"]["env_vars"] == {"EXPLICIT": "value"}
+        read.assert_called_once_with((tmp_path / "input").absolute(), 32)
+        write.assert_called_once_with((tmp_path / "output").absolute(), payload)
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
+def test_invalid_per_run_timeout_does_not_reach_worker(fake_transport: type[FakeTransport], timeout: float) -> None:
+    """Validation errors before dispatch leave an otherwise usable session open."""
+    with Wsl2BubblewrapSession(distribution="Ubuntu") as session:
+        with pytest.raises(ValueError, match="timeout"):
+            session.run("pass", timeout=timeout)
+        assert [message["op"] for message in fake_transport.instances[-1].sent] == ["open"]
+        assert session.is_open
+
+
+def test_closed_session_and_unsupported_paths_cannot_execute(fake_transport: type[FakeTransport]) -> None:
+    """Closed sessions and container-only adapter hooks never start a worker or host fallback."""
+    session = Wsl2BubblewrapSession(distribution="Ubuntu")
+    with pytest.raises(NotOpenSessionError):
+        session.execute_command("true")
+    with pytest.raises(CommandEmptyError):
+        session.execute_command("")
+    with pytest.raises(NotOpenSessionError):
+        session._rpc("get", {"path": "input"})
+    with pytest.raises(NotImplementedError):
+        session._connect_to_existing_container("old-container")
+    with pytest.raises(NotImplementedError):
+        session._process_stream_output(b"unframed output")
+    assert not fake_transport.instances
+
+
+def test_timer_closes_only_its_own_session_generation(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late old timer must not cancel a freshly reopened worker."""
+    timers: list[Mock] = []
+
+    def make_timer(interval: float, function: Any, args: tuple[Any, ...]) -> Mock:
+        timer = Mock(interval=interval, function=function, args=args)
+        timers.append(timer)
+        return timer
+
+    monkeypatch.setattr("llm_sandbox.wsl2_bubblewrap.threading.Timer", make_timer)
+    session = Wsl2BubblewrapSession(distribution="Ubuntu", session_timeout=5)
+    session.open()
+    session.open()
+    assert len(fake_transport.instances) == 1
+    first = fake_transport.instances[0]
+    timers[0].function(*timers[0].args)
+    assert first.closed
+    assert not session.is_open
+    timers[0].cancel.assert_called_once()
+    session.open()
+    timers[0].function(*timers[0].args)
+    assert session.is_open
+    assert not fake_transport.instances[1].closed
+    session._handle_timeout()
+    assert not session.is_open
+    assert fake_transport.instances[1].closed
+
+
+def test_close_during_completed_open_cannot_publish_live_session(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cancellation after the guest open reply still wins over host session publication."""
+    session = Wsl2BubblewrapSession(distribution="Ubuntu")
+    original = fake_transport.send
+
+    def cancel(self: FakeTransport, message: dict[str, Any], *, deadline: float | None = None) -> None:
+        original(self, message, deadline=deadline)
+        if message["op"] == "open":
+            session.close()
+
+    monkeypatch.setattr(fake_transport, "send", cancel)
+    with pytest.raises(NotOpenSessionError):
+        session.open()
+    assert fake_transport.instances[-1].closed
+    assert not session.is_open
+
+
+def test_stream_callback_reentry_closes_worker(fake_transport: type[FakeTransport]) -> None:
+    """Reentrant callbacks cannot interleave a second operation with an active command."""
+    with Wsl2BubblewrapSession(distribution="Ubuntu") as session:
+
+        def reenter(_: str) -> None:
+            session.execute_command("nested")
+
+        with pytest.raises(SandboxError, match="reentered"):
+            session.execute_command("echo", on_stdout=reenter)
+        assert not session.is_open
+        assert fake_transport.instances[-1].closed
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+@pytest.mark.usefixtures("windows_launcher")
+def test_distribution_probe_validates_result_and_releases_supervisor(
+    monkeypatch: pytest.MonkeyPatch, exit_code: int
+) -> None:
+    """Successful and failing WSL queries both release their owned process supervisor."""
+    probe = Mock()
+    probe.run.return_value = ConsoleOutput(exit_code=exit_code, stdout="Ubuntu Running 2\n")
+    monkeypatch.setattr("llm_sandbox.windows.process.ProcessSupervisor", lambda **_kwargs: probe)
+    session = Wsl2BubblewrapSession(distribution="Ubuntu")
+    if exit_code:
+        with pytest.raises(MissingDependencyError, match="must use WSL2"):
+            session._verify_distribution()
+    else:
+        session._verify_distribution()
+    assert probe.run.call_args.args[0][-2:] == ["--list", "--verbose"]
+    probe.close.assert_called_once()
+    assert session._startup_probe is None
+
+
+@pytest.mark.usefixtures("windows_launcher")
+def test_cancellation_reaches_active_distribution_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A close during the real preflight path cancels the probe and prevents worker construction."""
+    probe = Mock()
+    worker = Mock()
+    session = Wsl2BubblewrapSession(distribution="Ubuntu")
+
+    def query(*_args: Any, **_kwargs: Any) -> ConsoleOutput:
+        session.close()
+        return ConsoleOutput(stdout="Ubuntu Running 2\n")
+
+    probe.run.side_effect = query
+    monkeypatch.setattr("llm_sandbox.windows.process.ProcessSupervisor", lambda **_kwargs: probe)
+    monkeypatch.setattr("llm_sandbox.wsl2_bubblewrap._Transport", worker)
+    with pytest.raises(NotOpenSessionError):
+        session.open()
+    assert probe.close.call_count == 2
+    worker.assert_not_called()
+    assert not session.is_open
+    assert session._startup_probe is None
+
+
+@pytest.mark.usefixtures("windows_launcher")
+def test_already_cancelled_startup_never_runs_distribution_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preflight respects cancellation even before a native process is created."""
+    probe = Mock()
+    monkeypatch.setattr("llm_sandbox.windows.process.ProcessSupervisor", lambda **_kwargs: probe)
+    session = Wsl2BubblewrapSession(distribution="Ubuntu")
+    session._opening_cancelled = threading.Event()
+    session._opening_cancelled.set()
+    with pytest.raises(NotOpenSessionError):
+        session._verify_distribution()
+    probe.run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"type": "unknown", "stream": "stdout", "data": "text"},
+        {"type": "event", "stream": "unknown", "data": "text"},
+        {"type": "event", "stream": "stdout", "data": 42},
+    ],
+)
+def test_invalid_output_event_closes_session(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch, event: dict[str, Any]
+) -> None:
+    """Invalid event envelopes cannot become user-visible output or keep a worker alive."""
+    original = fake_transport.send
+
+    def respond(self: FakeTransport, message: dict[str, Any], *, deadline: float | None = None) -> None:
+        original(self, message, deadline=deadline)
+        if message["op"] == "run":
+            self.responses[0] = {"id": message["id"], **event}
+
+    monkeypatch.setattr(fake_transport, "send", respond)
+    with Wsl2BubblewrapSession(distribution="Ubuntu") as session:
+        with pytest.raises(SandboxError, match="Unexpected WSL worker response"):
+            session.run("pass")
+        assert not session.is_open
+        assert fake_transport.instances[-1].closed
+
+
+def test_excessive_output_events_cancel_worker(fake_transport: type[FakeTransport]) -> None:
+    """The host independently caps events even if a mismatching peer ignores its own limit."""
+    delivered: list[str] = []
+    with Wsl2BubblewrapSession(distribution="Ubuntu", sandbox_config=LocalSandboxConfig(max_output_bytes=1)) as session:
+        with pytest.raises(SandboxError, match="transport limit"):
+            session.run("pass", on_stdout=delivered.append)
+        assert delivered == []
+        assert not session.is_open
+        assert fake_transport.instances[-1].closed
+
+
+def test_streaming_routes_stderr_and_logs_without_callback(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verbose streaming and stderr callbacks receive only their decoded event data."""
+    original = fake_transport.send
+
+    def respond(self: FakeTransport, message: dict[str, Any], *, deadline: float | None = None) -> None:
+        original(self, message, deadline=deadline)
+        if message["op"] == "execute" and message["params"]["command"] == "stderr":
+            self.responses[0]["stream"] = "stderr"
+
+    monkeypatch.setattr(fake_transport, "send", respond)
+    logs: list[str] = []
+    errors: list[str] = []
+    with Wsl2BubblewrapSession(distribution="Ubuntu", stream=True, verbose=True) as session:
+        monkeypatch.setattr(session, "_log", logs.append)
+        session.execute_command("stdout")
+        session.execute_command("stderr", on_stderr=errors.append)
+    assert logs == ['{"type":"hello"}\n']
+    assert errors == logs
+
+
+def test_oversized_download_never_reaches_windows_write_boundary(
+    fake_transport: type[FakeTransport], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A peer returning too much file data cannot bypass the host artifact limit."""
+    write = Mock()
+    monkeypatch.setattr("llm_sandbox.windows.files.safe_write_file", write)
+    original = fake_transport.send
+
+    def respond(self: FakeTransport, message: dict[str, Any], *, deadline: float | None = None) -> None:
+        original(self, message, deadline=deadline)
+        if message["op"] == "get":
+            self.responses[-1]["value"] = base64.b64encode(b"oversized").decode("ascii")
+
+    monkeypatch.setattr(fake_transport, "send", respond)
+    destination = str(tmp_path / "never-published")
+    session = Wsl2BubblewrapSession(distribution="Ubuntu", sandbox_config=LocalSandboxConfig(max_artifact_bytes=4))
+    with session, pytest.raises(SandboxError, match="artifact limit"):
+        session.copy_from_runtime("result", destination)
+    write.assert_not_called()
 
 
 def test_protocol_rejects_unstructured_and_oversized_records(monkeypatch: pytest.MonkeyPatch) -> None:

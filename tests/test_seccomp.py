@@ -145,6 +145,45 @@ def test_rule_error_releases_context(native_library: ctypes.CDLL, monkeypatch: p
     release.assert_called_once()
 
 
+def test_context_allocation_failure_never_yields_a_filter(
+    native_library: ctypes.CDLL, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Out-of-memory initialization cannot degrade into an empty or absent filter."""
+    release = Mock(wraps=native_library.seccomp_release)
+    monkeypatch.setattr(native_library, "seccomp_init", Mock(return_value=None))
+    monkeypatch.setattr(native_library, "seccomp_release", release)
+    monkeypatch.setattr(seccomp, "_load_libseccomp", lambda: native_library)
+    policy = SeccompPolicy()
+    with pytest.raises(SecurityError, match="allocate"), compile_seccomp(policy):
+        pytest.fail("Allocation failure must not yield a descriptor")
+    release.assert_not_called()
+
+
+@pytest.mark.parametrize("size", [0, 7, 32776])
+def test_invalid_filter_export_releases_native_memory_and_descriptor(
+    native_library: ctypes.CDLL, monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    """Empty, misaligned and over-limit programs are refused even after successful native export."""
+    descriptors: list[int] = []
+
+    def invalid_export(_context: int, fd: int) -> int:
+        descriptors.append(fd)
+        os.ftruncate(fd, size)
+        return 0
+
+    release = Mock(wraps=native_library.seccomp_release)
+    monkeypatch.setattr(native_library, "seccomp_release", release)
+    monkeypatch.setattr(native_library, "seccomp_export_bpf", invalid_export)
+    monkeypatch.setattr(seccomp, "_load_libseccomp", lambda: native_library)
+    policy = SeccompPolicy()
+    with pytest.raises(SecurityError, match="invalid or oversized"), compile_seccomp(policy):
+        pytest.fail("An invalid filter must not reach a launcher")
+    release.assert_called_once()
+    assert len(descriptors) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        os.fstat(descriptors[0])
+
+
 @pytest.mark.usefixtures("native_library")
 def test_descriptor_closes_on_consumer_exception() -> None:
     """Descriptors are rewound for the child and closed even if launch fails."""

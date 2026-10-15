@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -20,7 +21,7 @@ from llm_sandbox.exceptions import SandboxError
 from llm_sandbox.local import wsl_worker
 from llm_sandbox.local.config import LocalSandboxConfig
 from llm_sandbox.local.session import LocalProcessSession
-from llm_sandbox.local.wsl_protocol import encode_frame, read_frame
+from llm_sandbox.local.wsl_protocol import MAX_CONTENT_BYTES, encode_frame, read_frame, validate_policy
 from llm_sandbox.local.wsl_worker import Worker, _GuestSession
 from llm_sandbox.security import SecurityPolicy
 from tests.test_local_session import TrustedTestSession
@@ -80,6 +81,16 @@ class WorkerPeer:
             raise message
         assert message is not None, "Worker exited before returning the expected response"
         return message
+
+    def expect_stdout(self, expected: str) -> None:
+        """Accumulate decoded events without assuming pipe reads align with print calls."""
+        received = ""
+        while len(received) < len(expected):
+            event = self.receive()
+            assert event["type"] == "event"
+            assert event["stream"] == "stdout"
+            received += event["data"]
+        assert received == expected
 
     def request(self, operation: str, params: Any, request_id: int = 1) -> list[dict[str, Any]]:
         """Collect streamed events and the matching terminal response."""
@@ -209,7 +220,7 @@ def test_transport_failure_cleans_an_active_command(trusted_worker: WorkerPeer, 
     peer = trusted_worker
     workspace = peer.open()
     peer.send({"id": 2, "op": "run", "params": {"code": "import time;print('ready',flush=True);time.sleep(30)"}})
-    assert peer.receive()["data"] == "ready\n"
+    peer.expect_stdout("ready\n")
     if termination == "eof":
         peer.input.close()
     elif termination == "malformed":
@@ -231,7 +242,7 @@ def test_heartbeats_preserve_active_work_then_missing_lease_cleans_it(
     peer = trusted_worker
     workspace = peer.open()
     peer.send({"id": 2, "op": "run", "params": {"code": "import time;print('ready',flush=True);time.sleep(30)"}})
-    assert peer.receive()["data"] == "ready\n"
+    peer.expect_stdout("ready\n")
     monkeypatch.setattr(wsl_worker, "LEASE_SECONDS", 0.2)
     for _ in range(12):
         peer.send({"op": "heartbeat"})
@@ -273,3 +284,72 @@ def test_startup_cancellation_never_leaves_a_private_workspace(
     assert worker.stopped.is_set()
     assert not created[0].is_open
     assert created[0]._workspace_temp is None
+
+
+def test_commands_require_an_open_session_and_cannot_replace_it(trusted_worker: WorkerPeer) -> None:
+    """Pre-open commands and a second open are protocol errors, preserving the existing lifecycle."""
+    error = trusted_worker.request("run", {"code": "print('must not run')"})[-1]
+    assert error["type"] == "error"
+    assert "not open" in error["message"]
+    workspace = trusted_worker.open()
+    duplicate = trusted_worker.request("open", {"sandbox_config": {}})[-1]
+    assert duplicate["type"] == "error"
+    assert "second session" in duplicate["message"]
+    assert trusted_worker.worker.session is not None
+    assert trusted_worker.worker.session.workspace == workspace
+
+
+def test_worker_output_ends_cleanly_when_the_peer_rejects_writes() -> None:
+    """Zero-byte writes must fail immediately instead of retrying a closed transport forever."""
+
+    class ClosedOutput(io.BytesIO):
+        def write(self, _data: Any) -> int:
+            return 0
+
+    worker = Worker(io.BytesIO(), ClosedOutput())
+    with pytest.raises(SandboxError, match="output pipe closed"):
+        worker.send({"type": "result", "id": 1})
+
+
+def test_output_frames_flush_and_late_callbacks_are_rejected() -> None:
+    """A successful frame remains intact, and cancellation prevents any subsequent payload event."""
+    outgoing = io.BytesIO()
+    worker = Worker(io.BytesIO(), outgoing)
+    message = {"type": "event", "data": "first\nsecond"}
+    worker.send(message)
+    assert outgoing.getvalue() == encode_frame(message)
+    emit = worker._callback(3, "stdout")
+    worker.stop()
+    with pytest.raises(SandboxError, match="closed during execution"):
+        emit("late payload")
+    assert outgoing.getvalue() == encode_frame(message)
+
+
+@pytest.mark.parametrize("setting", ["max_artifact_bytes", "max_output_bytes"])
+def test_worker_policy_rejects_limits_larger_than_its_protocol(setting: str) -> None:
+    """A valid local policy cannot promise output or artifacts that the remote protocol cannot carry."""
+    config = LocalSandboxConfig(**{setting: MAX_CONTENT_BYTES + 1})
+    with pytest.raises(ValueError, match="cannot exceed"):
+        validate_policy(config, {})
+
+
+def test_cli_startup_failure_uses_stderr_without_corrupting_control_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unsupported guest hosts exit with one diagnostic and no protocol-shaped success response."""
+    output = io.BytesIO()
+    diagnostic = io.StringIO()
+    monkeypatch.setattr(wsl_worker.platform, "release", lambda: "6.0-generic")
+    monkeypatch.setattr(
+        wsl_worker,
+        "sys",
+        SimpleNamespace(
+            platform="linux",
+            stdin=SimpleNamespace(buffer=io.BytesIO()),
+            stdout=SimpleNamespace(buffer=output),
+            stderr=diagnostic,
+        ),
+    )
+    with pytest.raises(SystemExit) as failure:
+        wsl_worker.main()
+    assert failure.value.code == 1
+    assert "requires the Microsoft WSL2" in diagnostic.getvalue()
+    assert output.getvalue() == b""

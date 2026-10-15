@@ -226,17 +226,22 @@ class WindowsMxcSession(BaseSession):
                 self._closing = False
             owner = PrivateWorkspace()
             workspace = Path(owner.name)
+            # Keep ownership before fallible setup so failed cleanup remains retryable.
+            with self._state_lock:
+                self._workspace_owner = owner
+                self.workspace = workspace
             try:
                 safe_mkdir(workspace / _HOME_DIRECTORY)
                 safe_mkdir(workspace / ".tmp")
-            except BaseException:
-                owner.cleanup()
+            except BaseException as error:
+                try:
+                    self.close()
+                except Exception as cleanup_error:
+                    raise error from cleanup_error
                 raise
             with self._state_lock:
                 cancelled = self._closing
                 if not cancelled:
-                    self._workspace_owner = owner
-                    self.workspace = workspace
                     self.config.workdir = str(workspace)
                     self.container = workspace
                     self.is_open = True
@@ -245,7 +250,7 @@ class WindowsMxcSession(BaseSession):
                         encoding_errors=self.config.encoding_errors,
                     )
             if cancelled:
-                owner.cleanup()
+                self.close()
                 raise NotOpenSessionError
             self._start_session_timer()
             try:
