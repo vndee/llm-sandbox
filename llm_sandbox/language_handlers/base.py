@@ -31,7 +31,7 @@ if TYPE_CHECKING:
             ...
 
 
-from llm_sandbox.exceptions import CommandFailedError, PackageManagerError
+from llm_sandbox.exceptions import CommandFailedError, PackageManagerError, SecurityError
 
 
 class PlotLibrary(Enum):
@@ -204,7 +204,7 @@ class AbstractLanguageHandler(ABC):
 
                 return self._extract_plot_content(tar, target_member, file_path)
 
-        except (OSError, tarfile.TarError, ValueError):
+        except (OSError, tarfile.TarError, ValueError, SecurityError):
             self.logger.exception("Error extracting single plot")
 
         return None

@@ -1,0 +1,6 @@
+self-hosted-runner:
+  labels:
+    - llm-sandbox-windows-mxc
+    - llm-sandbox-wsl2
+    # GitHub-hosted ARM64 label added after actionlint 1.7.7's built-in list.
+    - windows-11-arm

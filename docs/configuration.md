@@ -2,6 +2,161 @@
 
 This guide covers all configuration options available in LLM Sandbox.
 
+## Local Linux Configuration
+
+Select `backend="bubblewrap"` or `backend="nsjail"` and pass `sandbox_config=LocalSandboxConfig(...)`. These adapters use host toolchains and a private writable workspace instead of a container image. The Python package is sufficient on the library side; install the [system prerequisites](backends.md#requirements) separately.
+
+```python
+from llm_sandbox import LocalSandboxConfig, SandboxSession
+
+config = LocalSandboxConfig(
+    network="none",
+    cpu_time_limit=10,
+    file_size_limit=64 * 1024 * 1024,
+    open_files_limit=256,
+    max_output_bytes=1024 * 1024,
+)
+
+with SandboxSession(
+    backend="bubblewrap",  # Or "nsjail"
+    lang="python",
+    sandbox_config=config,
+    execution_timeout=20.0,
+) as session:
+    result = session.run("print('Offline local execution')")
+    print(result.stdout)
+```
+
+`LocalSandboxConfig` rejects unknown fields. Its fields are:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `network` | `"none"` | Isolated network; `"host"` explicitly grants full host networking |
+| `read_only_paths` | `/usr`, `/bin`, `/lib`, `/lib64`, `/etc/ld.so.cache`, `/etc/alternatives` | Host runtime paths exposed read-only at the same sandbox paths |
+| `seccomp` | `SeccompPolicy()` | Syscall denylist; `None` explicitly disables this layer |
+| `python_executable` | `"/usr/bin/python3"` | Absolute interpreter path available inside the sandbox |
+| `env` | `{}` | Explicit environment additions; host environment variables are not inherited |
+| `max_output_bytes` | `8388608` | Captured command output cap in bytes |
+| `max_artifact_bytes` | `8388608` | Maximum regular-file payload for each extracted artifact, before archive overhead |
+| `memory_limit_bytes` | `None` | Per-process virtual address-space limit in bytes |
+| `cpu_time_limit` | `None` | Per-process CPU-time limit in seconds |
+| `file_size_limit` | `None` | Per-file size limit in bytes |
+| `open_files_limit` | `None` | Per-process open file descriptor limit; minimum 16 |
+
+Resource limits require `prlimit` from util-linux. They are POSIX process limits inherited by descendants, not aggregate cgroup quotas. In particular, a memory limit applies to virtual address space and may need to be much larger for Java or JavaScript than expected resident memory usage. `max_artifact_bytes` is per extracted file, not a combined limit across all plots. There is no session disk quota or process-count limit in this configuration.
+
+Local sessions default to `default_timeout=60.0`; `execution_timeout`, `session_timeout`, and per-`run()` timeouts remain available. Session-level `env_vars` entries override matching keys in `sandbox_config.env`. These values apply inside the sandbox; the trusted launcher receives a separate minimal environment. You can select a trusted launcher outside `PATH` with `bwrap_path` or `nsjail_path` on the matching session. Relative launcher paths are resolved when the session is constructed, before execution switches to the private workspace.
+
+### Runtime Paths and Workspace
+
+The default workspace is `/sandbox` inside the sandbox. `workdir` changes its sandbox location, not the host directory being granted. Only the library's private session workspace and temporary directory are writable on the host; copy input/output files with `copy_to_runtime()` and `copy_from_runtime()`. A separate private directory is mounted at `/tmp` and persists across commands in the session. It does not expose the host's `/tmp`.
+
+`read_only_paths` replaces the default list when supplied. Mounts must be absolute and must not overlap the workspace. Host root, virtual filesystems, and temporary directories cannot be exposed this way. Optional missing default paths are skipped for distribution compatibility; a missing caller-specified path raises an error.
+
+NsJail requires its new mount API to enforce read-only access recursively, including nested host mounts. Missing binary or kernel support fails explicitly. It also supplies a private 64 MiB tmpfs at `/dev/shm` for each command; shared-memory contents do not persist into the next invocation.
+
+With `network="host"`, the adapters also expose existing resolver and TLS trust paths read-only: `/etc/resolv.conf`, `/etc/hosts`, `/etc/nsswitch.conf`, `/etc/services`, `/etc/protocols`, `/etc/ssl/certs`, `/etc/ssl/openssl.cnf`, `/etc/pki/ca-trust`, `/etc/pki/tls/certs`, `/etc/pki/tls/cert.pem`, and `/etc/pki/tls/openssl.cnf`. Resolver symlinks expose their specific resolved file, not its containing host directory.
+
+To add a runtime installed under `/opt`, keep the defaults and explicitly expose its directory:
+
+```python
+from llm_sandbox import LocalSandboxConfig
+from llm_sandbox.local.config import DEFAULT_READ_ONLY_PATHS
+
+config = LocalSandboxConfig(
+    read_only_paths=(*DEFAULT_READ_ONLY_PATHS, "/opt/my-python"),
+    python_executable="/opt/my-python/bin/python3",
+)
+```
+
+That directory must exist and contain the interpreter and its required files. Read-only mounts still disclose their contents to executed code. Do not expose a home directory, credential store, or service socket to make a tool work.
+
+### Environment Setup and Packages
+
+Local Python setup creates a virtual environment in the private workspace with `--system-site-packages`, without a pip upgrade or network download. Host-installed Python packages under mounted runtime paths are therefore visible. Install the host interpreter's `venv`/`ensurepip` support first. Other languages use the existing language handlers and require a compatible host runtime/compiler in mounted paths; the sandbox does not provision those toolchains.
+
+`skip_environment_setup=True` skips automatic language setup and disables `install()` and `run(..., libraries=...)`, as with other backends. This mode requires a usable preconfigured runtime. A session's files and packages persist between commands, but processes and Python interpreter state do not.
+
+Network access is disabled by default. `install()` and `run(..., libraries=...)` reject package installation unless full host networking is explicitly enabled:
+
+```python
+from llm_sandbox import LocalSandboxConfig, SandboxSession
+
+# Grants full host networking, including reachable local services.
+# This is not a package-registry or domain allowlist.
+with SandboxSession(
+    backend="bubblewrap",
+    lang="python",
+    sandbox_config=LocalSandboxConfig(network="host"),
+) as session:
+    session.install(["requests"])
+    print(session.run("import requests; print(requests.__version__)").stdout)
+```
+
+You can instead supply offline package files in the workspace and invoke the package manager explicitly with `execute_command()`. System package installation that modifies read-only runtime paths is unsupported. Container-only configuration such as images, Dockerfiles, container attachment, and container pooling does not apply to these adapters. Interactive sessions are unsupported; the artifact wrapper works when its dependencies are installed inside the sandbox.
+
+See [local security and seccomp](security.md#local-linux-isolation-and-seccomp) before changing the default network, mount, or syscall policy. Missing prerequisites and unsupported requested controls fail without an unsandboxed fallback.
+
+## Windows Configuration
+
+Select the experimental `windows-mxc` backend for native Windows tools, or `wsl2-bubblewrap` for Linux tools from a Windows client. See [backend prerequisites](backends.md#windows-backends). Both require an explicit backend choice, default to disabled networking, and reject unsupported controls instead of silently weakening isolation.
+
+### MXC Options
+
+```python
+from llm_sandbox import SandboxSession, WindowsMxcConfig
+
+config = WindowsMxcConfig(
+    network="none",
+    python_executable=r"C:\Python313\python.exe",
+    max_output_bytes=1024 * 1024,
+)
+
+with SandboxSession(
+    backend="windows-mxc",
+    sandbox_config=config,
+    execution_timeout=20.0,
+) as session:
+    print(session.run("print('Native Windows execution')").stdout)
+```
+
+Use paths that exist on your machine. `WindowsMxcConfig` rejects unknown fields:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `network` | `"none"` | Denies egress, ingress and host loopback; `"host"` explicitly allows them |
+| `read_only_paths` | `()` | Additional read grants beyond the Windows and selected runtime directories |
+| `deny_paths` | `()` | Explicit native deny rules; a nonempty policy requires host deny-path support |
+| `python_executable` | `None` | Absolute `.exe` path; defaults to the current Python interpreter |
+| `javascript_executable` | `None` | Absolute Node.js `.exe` path; otherwise discovers installed `node.exe` |
+| `env` | `{}` | Explicit payload environment additions; Windows bootstrap keys are reserved |
+| `max_output_bytes` | `8388608` | Combined captured command output cap |
+| `max_artifact_bytes` | `16777216` | Maximum size of a bounded extracted file |
+
+Policy paths must be absolute local drive paths. Volume-root grants, UNC/device paths, alternate data streams, and ambiguous Windows names are rejected. Read-only grants still disclose their contents; granting a project or runtime directory can expose credentials stored there. Environment keys are case-insensitive on Windows. Session `env_vars` override corresponding payload values; they do not modify the trusted helper's environment.
+
+When selecting an explicit Python executable from a virtual environment, add its base Python installation and required dependencies to `read_only_paths`. The default current interpreter automatically includes `sys.prefix` and `sys.base_prefix`; an arbitrary external interpreter's installation layout is not guessed. A runtime that cannot start with the supplied grants fails during session startup.
+
+Pass an absolute `mxc_path` to select a trusted helper built from `native/windows-mxc`; otherwise the adapter uses `llm_sandbox/bin/llm-sandbox-mxc.exe` bundled in a Windows platform wheel. There is no runtime download. The helper is part of the trusted computing base and must not be writable by sandboxed code.
+
+Windows file transfers reject links and pin ancestor directories while accessing files. Replacing an existing destination is not atomic: the previous regular file is removed before the new file is created, and a failed transfer can leave no destination. Use a fresh output filename when the existing file must be preserved. This also applies to the Windows destination of a WSL download.
+
+`default_timeout` defaults to 60 seconds; `execution_timeout`, `session_timeout` and per-run overrides apply. There are no aggregate CPU, memory, process-count, or disk quotas in this initial MXC configuration. `LocalSandboxConfig`, seccomp and POSIX resource-limit settings are not accepted substitutes. Automatic package installation, container options, interactive sessions and the artifact plotting wrapper are unsupported.
+
+### WSL2 Options
+
+The Windows client requires `distribution="..."` and optionally `guest_python="/absolute/linux/python"` (default `/usr/bin/python3`). `sandbox_config` is a `LocalSandboxConfig`; ordinary Linux execution options are forwarded to the trusted guest worker. The guest's installed package must match the Windows client, including its security-source fingerprint.
+
+The WSL adapter adds these restrictions:
+
+- `read_only_paths` must be a subset of the built-in Linux defaults. Additional mounts are rejected, including `/mnt/c`, host interop sockets, and Windows/shared filesystems beneath an otherwise allowed runtime directory.
+- `seccomp` must retain every syscall in the default denylist. It may add restrictions but cannot be `None`.
+- `WSL_INTEROP` and `WSLENV` cannot be supplied as payload environment variables.
+- `max_output_bytes` and `max_artifact_bytes` cannot exceed 8 MiB each. File transfers accept regular files only, bounded by the artifact limit.
+- Runtime and workspace paths are Linux paths. Host file-copy arguments are Windows paths. No caller-specified `wsl.exe` override or shell wrapper is accepted.
+
+`network="host"` is an explicit grant to the guest's full network, including reachable Windows and LAN services. It does not provide an outbound domain allowlist. Runtime mount validation remains active when networking is enabled; a distribution whose resolver or trust files resolve through a prohibited shared filesystem can be rejected. Package installation otherwise follows the Linux adapter's rules. Resource limits use guest Linux `prlimit`, not Windows Job Object quotas.
+
 ## Session Configuration
 
 ### Basic Parameters

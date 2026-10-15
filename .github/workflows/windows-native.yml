@@ -1,0 +1,153 @@
+name: Windows native enforcement (trusted manual runs)
+
+# These runner labels represent administrator-provisioned host capabilities.
+# Never execute pull-request code on these persistent, privileged hosts.
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: Native backend to exercise
+        type: choice
+        options: [windows-mxc, wsl2-bubblewrap, both]
+        default: windows-mxc
+        required: true
+      wsl_distro:
+        description: Explicit WSL2 distro with Bubblewrap >=0.8, libseccomp and python3-venv
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  mxc:
+    name: Real PSEC enforcement (requires capable host)
+    if: github.ref == 'refs/heads/main' && (inputs.backend == 'windows-mxc' || inputs.backend == 'both')
+    runs-on: [self-hosted, Windows, X64, llm-sandbox-windows-mxc]
+    timeout-minutes: 20
+    env:
+      RUSTFLAGS: "-C target-feature=+crt-static"
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out trusted main commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Set up uv without shared caches
+        uses: astral-sh/setup-uv@6dfebec6ddbcd197e02256fbdf54deb334fb7f06 # v2.1.2
+        with:
+          version: "0.6.14"
+          enable-cache: "false"
+      - name: Install frozen test dependencies
+        run: |
+          uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item Env:LLM_SANDBOX_MXC_BINARY -ErrorAction SilentlyContinue
+          Remove-Item Env:LLM_SANDBOX_MXC_NOTICES -ErrorAction SilentlyContinue
+          .venv/Scripts/python.exe -m hatchling build -t wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .venv/Scripts/python.exe .github/scripts/windows_helper_artifacts.py install-requirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv pip install --offline --no-deps --no-build --no-index --find-links dist --require-hashes -r dist/wheel-requirements.txt
+      - name: Build the helper from pinned source
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo +1.93.0 build --locked --release --manifest-path native/windows-mxc/Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Require actual PSEC support
+        run: |
+          $helper = (Resolve-Path native/windows-mxc/target/x86_64-pc-windows-msvc/release/llm-sandbox-mxc.exe).Path
+          $output = & $helper --probe
+          if ($LASTEXITCODE -ne 0) { throw "Helper probe failed: $output" }
+          $probe = $output | ConvertFrom-Json
+          if ($probe.protocol -ne 1 -or $probe.available -ne $true) {
+            throw "This runner cannot validate PSEC enforcement: $output"
+          }
+          "LLM_SANDBOX_MXC_HELPER=$helper" >> $env:GITHUB_ENV
+      - name: Run native security and lifecycle tests; reject every skip
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          LLM_SANDBOX_RUN_MXC_INTEGRATION: "1"
+        run: .venv/Scripts/python.exe .github/scripts/require_native_integration.py tests/test_windows_mxc.py -m integration -ra
+
+  wsl2:
+    name: Real WSL2 and Bubblewrap enforcement (requires configured distro)
+    if: github.ref == 'refs/heads/main' && (inputs.backend == 'wsl2-bubblewrap' || inputs.backend == 'both')
+    runs-on: [self-hosted, Windows, X64, llm-sandbox-wsl2]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      LLM_SANDBOX_WSL2_DISTRO: ${{ inputs.wsl_distro }}
+    steps:
+      - name: Check out trusted main commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Set up uv without shared caches
+        uses: astral-sh/setup-uv@6dfebec6ddbcd197e02256fbdf54deb334fb7f06 # v2.1.2
+        with:
+          version: "0.6.14"
+          enable-cache: "false"
+      - name: Install frozen host dependencies and build the current pure wheel
+        run: |
+          uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item Env:LLM_SANDBOX_MXC_BINARY -ErrorAction SilentlyContinue
+          Remove-Item Env:LLM_SANDBOX_MXC_NOTICES -ErrorAction SilentlyContinue
+          .venv/Scripts/python.exe -m hatchling build -t wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .venv/Scripts/python.exe .github/scripts/windows_helper_artifacts.py install-requirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv pip install --offline --no-deps --no-build --no-index --find-links dist --require-hashes -r dist/wheel-requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file guest-requirements.txt
+      - name: Install the current wheel into a private Linux filesystem venv
+        # Use argv and environment inputs; never interpolate the distro into shell code.
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LLM_SANDBOX_WSL2_DISTRO)) { throw "An explicit WSL2 distro is required" }
+          $wsl = "$env:SystemRoot/System32/wsl.exe"
+          $distro = $env:LLM_SANDBOX_WSL2_DISTRO
+          $wheel = Get-ChildItem dist/*-py3-none-any.whl | Select-Object -ExpandProperty FullName
+          if (@($wheel).Count -ne 1) { throw "Expected exactly one pure wheel" }
+          $guestWheelRequirements = & $wsl --distribution $distro --exec wslpath -a (Resolve-Path dist/wheel-requirements.txt).Path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $guestWheelDirectory = & $wsl --distribution $distro --exec wslpath -a (Resolve-Path dist).Path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $requirements = (Resolve-Path guest-requirements.txt).Path
+          $guestRequirements = & $wsl --distribution $distro --exec wslpath -a $requirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $guestVenv = & $wsl --distribution $distro --exec /usr/bin/python3 -c 'import pathlib,tempfile; root=pathlib.Path.home()/".cache"/"llm-sandbox-ci"; root.mkdir(parents=True,exist_ok=True); print(tempfile.mkdtemp(prefix="worker-",dir=root))'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "LLM_SANDBOX_WSL2_TEST_VENV=$guestVenv" >> $env:GITHUB_ENV
+          & $wsl --distribution $distro --exec /usr/bin/python3 -m venv $guestVenv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $guestPython = "$guestVenv/bin/python"
+          & $wsl --distribution $distro --exec $guestPython -m pip install --only-binary=:all: --require-hashes -r $guestRequirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $wsl --distribution $distro --exec $guestPython -m pip install --no-deps --only-binary=:all: --no-index --find-links $guestWheelDirectory --require-hashes -r $guestWheelRequirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "LLM_SANDBOX_WSL2_PYTHON=$guestPython" >> $env:GITHUB_ENV
+      - name: Run native security and lifecycle tests; reject every skip
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: .venv/Scripts/python.exe .github/scripts/require_native_integration.py tests/test_wsl2_bubblewrap.py -m integration -ra
+      - name: Remove the temporary guest environment
+        if: always()
+        run: |
+          if ($env:LLM_SANDBOX_WSL2_TEST_VENV) {
+            & "$env:SystemRoot/System32/wsl.exe" --distribution $env:LLM_SANDBOX_WSL2_DISTRO --exec /usr/bin/python3 -c 'import pathlib,shutil,sys; p=pathlib.Path(sys.argv[1]); root=pathlib.Path.home()/".cache"/"llm-sandbox-ci"; assert p.parent==root and p.name.startswith("worker-"); shutil.rmtree(p)' $env:LLM_SANDBOX_WSL2_TEST_VENV
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
