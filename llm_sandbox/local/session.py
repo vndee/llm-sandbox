@@ -75,7 +75,8 @@ class _PrivateWorkspace:
     """Own a temporary tree whose explicit and implicit cleanup use bounded descriptors."""
 
     def __init__(self) -> None:
-        self.name = tempfile.mkdtemp(prefix="llm-sandbox-")
+        # Host temp ancestors are trusted; resolve them before no-follow workspace operations.
+        self.name = str(Path(tempfile.mkdtemp(prefix="llm-sandbox-")).resolve())
         self._finalizer = weakref.finalize(self, safe_remove_tree, Path(self.name))
 
     def cleanup(self) -> None:

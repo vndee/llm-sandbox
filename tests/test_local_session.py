@@ -87,6 +87,39 @@ def test_workspace_lifetime_and_regular_file_copy(tmp_path: Path) -> None:
     sandbox.close()
 
 
+@pytest.mark.parametrize("cleanup", ["close", "finalizer"])
+def test_symlinked_temp_root_supports_session_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cleanup: str
+) -> None:
+    """Trusted temp ancestors are resolved once for setup, execution, and both cleanup paths."""
+    real_temp = tmp_path / "real-temp"
+    real_temp.mkdir()
+    temp_alias = tmp_path / "temp-alias"
+    temp_alias.symlink_to(real_temp, target_is_directory=True)
+    monkeypatch.setenv("TMPDIR", str(temp_alias))
+    monkeypatch.setattr("tempfile.tempdir", None)
+
+    sandbox = TrustedTestSession(skip_environment_setup=True)
+    sandbox.open()
+    private_root = sandbox.workspace.parent
+    assert private_root.parent == real_temp.resolve()
+    assert sandbox._workspace_temp is not None
+    assert sandbox._workspace_temp.name == str(private_root)
+    assert sandbox.tempdir.parent == private_root
+    assert sandbox.run("print('canonical root')").stdout == "canonical root\n"
+    # Cleanup must retain the canonical root even if the original alias disappears.
+    temp_alias.unlink()
+
+    if cleanup == "finalizer":
+        sandbox = None
+        gc.collect()
+    else:
+        sandbox.close()
+
+    assert not private_root.exists()
+    assert list(real_temp.iterdir()) == []
+
+
 def _make_deep_workspace_tree(workspace: Path, outside: Path) -> None:
     """Build beyond PATH_MAX without retaining one descriptor per directory level."""
     directory = os.open(workspace, os.O_RDONLY | os.O_DIRECTORY)
