@@ -39,11 +39,9 @@ def _check_dependency(backend: SandboxBackend | str) -> None:
 
 
 def _check_pool_backend(backend: SandboxBackend | str) -> None:
-    """Require local and custom adapters to opt in to supplied-pool semantics."""
+    """Require every backend to declare support for supplied-pool semantics."""
     definition = get_backend(backend)
-    local_backend = definition.name in {SandboxBackend.BUBBLEWRAP, SandboxBackend.NSJAIL}
-    unsupported_plugin = not definition.builtin and not definition.capabilities.pooling
-    if local_backend or unsupported_plugin:
+    if not definition.capabilities.pooling:
         msg = f"Backend '{backend}' does not support container pooling"
         raise ValidationError(msg)
 

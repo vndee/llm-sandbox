@@ -36,7 +36,7 @@ class BubblewrapSession(LocalProcessSession):
         self.bwrap_path = str(Path(executable).resolve())
         super().__init__(**kwargs)
         # Validate before creating a workspace or executing any command.
-        self._read_mounts = read_only_mounts(self.sandbox_config, self.config.workdir)
+        read_only_mounts(self.sandbox_config, self.config.workdir)
 
     @contextmanager
     def _launch_command(self, command: str, workdir: str) -> Iterator[tuple[list[str], tuple[int, ...]]]:
@@ -54,7 +54,7 @@ class BubblewrapSession(LocalProcessSession):
         ]
         if self.sandbox_config.network == "host":
             argv.append("--share-net")
-        for source, destination in self._read_mounts:
+        for source, destination in read_only_mounts(self.sandbox_config, self.config.workdir):
             argv.extend(("--ro-bind", source, destination))
         argv.extend((
             "--proc",
@@ -63,7 +63,7 @@ class BubblewrapSession(LocalProcessSession):
             "/dev",
             "--bind",
             str(self.tempdir),
-            "/tmp",
+            "/tmp",  # NOSONAR: Destination inside the sandbox, backed by self.tempdir's private directory.
             "--bind",
             str(self.workspace),
             self.config.workdir,

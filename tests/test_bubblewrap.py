@@ -5,10 +5,12 @@ from __future__ import annotations
 import ctypes
 import errno
 import os
+import platform
 import shutil
 import socket
 import sys
 from contextlib import contextmanager
+from pathlib import Path
 from tempfile import TemporaryFile
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -22,7 +24,6 @@ from llm_sandbox.security.seccomp import DEFAULT_BLOCKED_SYSCALLS, SeccompPolicy
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 
 @pytest.fixture
@@ -67,6 +68,36 @@ def test_host_network_is_only_enabled_explicitly(session: BubblewrapSession) -> 
         assert argv.count("--share-net") == 1
         assert "--unshare-all" in argv
         assert "--unshare-user" in argv
+
+
+def test_replacing_config_rebuilds_mounts_and_revokes_previous_grants(tmp_path: Path) -> None:
+    """Revoked filesystem and network grants must not survive into later commands."""
+    with (
+        patch("llm_sandbox.bubblewrap.sys.platform", "linux"),
+        patch("llm_sandbox.bubblewrap.shutil.which", return_value="/usr/bin/bwrap"),
+        patch.object(Path, "exists", return_value=True),
+        patch.object(Path, "resolve", autospec=True, side_effect=lambda path, **_: path),
+        patch.object(Path, "is_file", return_value=True),
+    ):
+        sandbox = BubblewrapSession(
+            sandbox_config=LocalSandboxConfig(network="host", read_only_paths=("/opt/sensitive",), seccomp=None)
+        )
+        sandbox.workspace = tmp_path / "workspace"
+        sandbox.tempdir = tmp_path / "tmp"
+        with sandbox._launch_command("true", "/sandbox") as (argv, _):
+            assert "/opt/sensitive" in argv
+            assert "/etc/resolv.conf" in argv
+            assert "--share-net" in argv
+
+        sandbox.sandbox_config = LocalSandboxConfig(read_only_paths=("/opt/public",), seccomp=None)
+        with sandbox._launch_command("true", "/sandbox") as (argv, _):
+            mounts = [argv[index + 1 : index + 3] for index, option in enumerate(argv) if option == "--ro-bind"]
+            assert mounts == [["/opt/public", "/opt/public"]]
+            assert "--share-net" not in argv
+
+        sandbox.sandbox_config = LocalSandboxConfig(read_only_paths=(), seccomp=None)
+        with sandbox._launch_command("true", "/sandbox") as (argv, _):
+            assert "--ro-bind" not in argv
 
 
 def test_launch_environment_excludes_host_secrets(session: BubblewrapSession, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -331,14 +362,18 @@ def test_real_explicit_host_network_reaches_host_listener() -> None:
 def test_real_custom_seccomp_blocks_normally_available_getppid() -> None:
     """A custom deny rule is actually inherited by the untrusted Python process."""
     libc = ctypes.CDLL(None, use_errno=True)
-    assert libc.getppid() > 0
+    syscall_number = {"x86_64": 110, "amd64": 110, "aarch64": 173, "arm64": 173}[platform.machine().lower()]
+    libc.syscall.restype = ctypes.c_long
+    assert libc.syscall(syscall_number) > 0
     config = LocalSandboxConfig(seccomp=SeccompPolicy(blocked_syscalls=(*DEFAULT_BLOCKED_SYSCALLS, "getppid")))
     with BubblewrapSession(sandbox_config=config, skip_environment_setup=True, default_timeout=5) as sandbox:
         result = sandbox.run(
             "import ctypes\n"
             "libc = ctypes.CDLL(None, use_errno=True)\n"
+            "libc.syscall.restype = ctypes.c_long\n"
             "ctypes.set_errno(0)\n"
-            "print(libc.getppid(), ctypes.get_errno())"
+            # libc's getppid wrapper assumes success and does not set errno.
+            f"print(libc.syscall({syscall_number}), ctypes.get_errno())"
         )
         assert result.exit_code == 0, result.stderr
         assert result.stdout == f"-1 {errno.EPERM}\n"

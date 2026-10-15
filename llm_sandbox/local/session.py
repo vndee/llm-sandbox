@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import io
+import math
 import os
 import re
 import selectors
@@ -42,6 +43,31 @@ if TYPE_CHECKING:
 
 _READ_SIZE = 65536
 _POLL_INTERVAL = 0.1
+
+
+def _validate_workdir(workdir: str | None) -> str:
+    """Normalize the private workspace's sandbox path before constructing a session."""
+    workdir = workdir or "/sandbox"
+    if not re.fullmatch(r"/[A-Za-z0-9_./-]+", workdir) or ".." in Path(workdir).parts:
+        msg = "workdir must be an absolute path without traversal, whitespace or shell metacharacters"
+        raise ValueError(msg)
+    if Path(workdir) == Path("/"):
+        msg = "The native workspace cannot be the filesystem root"
+        raise ValueError(msg)
+    return str(Path(workdir))
+
+
+def _validate_environment(env_vars: dict[str, str] | None) -> dict[str, str]:
+    """Validate and snapshot session-level environment overrides."""
+    explicit_env = dict(env_vars or {})
+    for key, value in explicit_env.items():
+        if not isinstance(key, str) or not key or "=" in key or "\0" in key:
+            msg = "Environment variable names must be nonempty strings without '=' or NUL"
+            raise ValueError(msg)
+        if not isinstance(value, str) or "\0" in value:
+            msg = "Environment variable values must be strings without NUL"
+            raise ValueError(msg)
+    return explicit_env
 
 
 class LocalProcessSession(BaseSession):
@@ -91,33 +117,17 @@ class LocalProcessSession(BaseSession):
         if kwargs:
             msg = f"Unknown native sandbox options: {', '.join(sorted(kwargs))}"
             raise TypeError(msg)
-        workdir = workdir or "/sandbox"
-        if not re.fullmatch(r"/[A-Za-z0-9_./-]+", workdir) or ".." in Path(workdir).parts:
-            msg = "workdir must be an absolute path without traversal, whitespace or shell metacharacters"
-            raise ValueError(msg)
-        if Path(workdir) == Path("/"):
-            msg = "The native workspace cannot be the filesystem root"
-            raise ValueError(msg)
-        workdir = str(Path(workdir))
+        workdir = _validate_workdir(workdir)
         for name, value in (
             ("default_timeout", default_timeout),
             ("execution_timeout", execution_timeout),
             ("session_timeout", session_timeout),
         ):
-            if value is not None and (value <= 0 or not float(value) < float("inf")):
+            if value is not None and (value <= 0 or not math.isfinite(value)):
                 msg = f"{name} must be finite and positive, or None"
                 raise ValueError(msg)
         self.sandbox_config = sandbox_config or LocalSandboxConfig()
-        explicit_env = dict(self.sandbox_config.env)
-        explicit_env.update(env_vars or {})
-        for key, env_value in explicit_env.items():
-            if not isinstance(key, str) or not key or "=" in key or "\0" in key:
-                msg = "Environment variable names must be nonempty strings without '=' or NUL"
-                raise ValueError(msg)
-            if not isinstance(env_value, str) or "\0" in env_value:
-                msg = "Environment variable values must be strings without NUL"
-                raise ValueError(msg)
-        self._explicit_env = explicit_env
+        self._explicit_env = _validate_environment(env_vars)
         config = SessionConfig(
             lang=SupportedLanguage(lang),
             workdir=workdir,
@@ -130,9 +140,6 @@ class LocalProcessSession(BaseSession):
             security_policy=security_policy,
         )
         super().__init__(config, libraries=libraries)
-        if self.language_handler.name == SupportedLanguage.PYTHON:
-            executable = shlex.quote(self.sandbox_config.python_executable).replace("{", "{{").replace("}", "}}")
-            self.language_handler.config.execution_commands = [f"{executable} {{file}}"]
         self.stream = stream
         self.workspace: Path
         self.tempdir: Path
@@ -154,9 +161,10 @@ class LocalProcessSession(BaseSession):
         return {
             "PATH": "/usr/local/bin:/usr/bin:/bin",
             "HOME": f"{self.config.workdir}/.home",
-            "TMPDIR": "/tmp",
+            "TMPDIR": "/tmp",  # NOSONAR: Sandbox mount target backed by the private session directory.
             "LANG": "C.UTF-8",
             "PYTHONUNBUFFERED": "1",
+            **self.sandbox_config.env,
             **self._explicit_env,
         }
 
@@ -269,7 +277,7 @@ class LocalProcessSession(BaseSession):
         with self._operation_lock:
             previous = self._deadline
             if timeout is not None:
-                if timeout <= 0 or not float(timeout) < float("inf"):
+                if timeout <= 0 or not math.isfinite(timeout):
                     msg = "timeout must be finite and positive"
                     raise ValueError(msg)
                 deadline = time.monotonic() + timeout
@@ -301,9 +309,12 @@ class LocalProcessSession(BaseSession):
         """Serialize code upload, optional installation and execution as one operation."""
         with self._operation_lock:
             self._require_open()
-            if timeout is not None and (timeout <= 0 or not float(timeout) < float("inf")):
+            if timeout is not None and (timeout <= 0 or not math.isfinite(timeout)):
                 msg = "timeout must be finite and positive"
                 raise ValueError(msg)
+            if self.language_handler.name == SupportedLanguage.PYTHON:
+                executable = shlex.quote(self.sandbox_config.python_executable).replace("{", "{{").replace("}", "}}")
+                self.language_handler.config.execution_commands = [f"{executable} {{file}}"]
             return super().run(code, libraries, timeout, on_stdout, on_stderr)
 
     def execute_command(
@@ -481,8 +492,8 @@ class LocalProcessSession(BaseSession):
 
     def _runtime_host_path(self, path: str) -> Path:
         """Map only workspace-relative paths or explicit workspace and /tmp paths."""
-        if Path(path).is_absolute() and Path(path).is_relative_to("/tmp"):
-            return self.tempdir / runtime_relative(path, "/tmp")
+        if Path(path).is_absolute() and Path(path).is_relative_to("/tmp"):  # NOSONAR: Match only a sandbox path.
+            return self.tempdir / runtime_relative(path, "/tmp")  # NOSONAR: Map into the private host directory.
         return self.workspace / runtime_relative(path, self.config.workdir)
 
     def get_archive(self, path: str) -> tuple[bytes, dict]:
@@ -529,5 +540,5 @@ class LocalProcessSession(BaseSession):
         on_stdout: StreamCallback | None = None,
         on_stderr: StreamCallback | None = None,
     ) -> tuple[str, str]:
-        msg = "Native output is decoded incrementally by the process supervisor"
+        msg = "Native streaming output is delivered directly by the process supervisor"
         raise NotImplementedError(msg)

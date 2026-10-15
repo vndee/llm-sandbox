@@ -83,32 +83,36 @@ def test_registration_and_capabilities_are_immutable_snapshots() -> None:
 def test_registration_cannot_replace_builtins(name: str) -> None:
     """Plugins cannot shadow built-in security boundaries."""
     original = get_backend(name)
+    factory = MagicMock()
     with pytest.raises(ValueError, match="already registered"):
-        register_backend(name, MagicMock())
+        register_backend(name, factory)
     assert get_backend(name) is original
 
 
 def test_duplicate_custom_registration_is_rejected() -> None:
     """Duplicate names fail explicitly, including case-only collisions."""
     original = register_backend("example", MagicMock())
+    duplicate_factory = MagicMock()
     with pytest.raises(ValueError, match="already registered"):
-        register_backend("EXAMPLE", MagicMock())
+        register_backend("EXAMPLE", duplicate_factory)
     assert get_backend("example") is original
 
 
 @pytest.mark.parametrize("name", ["", " padded", "two words", "../backend", "1backend"])
 def test_invalid_registration_names_are_rejected(name: str) -> None:
     """Names have a predictable syntax for configuration and discovery."""
+    factory = MagicMock()
     with pytest.raises(ValueError, match="Backend names"):
-        register_backend(name, MagicMock())
+        register_backend(name, factory)
 
 
 def test_invalid_registration_types_are_rejected() -> None:
     """Invalid extension contracts fail at registration time."""
     with pytest.raises(TypeError, match="callable"):
         register_backend("example", None)  # type: ignore[arg-type]
+    factory = MagicMock()
     with pytest.raises(TypeError, match="BackendCapabilities"):
-        register_backend("example", MagicMock(), capabilities={})  # type: ignore[arg-type]
+        register_backend("example", factory, capabilities={})  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("name", ["missing-backend", "invalid name"])
@@ -122,8 +126,18 @@ def test_unknown_backend_never_falls_back(name: str) -> None:
 @pytest.mark.parametrize("session_factory", [SandboxSession, ArtifactSandboxSession])
 def test_local_backends_reject_container_pools(name: str, session_factory: "Callable[..., object]") -> None:
     """A supplied container pool must not bypass an explicit local backend request."""
+    pool = MagicMock()
     with pytest.raises(ValidationError, match="does not support container pooling"):
-        session_factory(backend=name, pool=MagicMock())
+        session_factory(backend=name, pool=pool)
+
+
+@pytest.mark.parametrize("name", ["micromamba", "MICROMAMBA"])
+@pytest.mark.parametrize("session_factory", [SandboxSession, ArtifactSandboxSession])
+def test_micromamba_rejects_container_pools(name: str, session_factory: "Callable[..., object]") -> None:
+    """A pool must not bypass a built-in backend's declared lack of pooling support."""
+    pool = MagicMock()
+    with pytest.raises(ValidationError, match="does not support container pooling"):
+        session_factory(backend=name, pool=pool)
 
 
 @pytest.mark.parametrize("session_factory", [SandboxSession, ArtifactSandboxSession])
@@ -131,8 +145,9 @@ def test_custom_backends_reject_pools_without_explicit_support(session_factory: 
     """A pool must not silently replace a custom backend unless it opts in."""
     factory = MagicMock()
     register_backend("example", factory)
+    pool = MagicMock()
     with pytest.raises(ValidationError, match="does not support container pooling"):
-        session_factory(backend="example", pool=MagicMock())
+        session_factory(backend="example", pool=pool)
     factory.assert_not_called()
 
 
@@ -151,8 +166,9 @@ def test_custom_backend_can_opt_in_to_supplied_pool_semantics() -> None:
 @pytest.mark.parametrize("session_factory", [SandboxSession, ArtifactSandboxSession])
 def test_unknown_backend_cannot_be_replaced_by_pool(session_factory: "Callable[..., object]") -> None:
     """A misspelled or missing backend remains an error when a pool is supplied."""
+    pool = MagicMock()
     with pytest.raises(UnsupportedBackendError):
-        session_factory(backend="missing-backend", pool=MagicMock())
+        session_factory(backend="missing-backend", pool=pool)
 
 
 @pytest.mark.parametrize("backend", [SandboxBackend.BUBBLEWRAP, SandboxBackend.NSJAIL])

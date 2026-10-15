@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -18,16 +19,19 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from llm_sandbox.exceptions import (
+    CommandEmptyError,
     CommandFailedError,
     LibraryInstallationNotSupportedError,
     NotOpenSessionError,
     SandboxError,
     SandboxTimeoutError,
     SecurityError,
+    SecurityViolationError,
 )
 from llm_sandbox.language_handlers.python_handler import PythonHandler
 from llm_sandbox.local.config import LocalSandboxConfig
 from llm_sandbox.local.session import LocalProcessSession
+from llm_sandbox.security import RestrictedModule, SecurityIssueSeverity, SecurityPolicy
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -68,6 +72,8 @@ def test_workspace_lifetime_and_regular_file_copy(tmp_path: Path) -> None:
         assert workspace.parent == tempdir.parent
         assert workspace != tempdir
         sandbox.copy_to_runtime(str(source), "/sandbox/nested/data")
+        sandbox.open()
+        assert sandbox.workspace == workspace
         assert sandbox.execute_command("cat /sandbox/nested/data").stdout == "persistent"
         destination = tmp_path / "copied"
         sandbox.copy_from_runtime("nested/data", str(destination))
@@ -89,6 +95,23 @@ def test_explicit_environment_does_not_inherit_secrets(monkeypatch: pytest.Monke
         output = sandbox.execute_command('printf "%s|%s|%s" "$LOCAL_SANDBOX_TEST_SECRET" "$ALLOWED" "$EXTRA"')
         assert output.stdout == "|yes|also"
         assert sandbox._environment()["HOME"] == "/sandbox/.home"
+
+
+def test_replacing_config_revokes_environment_grants_and_preserves_explicit_overrides() -> None:
+    """Each command uses the current config, while env_vars remains a caller-input snapshot."""
+    explicit = {"OVERRIDE": "explicit"}
+    with TrustedTestSession(
+        sandbox_config=LocalSandboxConfig(env={"REMOVED_SECRET": "private", "UPDATED": "old", "OVERRIDE": "old"}),
+        env_vars=explicit,
+        skip_environment_setup=True,
+    ) as sandbox:
+        assert sandbox.execute_command('printf "%s" "$REMOVED_SECRET"').stdout == "private"
+        explicit["OVERRIDE"] = "changed-after-construction"
+        sandbox.sandbox_config = LocalSandboxConfig(env={"UPDATED": "new", "ADDED": "added", "OVERRIDE": "config"})
+        output = sandbox.execute_command(
+            'printf "%s|%s|%s|%s" "${REMOVED_SECRET-unset}" "$UPDATED" "$ADDED" "$OVERRIDE"'
+        )
+        assert output.stdout == "unset|new|added|explicit"
 
 
 def test_payload_loader_environment_never_reaches_host_launcher(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,6 +150,41 @@ def test_run_uses_python3_when_setup_is_skipped(session: TrustedTestSession) -> 
     output = session.run("print('native supervisor')")
     assert output.exit_code == 0
     assert output.stdout == "native supervisor\n"
+    assert session.python_executable_path == "/usr/bin/python3"
+
+
+def test_replacing_config_before_open_selects_updated_python() -> None:
+    """The constructor's previous interpreter selection cannot survive a config replacement."""
+    sandbox = TrustedTestSession(
+        sandbox_config=LocalSandboxConfig(python_executable="/nonexistent/old-python"),
+        skip_environment_setup=True,
+    )
+    sandbox.sandbox_config = LocalSandboxConfig(python_executable=sys.executable)
+    with sandbox:
+        output = sandbox.run("print('updated interpreter')")
+        assert output.exit_code == 0
+        assert output.stdout == "updated interpreter\n"
+
+
+def test_python_config_replacement_preserves_non_python_handler() -> None:
+    """Changing the Python option must not replace another language's execution commands."""
+    sandbox = TrustedTestSession(lang="javascript", skip_environment_setup=True)
+    sandbox.language_handler.config.execution_commands = ["/bin/sh {file}"]
+    sandbox.sandbox_config = LocalSandboxConfig(python_executable="/nonexistent/python")
+    with sandbox:
+        assert sandbox.run("printf unchanged-handler").stdout == "unchanged-handler"
+
+
+def test_python_environment_uses_private_interpreter_and_cache() -> None:
+    """Offline setup creates an executable venv and writable cache inside the session."""
+    with TrustedTestSession(sandbox_config=LocalSandboxConfig(python_executable=sys.executable)) as sandbox:
+        output = sandbox.run("import sys; print(sys.prefix)")
+        assert output.exit_code == 0
+        assert output.stdout.strip() == str(sandbox.workspace / ".sandbox-venv")
+        assert (sandbox.workspace / ".sandbox-pip-cache").is_dir()
+        assert sandbox.python_executable_path.startswith(sandbox.config.workdir + "/")
+        sandbox._ensure_directory_exists("nested/directory")
+        assert (sandbox.workspace / "nested/directory").is_dir()
 
 
 def test_stream_callbacks_receive_correct_utf8_and_both_channels(session: TrustedTestSession) -> None:
@@ -160,6 +218,44 @@ def test_explicit_run_timeout_overrides_shorter_default() -> None:
         assert output.stdout == "done\n"
 
 
+def test_timeout_still_kills_child_after_both_output_pipes_close() -> None:
+    """Closing stdout and stderr must not bypass the supervisor's final wait deadline."""
+    script = "import os,time;os.close(1);os.close(2);time.sleep(20)"
+    with TrustedTestSession(skip_environment_setup=True, execution_timeout=0.2) as sandbox:
+        with pytest.raises(SandboxTimeoutError):
+            sandbox.execute_command(f"exec /usr/bin/python3 -c {shlex.quote(script)}")
+        assert sandbox._active_process is None
+        assert sandbox.execute_command("printf recovered").stdout == "recovered"
+
+
+def test_explicitly_disabled_deadline_runs_and_cleans_up() -> None:
+    """An unlimited session still captures output and reaps each completed command."""
+    with TrustedTestSession(default_timeout=None, skip_environment_setup=True) as sandbox:
+        assert sandbox.run("print('unlimited')").stdout == "unlimited\n"
+        assert sandbox._active_process is None
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
+def test_internal_deadline_rejects_invalid_value_before_work(session: TrustedTestSession, timeout: float) -> None:
+    """The shared deadline boundary cannot silently turn invalid timeouts into work."""
+    invoked: list[bool] = []
+    with pytest.raises(ValueError, match="timeout must be finite and positive"):
+        session._execute_with_timeout(lambda: invoked.append(True), timeout=timeout)
+    assert not invoked
+    assert session.execute_command("printf valid").stdout == "valid"
+
+
+def test_nested_deadline_cannot_extend_outer_timeout(session: TrustedTestSession) -> None:
+    """An inner operation requesting more time must still honor its enclosing budget."""
+    with pytest.raises(SandboxTimeoutError):
+        session._execute_with_timeout(
+            lambda: session._execute_with_timeout(lambda: session.execute_command("sleep 20"), timeout=20),
+            timeout=0.1,
+        )
+    assert session._active_process is None
+    assert session.execute_command("printf recovered").stdout == "recovered"
+
+
 def test_callback_exception_cleans_up_process(session: TrustedTestSession) -> None:
     """User callback failures cannot leave command processes running."""
 
@@ -172,6 +268,24 @@ def test_callback_exception_cleans_up_process(session: TrustedTestSession) -> No
         session.execute_command("printf ready; sleep 20", on_stdout=broken_callback)
     assert session._active_process is None
     assert session.execute_command("printf next").stdout == "next"
+
+
+def test_invalid_output_encoding_kills_child_and_preserves_session(session: TrustedTestSession) -> None:
+    """A decoder error must take the same cleanup path as process and callback failures."""
+    script = "import os,time;os.write(1,b'\\xff');time.sleep(20)"
+    with pytest.raises(UnicodeDecodeError):
+        session.execute_command(f"/usr/bin/python3 -c {shlex.quote(script)}")
+    assert session._active_process is None
+    assert session.execute_command("printf recovered").stdout == "recovered"
+
+
+def test_verbose_stream_logs_output_without_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Streaming to the logger must preserve the complete returned output."""
+    with TrustedTestSession(skip_environment_setup=True, verbose=True, stream=True) as sandbox:
+        messages: list[str] = []
+        monkeypatch.setattr(sandbox, "_log", messages.append)
+        output = sandbox.execute_command("printf streamed")
+        assert "".join(messages) == output.stdout == "streamed"
 
 
 def test_output_limit_terminates_child() -> None:
@@ -262,8 +376,9 @@ def test_old_timer_cleanup_does_not_delete_reopened_workspace(monkeypatch: pytes
         worker.join(3)
         assert not worker.is_alive()
         assert len(outcomes) == 1
-        sandbox.close()
+        previous_workspace = sandbox.workspace
         sandbox.open()
+        assert not previous_workspace.exists()
         reopened_workspace = sandbox.workspace
         new_timer = sandbox._session_timer
         resume.set()
@@ -381,6 +496,24 @@ def test_concurrent_closers_cancel_execution_without_deadlock() -> None:
         worker.join(3)
 
 
+def test_timer_cleanup_failure_is_reported_without_escaping_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Background cleanup failures remain visible without an unhandled timer-thread error."""
+    with TrustedTestSession(skip_environment_setup=True, session_timeout=60) as sandbox:
+        timer = sandbox._session_timer
+        assert timer is not None
+        messages: list[tuple[str, str]] = []
+
+        def fail_cleanup(_generation: int) -> None:
+            msg = "cleanup failed"
+            raise OSError(msg)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(sandbox, "_close_generation", fail_cleanup)
+            patch.setattr(sandbox, "_log", lambda message, level: messages.append((message, level)))
+            timer.function()
+        assert messages == [("Error during timeout cleanup: cleanup failed", "error")]
+
+
 def test_copy_waits_until_command_has_finished(session: TrustedTestSession, tmp_path: Path) -> None:
     """A copy never races an active sandbox process touching the workspace."""
     source = tmp_path / "source"
@@ -444,6 +577,79 @@ def test_initial_libraries_are_not_silently_ignored() -> None:
     assert not sandbox.is_open
 
 
+@pytest.mark.parametrize("options", [{"skip_environment_setup": True}, {"lang": "java"}])
+def test_install_rejects_sessions_without_installation_support(options: dict) -> None:
+    """Unsupported installations fail before attempting a package manager."""
+    with TrustedTestSession(**options) as sandbox, pytest.raises(LibraryInstallationNotSupportedError):
+        sandbox.install(["dependency"])
+
+
+def test_install_requires_explicit_network_permission() -> None:
+    """A package request cannot implicitly upgrade the default network policy."""
+    with TrustedTestSession(lang="javascript") as sandbox:
+        with pytest.raises(ValueError, match="needs network='host'"):
+            sandbox.install(["dependency"])
+        assert sandbox.sandbox_config.network == "none"
+
+
+def test_install_checks_entire_restricted_list_before_running_any_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A forbidden package later in the request must stop earlier package side effects too."""
+    policy = SecurityPolicy(
+        restricted_modules=[
+            RestrictedModule(name="forbidden", description="disallowed dependency", severity=SecurityIssueSeverity.HIGH)
+        ]
+    )
+    with TrustedTestSession(
+        lang="javascript", sandbox_config=LocalSandboxConfig(network="host"), security_policy=policy
+    ) as sandbox:
+        commands: list[str] = []
+        monkeypatch.setattr(sandbox, "_require_success", commands.append)
+        with pytest.raises(SecurityViolationError, match="forbidden"):
+            sandbox.install(["allowed", "forbidden"])
+        assert not commands
+
+
+@pytest.mark.parametrize("policy", [None, SecurityPolicy()])
+def test_install_stops_on_failure_and_reports_package_output(
+    monkeypatch: pytest.MonkeyPatch, policy: SecurityPolicy | None
+) -> None:
+    """The first package error is surfaced; later package commands must not run."""
+    with TrustedTestSession(
+        lang="javascript", sandbox_config=LocalSandboxConfig(network="host"), security_policy=policy
+    ) as sandbox:
+
+        def installer(library: str, context: Any) -> str:
+            assert context.workdir == "/sandbox"
+            if library == "broken":
+                return "printf package-failure >&2; exit 7"
+            return f"printf '%s\\n' {shlex.quote(library)} >> /sandbox/installed"
+
+        monkeypatch.setattr(sandbox.language_handler, "get_library_installation_command", installer)
+        sandbox.install(["first", "second"])
+        with pytest.raises(CommandFailedError, match="package-failure"):
+            sandbox.install(["broken", "never-reached"])
+        assert (sandbox.workspace / "installed").read_text(encoding="utf-8") == "first\nsecond\n"
+        assert sandbox.execute_command("printf healthy").stdout == "healthy"
+
+
+def test_failed_environment_setup_releases_workspace_and_timer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Initialization failures after the probe cannot leave a live session or its files."""
+    sandbox = TrustedTestSession(session_timeout=60)
+
+    def fail_setup() -> None:
+        sandbox.execute_command("printf setup-state > /sandbox/setup-state")
+        msg = "setup failed"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(sandbox, "environment_setup", fail_setup)
+    with pytest.raises(RuntimeError, match="setup failed"):
+        sandbox.open()
+    assert not sandbox.is_open
+    assert sandbox._session_timer is None
+    assert not sandbox.workspace.exists()
+    assert sandbox._active_process is None
+
+
 @pytest.mark.parametrize(
     "options",
     [
@@ -456,10 +662,13 @@ def test_initial_libraries_are_not_silently_ignored() -> None:
         {"workdir": "/sandbox;echo"},
         {"workdir": "/sandbox/../etc"},
         {"workdir": "/"},
+        {"workdir": "/./"},
         {"default_timeout": 0},
         {"execution_timeout": -1},
         {"session_timeout": float("nan")},
         {"env_vars": {"bad=name": "x"}},
+        {"env_vars": {"VALUE": "has\0nul"}},
+        {"env_vars": {"VALUE": 123}},
     ],
 )
 def test_unsupported_or_unsafe_options_fail_early(options: dict) -> None:
@@ -478,6 +687,14 @@ def test_closed_session_rejects_commands() -> None:
     """No path executes host commands if the native session has not opened."""
     with pytest.raises(NotOpenSessionError):
         TrustedTestSession().execute_command("true")
+
+
+def test_empty_command_does_not_change_session_state(session: TrustedTestSession) -> None:
+    """Reject empty input before launching a process or changing the workspace."""
+    with pytest.raises(CommandEmptyError):
+        session.execute_command("")
+    assert session._active_process is None
+    assert session.execute_command("printf valid").stdout == "valid"
 
 
 def test_zero_run_timeout_is_not_treated_as_unlimited(session: TrustedTestSession) -> None:

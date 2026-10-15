@@ -102,6 +102,7 @@ def test_copy_directory_merges_at_exact_destination(tmp_path: Path) -> None:
     (source / "nested" / "script").chmod(0o755)
     destination = tmp_path / "destination"
     destination.mkdir()
+    destination_mode = stat.S_IMODE(destination.stat().st_mode)
     (destination / "retained").write_text("keep")
     safe_copy(source, destination)
     assert (destination / "nested" / "script").read_text() == "content"
@@ -109,7 +110,45 @@ def test_copy_directory_merges_at_exact_destination(tmp_path: Path) -> None:
     assert (destination / "retained").read_text() == "keep"
     assert stat.S_IMODE((destination / "nested" / "script").stat().st_mode) == 0o700
     assert stat.S_IMODE((destination / "nested").stat().st_mode) == 0o700
-    assert stat.S_IMODE(destination.stat().st_mode) == 0o700
+    assert stat.S_IMODE(destination.stat().st_mode) == destination_mode
+
+
+@pytest.mark.parametrize(("root_mode", "nested_mode"), [(0o755, 0o2775), (0o1777, 0o700)])
+def test_copy_directory_preserves_existing_destination_modes(tmp_path: Path, root_mode: int, nested_mode: int) -> None:
+    """Merging an export must not revoke shared access or change existing special bits."""
+    source = tmp_path / "source"
+    (source / "nested").mkdir(parents=True)
+    (source / "nested" / "result").write_text("new result")
+    destination = tmp_path / "destination"
+    (destination / "nested").mkdir(parents=True)
+    destination.chmod(root_mode)
+    (destination / "nested").chmod(nested_mode)
+    (destination / "nested" / "retained").write_text("keep")
+
+    safe_copy(source, destination)
+
+    assert stat.S_IMODE(destination.stat().st_mode) == root_mode
+    assert stat.S_IMODE((destination / "nested").stat().st_mode) == nested_mode
+    assert (destination / "nested" / "result").read_text() == "new result"
+    assert (destination / "nested" / "retained").read_text() == "keep"
+
+
+def test_copy_directory_creates_private_directories_under_shared_parent(tmp_path: Path) -> None:
+    """New parents and copied directories stay private without inheriting setgid bits."""
+    source = tmp_path / "source"
+    (source / "nested" / "deep").mkdir(parents=True)
+    for directory in (source, source / "nested", source / "nested" / "deep"):
+        directory.chmod(0o2777)
+    shared_parent = tmp_path / "shared"
+    shared_parent.mkdir()
+    shared_parent.chmod(0o2775)
+    destination = shared_parent / "new-parent" / "destination"
+
+    safe_copy(source, destination)
+
+    assert stat.S_IMODE(shared_parent.stat().st_mode) == 0o2775
+    for directory in (destination.parent, destination, destination / "nested", destination / "nested" / "deep"):
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
 
 
 def test_missing_source_does_not_create_destination(tmp_path: Path) -> None:

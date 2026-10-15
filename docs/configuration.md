@@ -55,7 +55,7 @@ The default workspace is `/sandbox` inside the sandbox. `workdir` changes its sa
 
 NsJail requires its new mount API to enforce read-only access recursively, including nested host mounts. Missing binary or kernel support fails explicitly. It also supplies a private 64 MiB tmpfs at `/dev/shm` for each command; shared-memory contents do not persist into the next invocation.
 
-With `network="host"`, the adapters also expose existing resolver and TLS trust paths read-only: `/etc/resolv.conf`, `/etc/hosts`, `/etc/nsswitch.conf`, `/etc/ssl/certs`, `/etc/ssl/openssl.cnf`, `/etc/pki/ca-trust`, `/etc/pki/tls/certs`, `/etc/pki/tls/cert.pem`, and `/etc/pki/tls/openssl.cnf`. Resolver symlinks expose their specific resolved file, not its containing host directory.
+With `network="host"`, the adapters also expose existing resolver and TLS trust paths read-only: `/etc/resolv.conf`, `/etc/hosts`, `/etc/nsswitch.conf`, `/etc/services`, `/etc/protocols`, `/etc/ssl/certs`, `/etc/ssl/openssl.cnf`, `/etc/pki/ca-trust`, `/etc/pki/tls/certs`, `/etc/pki/tls/cert.pem`, and `/etc/pki/tls/openssl.cnf`. Resolver symlinks expose their specific resolved file, not its containing host directory.
 
 To add a runtime installed under `/opt`, keep the defaults and explicitly expose its directory:
 

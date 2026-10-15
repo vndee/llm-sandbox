@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 _NATIVE_ARCHITECTURES = frozenset({"x86_64", "amd64", "aarch64", "arm64"})
 _X86_64_ARCHITECTURES = frozenset({"x86_64", "amd64"})
-_SYSCALL_NAME = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*\Z")
+_SYSCALL_NAME = re.compile(r"[a-zA-Z_]\w*\Z", re.ASCII)
 _NATIVE_SYSCALL_LIMIT = 1024
 _LEGACY_X32_SYSCALLS = range(512, 548)
 _KAFEL_SYSCALL_ALIASES = {"umount2": "umount"}
@@ -156,7 +156,7 @@ class NsjailSession(LocalProcessSession):
 
         # A separate private directory preserves artifacts written to /tmp
         # across commands. Its host parent is never exposed inside the jail.
-        argv.extend(("--bindmount", _mount_argument(str(self.tempdir), "/tmp")))
+        argv.extend(("--bindmount", _mount_argument(str(self.tempdir), "/tmp")))  # NOSONAR: Private mount target.
         for device in ("null", "zero", "random", "urandom"):
             path = f"/dev/{device}"
             argv.extend(("--bindmount_ro", _mount_argument(path, path)))

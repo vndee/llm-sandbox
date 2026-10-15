@@ -89,21 +89,24 @@ def test_unknown_network_policy_is_rejected() -> None:
 @pytest.mark.parametrize("workdir", ["/", "relative", "/sandbox/../usr", "/proc/job", "/tmp/job"])
 def test_workspace_cannot_replace_virtual_or_root_filesystems(workdir: str) -> None:
     """Writable workspace placement must preserve the namespace layout."""
+    config = LocalSandboxConfig(read_only_paths=())
     with pytest.raises(SecurityError):
-        read_only_mounts(LocalSandboxConfig(read_only_paths=()), workdir)
+        read_only_mounts(config, workdir)
 
 
 @pytest.mark.parametrize(("source", "workdir"), [("/usr", "/usr/job"), ("/sandbox/runtime", "/sandbox")])
 def test_mounts_cannot_overlap_writable_workspace(source: str, workdir: str) -> None:
     """Overlapping read and write mounts cannot make read-only grants writable."""
+    config = LocalSandboxConfig(read_only_paths=(source,))
     with pytest.raises(SecurityError, match="overlaps"):
-        read_only_mounts(LocalSandboxConfig(read_only_paths=(source,)), workdir)
+        read_only_mounts(config, workdir)
 
 
 def test_missing_custom_mount_does_not_disappear_silently() -> None:
     """Caller-supplied paths are required even though some distro defaults are optional."""
+    config = LocalSandboxConfig(read_only_paths=("/opt/custom-runtime",))
     with patch.object(Path, "exists", return_value=False), pytest.raises(FileNotFoundError, match="does not exist"):
-        read_only_mounts(LocalSandboxConfig(read_only_paths=("/opt/custom-runtime",)), "/sandbox")
+        read_only_mounts(config, "/sandbox")
 
 
 def test_optional_distro_mount_can_be_absent() -> None:
@@ -115,16 +118,18 @@ def test_optional_distro_mount_can_be_absent() -> None:
 @pytest.mark.parametrize("target", ["/", "/proc", "/sys/kernel", "/dev", "/tmp/runtime"])
 def test_resolved_mount_source_cannot_point_to_virtual_filesystems(target: str) -> None:
     """A symlink at an otherwise allowed path cannot expose host process or device state."""
+    config = LocalSandboxConfig(read_only_paths=("/opt/runtime-link",))
     with (
         patch.object(Path, "exists", return_value=True),
         patch.object(Path, "resolve", return_value=Path(target)),
         pytest.raises(SecurityError, match="resolves to a host"),
     ):
-        read_only_mounts(LocalSandboxConfig(read_only_paths=("/opt/runtime-link",)), "/sandbox")
+        read_only_mounts(config, "/sandbox")
 
 
 def test_non_regular_mount_source_is_rejected() -> None:
     """Sockets and special files must not be passed through as runtime mounts."""
+    config = LocalSandboxConfig(read_only_paths=("/opt/runtime-socket",))
     with (
         patch.object(Path, "exists", return_value=True),
         patch.object(Path, "resolve", return_value=Path("/opt/runtime-socket")),
@@ -132,7 +137,7 @@ def test_non_regular_mount_source_is_rejected() -> None:
         patch.object(Path, "is_file", return_value=False),
         pytest.raises(SecurityError, match="regular file or directory"),
     ):
-        read_only_mounts(LocalSandboxConfig(read_only_paths=("/opt/runtime-socket",)), "/sandbox")
+        read_only_mounts(config, "/sandbox")
 
 
 def test_host_network_adds_only_narrow_dns_and_trust_paths() -> None:
@@ -178,11 +183,12 @@ def test_limits_use_exact_hard_and_soft_values_without_unit_conversion() -> None
 
 def test_requested_limits_fail_closed_without_prlimit() -> None:
     """A missing limit helper cannot silently turn restricted execution into unrestricted execution."""
+    config = LocalSandboxConfig(memory_limit_bytes=1024)
     with (
         patch("llm_sandbox.local.launch.shutil.which", return_value=None),
         pytest.raises(MissingDependencyError, match="prlimit"),
     ):
-        apply_resource_limits(["/usr/bin/bwrap"], LocalSandboxConfig(memory_limit_bytes=1024))
+        apply_resource_limits(["/usr/bin/bwrap"], config)
 
 
 def test_no_limit_helper_required_when_no_limits_are_requested() -> None:

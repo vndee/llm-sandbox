@@ -75,6 +75,33 @@ def test_host_network_requires_explicit_configuration(session: NsjailSession) ->
         assert "--disable_clone_newuser" not in argv
 
 
+def test_replacing_config_rebuilds_mounts_and_revokes_previous_grants(session: NsjailSession) -> None:
+    """Each jail must honor only the current filesystem and network grants."""
+    with (
+        patch.object(Path, "exists", return_value=True),
+        patch.object(Path, "resolve", autospec=True, side_effect=lambda path, **_: path),
+        patch.object(Path, "is_file", return_value=True),
+    ):
+        session.sandbox_config = LocalSandboxConfig(network="host", read_only_paths=("/opt/sensitive",), seccomp=None)
+        with session._launch_command("true", "/sandbox") as (argv, _):
+            assert "/opt/sensitive:/opt/sensitive" in argv
+            assert "/etc/resolv.conf:/etc/resolv.conf" in argv
+            assert "--disable_clone_newnet" in argv
+
+        session.sandbox_config = LocalSandboxConfig(read_only_paths=("/opt/public",), seccomp=None)
+        with session._launch_command("true", "/sandbox") as (argv, _):
+            mounts = {argv[index + 1] for index, option in enumerate(argv) if option == "--bindmount_ro"}
+            assert mounts == {
+                "/opt/public:/opt/public",
+                "/dev/null:/dev/null",
+                "/dev/zero:/dev/zero",
+                "/dev/random:/dev/random",
+                "/dev/urandom:/dev/urandom",
+            }
+            assert "--disable_clone_newnet" not in argv
+            assert "--iface_no_lo" in argv
+
+
 def test_unknown_network_fails_closed(session: NsjailSession) -> None:
     """Even a config created without Pydantic validation cannot broaden access."""
     session.sandbox_config = LocalSandboxConfig.model_construct(network="unexpected", seccomp=None)
@@ -319,8 +346,8 @@ def test_real_nsjail_filesystem_network_and_seccomp(tmp_path: Path) -> None:
             "    raise AssertionError('network is reachable')\n"
             "print('boundaries verified')\n"
         )
-        assert result.exit_code == 0, result.text
-        assert "boundaries verified" in result.text
+        assert result.exit_code == 0, result.text()
+        assert "boundaries verified" in result.stdout
 
 
 @pytest.mark.integration
@@ -351,10 +378,10 @@ def test_real_nsjail_supports_private_shared_memory_and_multiprocessing() -> Non
             "open('/dev/shm/private-marker', 'w').write('first invocation')\n"
             "print('shared memory verified')\n"
         )
-        assert result.exit_code == 0, result.text
-        assert "shared memory verified" in result.text
+        assert result.exit_code == 0, result.text()
+        assert "shared memory verified" in result.stdout
         second = sandbox.run("from pathlib import Path\nassert not Path('/dev/shm/private-marker').exists()")
-        assert second.exit_code == 0, second.text
+        assert second.exit_code == 0, second.text()
 
 
 @pytest.mark.integration
@@ -388,7 +415,7 @@ def test_real_nsjail_read_only_grant_includes_nested_host_mount() -> None:
             "else:\n"
             "    raise AssertionError('nested host mount remained writable')\n"
         )
-        assert result.exit_code == 0, result.text
+        assert result.exit_code == 0, result.text()
     assert host_marker.read_text() == previous
 
 

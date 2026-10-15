@@ -27,6 +27,24 @@ _HOST_NETWORK_PATHS = (
 )
 
 
+def _resolve_read_only_source(source: str) -> Path | None:
+    """Resolve one grant, allowing absent distro defaults but rejecting unsafe targets."""
+    path = Path(source)
+    if not path.exists():
+        if source in DEFAULT_READ_ONLY_PATHS or source in _HOST_NETWORK_PATHS:
+            return None
+        msg = f"Read-only mount source does not exist: {source}"
+        raise FileNotFoundError(msg)
+    resolved = path.resolve(strict=True)
+    if resolved == Path("/") or resolved.parts[1] in {"proc", "sys", "dev", "tmp"}:
+        msg = f"Read-only mount resolves to a host virtual or temporary filesystem: {source}"
+        raise SecurityError(msg)
+    if not resolved.is_dir() and not resolved.is_file():
+        msg = f"Read-only mount source must be a regular file or directory: {source}"
+        raise SecurityError(msg)
+    return resolved
+
+
 def read_only_mounts(config: LocalSandboxConfig, workdir: str) -> tuple[tuple[str, str], ...]:
     """Resolve runtime mounts without exposing the host's virtual filesystems.
 
@@ -49,19 +67,9 @@ def read_only_mounts(config: LocalSandboxConfig, workdir: str) -> tuple[tuple[st
         if workspace.is_relative_to(destination) or destination.is_relative_to(workspace):
             msg = f"Read-only mount {source!r} overlaps the writable workspace {workdir!r}"
             raise SecurityError(msg)
-        path = Path(source)
-        if not path.exists():
-            if source in DEFAULT_READ_ONLY_PATHS or source in _HOST_NETWORK_PATHS:
-                continue
-            msg = f"Read-only mount source does not exist: {source}"
-            raise FileNotFoundError(msg)
-        resolved = path.resolve(strict=True)
-        if resolved == Path("/") or resolved.parts[1] in {"proc", "sys", "dev", "tmp"}:
-            msg = f"Read-only mount resolves to a host virtual or temporary filesystem: {source}"
-            raise SecurityError(msg)
-        if not resolved.is_dir() and not resolved.is_file():
-            msg = f"Read-only mount source must be a regular file or directory: {source}"
-            raise SecurityError(msg)
+        resolved = _resolve_read_only_source(source)
+        if resolved is None:
+            continue
         mounts.append((str(resolved), str(destination)))
     return tuple(mounts)
 

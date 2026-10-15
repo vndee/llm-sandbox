@@ -95,10 +95,13 @@ def _open_entry(parent_fd: int, name: str, *, directory: bool = False) -> Iterat
         os.close(fd)
 
 
-def _mkdir_at(parent_fd: int, name: str) -> None:
-    """Create a private directory, leaving validation of existing entries to the opener."""
-    with suppress(FileExistsError):
+def _mkdir_at(parent_fd: int, name: str) -> bool:
+    """Create a private directory and report whether it was newly created."""
+    try:
         os.mkdir(name, mode=0o700, dir_fd=parent_fd)
+    except FileExistsError:
+        return False
+    return True
 
 
 @contextmanager
@@ -108,9 +111,10 @@ def _directory(path: Path, *, create: bool = False) -> Iterator[int]:
     fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
         for component in path.parts[1:]:
-            if create:
-                _mkdir_at(fd, component)
+            created = create and _mkdir_at(fd, component)
             with _open_entry(fd, component, directory=True) as child:
+                if created:
+                    os.fchmod(child, 0o700)
                 next_fd = os.dup(child)
             os.close(fd)
             fd = next_fd
@@ -122,6 +126,7 @@ def _directory(path: Path, *, create: bool = False) -> Iterator[int]:
 def safe_mkdir(path: Path) -> None:
     """Create directories with mode 0700, refusing links in any component."""
     with _directory(path, create=True):
+        # Entering the context validates every component and creates missing directories.
         pass
 
 
@@ -208,9 +213,10 @@ def _copy_entry(source_fd: int, parent_fd: int, name: str) -> None:
     if not stat.S_ISDIR(os.fstat(source_fd).st_mode):
         _copy_file(source_fd, parent_fd, name)
         return
-    _mkdir_at(parent_fd, name)
+    created = _mkdir_at(parent_fd, name)
     with _open_entry(parent_fd, name, directory=True) as destination_fd:
-        os.fchmod(destination_fd, 0o700)
+        if created:
+            os.fchmod(destination_fd, 0o700)
         for child_name in os.listdir(source_fd):
             with _open_entry(source_fd, child_name) as child_fd:
                 _copy_entry(child_fd, destination_fd, child_name)
@@ -221,8 +227,9 @@ def safe_copy(src: Path, dest: Path) -> None:
 
     Both paths must be absolute. Symlinks, hardlinked regular files and special
     files are rejected in either tree and in all parent components. Source paths
-    must exist; destination parents are created as needed. The caller must
-    serialize sandbox execution and file transfers.
+    must exist; newly created directories use mode 0700, while existing
+    destination directories retain their permissions. The caller must serialize
+    sandbox execution and file transfers.
     """
     src, dest = _host_path(src), _host_path(dest)
     if src.is_relative_to(dest) or dest.is_relative_to(src):
