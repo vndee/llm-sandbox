@@ -231,35 +231,32 @@ class WindowsMxcSession(BaseSession):
                 self._workspace_owner = owner
                 self.workspace = workspace
             try:
-                safe_mkdir(workspace / _HOME_DIRECTORY)
-                safe_mkdir(workspace / ".tmp")
+                self._initialize_workspace(workspace)
+                self._start_session_timer()
+                self._probe()
+                # Prove the selected toolchain actually starts through PSEC.
+                self._check_runtime_startup()
             except BaseException as error:
                 try:
                     self.close()
                 except Exception as cleanup_error:
                     raise error from cleanup_error
                 raise
-            with self._state_lock:
-                cancelled = self._closing
-                if not cancelled:
-                    self.config.workdir = str(workspace)
-                    self.container = workspace
-                    self.is_open = True
-                    self._supervisor = ProcessSupervisor(
-                        max_output_bytes=self.sandbox_config.max_output_bytes,
-                        encoding_errors=self.config.encoding_errors,
-                    )
-            if cancelled:
-                self.close()
+
+    def _initialize_workspace(self, workspace: Path) -> None:
+        """Prepare private directories and publish a supervisor unless opening was cancelled."""
+        safe_mkdir(workspace / _HOME_DIRECTORY)
+        safe_mkdir(workspace / ".tmp")
+        with self._state_lock:
+            if self._closing:
                 raise NotOpenSessionError
-            self._start_session_timer()
-            try:
-                self._probe()
-                # Prove the selected toolchain actually starts through PSEC.
-                self._check_runtime_startup()
-            except BaseException:
-                self.close()
-                raise
+            self.config.workdir = str(workspace)
+            self.container = workspace
+            self.is_open = True
+            self._supervisor = ProcessSupervisor(
+                max_output_bytes=self.sandbox_config.max_output_bytes,
+                encoding_errors=self.config.encoding_errors,
+            )
 
     def _check_runtime_startup(self) -> None:
         output = self.execute_argv([str(self._runtime), "--version"])

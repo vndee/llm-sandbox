@@ -698,6 +698,61 @@ def test_workspace_setup_failure_retains_cleanup_ownership(
         assert adapter.workspace.cleanup.call_count == 2
 
 
+@pytest.mark.parametrize("stage", ["supervisor", "timer"])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_failed_initialization_retries_checks_and_cancels_timers(
+    adapter: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, stage: str, cleanup_fails: bool
+) -> None:
+    """Partially initialized sessions stay closed and must pass all checks on their next open."""
+    session = adapter.create(session_timeout=30)
+    setup_error = RuntimeError(f"{stage} startup failed")
+    first_timer, second_timer = Mock(), Mock()
+    timer_factory = Mock(side_effect=[first_timer, second_timer])
+    monkeypatch.setattr(mxc, "threading", SimpleNamespace(Timer=timer_factory))
+    if stage == "supervisor":
+        adapter.supervisor_factory.side_effect = [setup_error, adapter.supervisor]
+    else:
+        first_timer.start.side_effect = setup_error
+    if cleanup_fails:
+        adapter.workspace.cleanup.side_effect = [PermissionError("cleanup denied"), None, None]
+
+    with pytest.raises(RuntimeError, match="startup failed") as failure:
+        session.open()
+
+    assert failure.value is setup_error
+    assert not session.is_open
+    assert session._supervisor is None
+    assert session._session_timer is None
+    adapter.workspace.cleanup.assert_called_once()
+    adapter.supervisor.run.assert_not_called()
+    if stage == "timer":
+        first_timer.cancel.assert_called_once()
+        adapter.supervisor.close.assert_called_once()
+    else:
+        timer_factory.assert_not_called()
+    if cleanup_fails:
+        assert isinstance(failure.value.__cause__, PermissionError)
+        assert session._workspace_owner is adapter.workspace
+    else:
+        assert session._workspace_owner is None
+
+    session.open()
+
+    assert session.is_open
+    assert adapter.owner_factory.call_count == 2
+    assert adapter.supervisor_factory.call_count == 2
+    assert adapter.supervisor.run.call_count == 2
+    assert adapter.supervisor.run.call_args_list[0].args[0][-1] == "--probe"
+    assert adapter.supervisor.run.call_args_list[1].args[0][-1] == "--run"
+    live_timer = second_timer if stage == "timer" else first_timer
+    live_timer.start.assert_called_once()
+    live_timer.cancel.assert_not_called()
+    session.close()
+    live_timer.cancel.assert_called_once()
+    assert session._session_timer is None
+    assert session._workspace_owner is None
+
+
 def test_reopen_retries_retained_cleanup_before_allocating_another_workspace(adapter: SimpleNamespace) -> None:
     """A failed cleanup cannot be abandoned when the caller reopens the same session."""
     session = open_adapter(adapter)
