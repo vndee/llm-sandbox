@@ -1,6 +1,6 @@
 # Sandbox Backends
 
-LLM Sandbox supports container backends and local Linux sandboxes through the same session factory. This guide covers their requirements, configuration, and extension points.
+LLM Sandbox supports container backends and local Linux and Windows sandboxes through the same session factory. This guide covers their requirements, configuration, and extension points.
 
 ## Overview
 
@@ -14,6 +14,8 @@ Supported backends:
 | **Micromamba** | Containerized conda environments | Docker service and Python SDK | Yes | No / no |
 | **Bubblewrap** | Local Linux code execution | `bwrap` 0.8.0+, user namespaces, system libseccomp | No | No / no |
 | **NsJail** | Local Linux code execution | `nsjail`, user namespaces, Kafel and new mount API support | No | No / no |
+| **Windows MXC** | Native Windows Python and JavaScript | Compatible Windows PSEC APIs and the native MXC helper | No | No / no |
+| **WSL2 Bubblewrap** | Linux tools from Windows applications | Explicit WSL2 distribution, matching guest package, Bubblewrap and libseccomp | No | No / no |
 
 Capabilities describe adapter features, not proof that a host can run the backend or that a particular session enables every protection. Docker remains the default; choose local backends explicitly.
 
@@ -92,6 +94,71 @@ On a host with both backends installed, run the integration gate below after pre
 uv run python .github/scripts/require_native_integration.py \
   tests/test_bubblewrap.py tests/test_nsjail.py -m integration -ra
 ```
+
+## Windows Backends
+
+The experimental Windows adapters are selected explicitly from native Windows Python. They do not need Docker, a container image, a container SDK, or a background service installed by this library. Neither supports pooling, existing-container attachment, or interactive kernels. Missing prerequisites and policy failures stop execution; there is no automatic switch between MXC, WSL, AppContainer, or an ordinary host process.
+
+### Native Windows MXC
+
+`backend="windows-mxc"` uses a native Rust helper pinned to [Microsoft MXC](https://github.com/microsoft/mxc/tree/6cd3d58f05d3447e67109cfb75e042803b843ca4). The helper calls the PSEC process-container APIs directly. It probes those APIs by creating and closing a container before accepting work, rather than inferring support from a Windows version string. A compatible, updated Windows installation is required; an ordinary Windows CI runner may lack PSEC support. This backend does not require Windows Sandbox, WSL, account provisioning, or elevation for each session.
+
+The helper is bundled when building a Windows platform wheel. A source checkout or generic Python wheel needs a separately built helper, selected with an absolute `mxc_path`. See the [native helper build instructions](https://github.com/vndee/llm-sandbox/tree/main/native/windows-mxc). The Python backend never downloads native executables at runtime. The Windows build workflow produces platform wheel artifacts containing the helper; their presence in CI is not a claim that a package release has been published.
+
+```python
+from llm_sandbox import SandboxSession, WindowsMxcConfig
+
+with SandboxSession(
+    backend="windows-mxc",
+    lang="python",
+    sandbox_config=WindowsMxcConfig(network="none"),
+    # For a source build, set the actual absolute helper path:
+    # mxc_path=r"C:\tools\llm-sandbox-mxc.exe",
+) as session:
+    print(session.run("from pathlib import Path; Path('result.txt').write_text('done')").exit_code)
+    session.copy_from_runtime("result.txt", r"C:\outputs\result.txt")
+```
+
+Create the destination directory before copying. Native sessions expose their physical private directory as `session.workspace` after `open()`. File transfers accept paths relative to it, or absolute paths inside it. This is a Windows filesystem API: Linux aliases such as `/sandbox` and `/tmp` are not runtime paths.
+
+Initially, `run()` supports Python and JavaScript using installed Windows runtimes. Python defaults to the current interpreter; Node.js can be selected explicitly. `execute_argv()` accepts an absolute `.exe` and an argument list. `execute_command()` stages a command script and starts `cmd.exe` inside PSEC. Shell syntax is therefore Windows command syntax. Runtime directories and Windows system files are exposed read-only; the workspace is writable and persists until close. A Job Object terminates descendants when each command finishes, times out, or loses its helper.
+
+Automatic environment creation and package installation are unsupported: provision dependencies in the selected runtime first. `install()` with packages and `run(..., libraries=...)` fail explicitly. The POSIX plotting wrapper is also unsupported; use `copy_from_runtime()` to retrieve files written by the native program. Image options, Linux seccomp and POSIX resource limits do not apply. See [Windows configuration](configuration.md#windows-configuration) and [security boundaries](security.md#windows-isolation).
+
+### WSL2 Bubblewrap
+
+`backend="wsl2-bubblewrap"` runs a trusted worker in a named WSL2 distribution, which delegates payload execution to the existing Linux Bubblewrap adapter. WSL1 is rejected. The adapter checks the distribution version and guest kernel, then requires the worker's protocol, package version, and security implementation fingerprint to match the Windows installation.
+
+Prepare WSL2 and the distribution first using Microsoft's [WSL installation instructions](https://learn.microsoft.com/windows/wsl/install). Inside the distribution, install the [Bubblewrap prerequisites](#requirements), including `python3-venv`. Install the same `llm-sandbox` release/build used by the Windows client into a trusted guest Python environment, using its pure Python wheel or source distribution. A Windows platform wheel cannot be installed in Linux. For example, in the Linux shell:
+
+```bash
+python3 -m venv ~/.venvs/llm-sandbox-worker
+~/.venvs/llm-sandbox-worker/bin/python -m pip install /path/to/llm_sandbox-VERSION-py3-none-any.whl
+```
+
+Replace the wheel path and `VERSION` with the actual matching build. Its Python sources must match the Windows client; the optional Windows helper does not affect this comparison. Keep this environment outside directories writable by sandboxed code. From native Windows Python:
+
+```python
+from llm_sandbox import LocalSandboxConfig, SandboxSession
+
+with SandboxSession(
+    backend="wsl2-bubblewrap",
+    distribution="Ubuntu",  # Exact name from wsl.exe --list --verbose.
+    guest_python="/home/alice/.venvs/llm-sandbox-worker/bin/python",  # Use your actual Linux path.
+    sandbox_config=LocalSandboxConfig(network="none"),
+) as session:
+    print(session.run("print('Linux namespaces and seccomp from Windows')").stdout)
+```
+
+`guest_python` defaults to `/usr/bin/python3` if the matching package is installed there. It selects the trusted worker interpreter; `LocalSandboxConfig.python_executable` independently selects the payload's Linux interpreter. The host invokes the system `wsl.exe` with discrete arguments and never interpolates payload code into a Windows command line or host shell.
+
+The worker supports Linux `run()`, commands, package installation, and artifact extraction. File-copy operations transfer bounded regular files through the control channel; directory transfers are unsupported. Workspace files and private guest `/tmp` persist during the session. Host EOF or a missed heartbeat closes the guest session and its command PID namespace, since terminating `wsl.exe` alone does not guarantee Linux descendant cleanup.
+
+The WSL adapter requires the default seccomp restrictions; custom policies may add denied syscalls but cannot remove the baseline or disable seccomp. Read-only grants may only select from the built-in Linux runtime paths. It rejects Windows/shared mounts and interop environment variables. This intentionally limits custom toolchains outside those paths. Networking is disabled by default; `network="host"` grants the guest's full network reachability, including reachable Windows services. See [WSL configuration restrictions](configuration.md#wsl2-options) and [security boundaries](security.md#windows-isolation).
+
+### Windows Validation
+
+The Windows workflow builds the pinned helper and platform wheels for x86-64 and ARM64, and runs portable adapter tests plus native Windows file/process tests. If a hosted runner's capability probe succeeds, it must also pass the PSEC integration suite without skips. An unsupported runner records that limitation and validates the build only. Native PSEC and WSL2 enforcement can also be checked through the manually dispatched workflow on designated runners, which must fail when prerequisites are absent. A successful helper build or mocked policy test alone does not prove kernel enforcement.
 
 ## Docker Backend
 

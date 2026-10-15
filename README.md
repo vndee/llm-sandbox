@@ -15,7 +15,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21760525.svg)](https://doi.org/10.5281/zenodo.21760525)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/vndee/llm-sandbox)
 
-**LLM Sandbox** runs Large Language Model (LLM) generated code through a common API for container and local Linux sandbox backends. Choose an isolation backend for your deployment, configure its security controls, and reuse the same code execution and file APIs.
+**LLM Sandbox** runs Large Language Model (LLM) generated code through a common API for container and local Linux and Windows sandbox backends. Choose an isolation backend for your deployment, configure its security controls, and reuse the same code execution and file APIs.
 
 Documentation: https://vndee.github.io/llm-sandbox/
 
@@ -37,6 +37,8 @@ Documentation: https://vndee.github.io/llm-sandbox/
 - **Podman**: Rootless containers for enhanced security
 - **Bubblewrap**: Local Linux namespaces and seccomp without Docker or a daemon
 - **NsJail**: Local Linux namespaces and native seccomp policies without a daemon
+- **Windows MXC**: Native Windows process isolation through Microsoft's MXC/PSEC APIs
+- **WSL2 Bubblewrap**: Linux namespaces and seccomp in an explicitly selected WSL2 distribution
 - **Backend Registry**: Register additional adapters and inspect their supported features
 
 ### 🌐 Multi-Language Support
@@ -83,6 +85,8 @@ pip install 'llm-sandbox[docker,k8s,podman]'
 
 Bubblewrap and NsJail use the base Python package plus system executables; no container SDK extra is needed. See [local backend requirements](docs/backends.md#local-linux-backends) for Linux prerequisites.
 
+The Windows adapters also need no container SDK. `windows-mxc` requires a compatible Windows host and the native helper, while `wsl2-bubblewrap` requires a configured WSL2 distribution with the matching Python package and Linux prerequisites. See [Windows requirements](docs/backends.md#windows-backends); neither adapter installs an OS runtime or falls back to unsandboxed execution.
+
 ### Development Installation
 
 Dev dependencies live in the `dev` [uv dependency group](https://docs.astral.sh/uv/concepts/projects/dependencies/#dependency-groups), so install them with `uv` (or the `make install` shortcut):
@@ -125,7 +129,33 @@ with SandboxSession(backend="bubblewrap", lang="python") as session:
 
 The local defaults combine namespace isolation with a seccomp syscall denylist, disable network access, expose runtime paths read-only, and provide a private writable workspace and temporary directory. Python setup creates a virtual environment offline. Install the host runtime and its `venv` support first. Select `backend="nsjail"` to use an installed NsJail binary instead.
 
-Local adapters support `run()`, `execute_command()`, `install()`, file copying, and the artifact wrapper. They do not support container images, pooling, or interactive sessions. Files persist between commands in a session; background processes do not. These backends share the host kernel and are not a VM boundary. See [configuration](docs/configuration.md#local-linux-configuration), [security](docs/security.md#local-linux-isolation-and-seccomp), and the [backend roadmap](docs/backends.md#extension-roadmap).
+The Linux adapters support `run()`, `execute_command()`, `install()`, file copying, and the artifact wrapper. They do not support container images, pooling, or interactive sessions. Files persist between commands in a session; background processes do not. These backends share the host kernel and are not a VM boundary. See [configuration](docs/configuration.md#local-linux-configuration), [security](docs/security.md#local-linux-isolation-and-seccomp), and the [backend roadmap](docs/backends.md#extension-roadmap).
+
+### Windows Usage Without Docker
+
+For native Windows Python execution, use the MXC adapter on a compatible Windows host with the helper installed:
+
+```python
+from llm_sandbox import SandboxSession
+
+with SandboxSession(backend="windows-mxc", lang="python") as session:
+    print(session.run("import platform; print(platform.system())").stdout)
+```
+
+To run Linux tools from a Windows Python application, select a WSL2 distribution explicitly:
+
+```python
+from llm_sandbox import SandboxSession
+
+with SandboxSession(
+    backend="wsl2-bubblewrap",
+    distribution="Ubuntu",
+    lang="python",
+) as session:
+    print(session.run("import platform; print(platform.system())").stdout)
+```
+
+These are experimental adapters with different prerequisites and API limits. MXC initially supports Python and JavaScript with preinstalled dependencies. WSL2 reuses the Linux Bubblewrap runtime, requires seccomp, and restricts mounts to built-in Linux runtime paths to keep Windows interoperability inaccessible. Both default to disabled networking. See [backend setup and limitations](docs/backends.md#windows-backends).
 
 ### Installing Libraries
 

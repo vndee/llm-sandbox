@@ -10,6 +10,7 @@ from .local.config import LocalSandboxConfig
 from .security import SecurityIssueSeverity, SecurityPattern, SecurityPolicy
 from .security.seccomp import SeccompPolicy
 from .session import ArtifactSandboxSession, InteractiveSandboxSession, SandboxSession, create_session
+from .windows.config import WindowsMxcConfig
 
 __all__ = [
     "ArtifactSandboxSession",
@@ -37,6 +38,7 @@ __all__ = [
     "StreamCallback",
     "SupportedLanguage",
     "ValidationError",
+    "WindowsMxcConfig",
     "create_session",
     "get_backend",
     "list_backends",

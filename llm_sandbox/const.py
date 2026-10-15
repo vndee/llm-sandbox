@@ -64,6 +64,8 @@ class SandboxBackend(StrEnum):
     MICROMAMBA = "micromamba"
     BUBBLEWRAP = "bubblewrap"
     NSJAIL = "nsjail"
+    WINDOWS_MXC = "windows-mxc"
+    WSL2_BUBBLEWRAP = "wsl2-bubblewrap"
 
 
 class SupportedLanguage(StrEnum):

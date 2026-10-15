@@ -66,6 +66,8 @@ def create_session(
             - SandboxBackend.MICROMAMBA
             - SandboxBackend.BUBBLEWRAP (Linux, no container daemon)
             - SandboxBackend.NSJAIL (Linux, no container daemon)
+            - SandboxBackend.WINDOWS_MXC (native Windows PSEC)
+            - SandboxBackend.WSL2_BUBBLEWRAP (Windows client, Linux sandbox in WSL2)
         pool (ContainerPoolManager | None): Pool manager to use for container pooling.
             If provided, containers are acquired from the pool instead of being created new.
             Create a pool manager using `create_pool_manager()` from llm_sandbox.pool.
@@ -472,6 +474,9 @@ class ArtifactSandboxSession:
             # Don't create _session when using pooled implementation
             self._session = None
         else:
+            if get_backend(backend).name == SandboxBackend.WINDOWS_MXC.value:
+                msg = "windows-mxc does not support the artifact wrapper; use SandboxSession and copy_from_runtime()"
+                raise ValidationError(msg)
             # Create the base session (non-pooled)
             self._pooled_impl = None
             self._session = create_session(

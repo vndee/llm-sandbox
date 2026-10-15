@@ -97,6 +97,66 @@ You can instead supply offline package files in the workspace and invoke the pac
 
 See [local security and seccomp](security.md#local-linux-isolation-and-seccomp) before changing the default network, mount, or syscall policy. Missing prerequisites and unsupported requested controls fail without an unsandboxed fallback.
 
+## Windows Configuration
+
+Select the experimental `windows-mxc` backend for native Windows tools, or `wsl2-bubblewrap` for Linux tools from a Windows client. See [backend prerequisites](backends.md#windows-backends). Both require an explicit backend choice, default to disabled networking, and reject unsupported controls instead of silently weakening isolation.
+
+### MXC Options
+
+```python
+from llm_sandbox import SandboxSession, WindowsMxcConfig
+
+config = WindowsMxcConfig(
+    network="none",
+    python_executable=r"C:\Python313\python.exe",
+    max_output_bytes=1024 * 1024,
+)
+
+with SandboxSession(
+    backend="windows-mxc",
+    sandbox_config=config,
+    execution_timeout=20.0,
+) as session:
+    print(session.run("print('Native Windows execution')").stdout)
+```
+
+Use paths that exist on your machine. `WindowsMxcConfig` rejects unknown fields:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `network` | `"none"` | Denies egress, ingress and host loopback; `"host"` explicitly allows them |
+| `read_only_paths` | `()` | Additional read grants beyond the Windows and selected runtime directories |
+| `deny_paths` | `()` | Explicit native deny rules; a nonempty policy requires host deny-path support |
+| `python_executable` | `None` | Absolute `.exe` path; defaults to the current Python interpreter |
+| `javascript_executable` | `None` | Absolute Node.js `.exe` path; otherwise discovers installed `node.exe` |
+| `env` | `{}` | Explicit payload environment additions; Windows bootstrap keys are reserved |
+| `max_output_bytes` | `8388608` | Combined captured command output cap |
+| `max_artifact_bytes` | `16777216` | Maximum size of a bounded extracted file |
+
+Policy paths must be absolute local drive paths. Volume-root grants, UNC/device paths, alternate data streams, and ambiguous Windows names are rejected. Read-only grants still disclose their contents; granting a project or runtime directory can expose credentials stored there. Environment keys are case-insensitive on Windows. Session `env_vars` override corresponding payload values; they do not modify the trusted helper's environment.
+
+When selecting an explicit Python executable from a virtual environment, add its base Python installation and required dependencies to `read_only_paths`. The default current interpreter automatically includes `sys.prefix` and `sys.base_prefix`; an arbitrary external interpreter's installation layout is not guessed. A runtime that cannot start with the supplied grants fails during session startup.
+
+Pass an absolute `mxc_path` to select a trusted helper built from `native/windows-mxc`; otherwise the adapter uses `llm_sandbox/bin/llm-sandbox-mxc.exe` bundled in a Windows platform wheel. There is no runtime download. The helper is part of the trusted computing base and must not be writable by sandboxed code.
+
+Windows file transfers reject links and pin ancestor directories while accessing files. Replacing an existing destination is not atomic: the previous regular file is removed before the new file is created, and a failed transfer can leave no destination. Use a fresh output filename when the existing file must be preserved. This also applies to the Windows destination of a WSL download.
+
+`default_timeout` defaults to 60 seconds; `execution_timeout`, `session_timeout` and per-run overrides apply. There are no aggregate CPU, memory, process-count, or disk quotas in this initial MXC configuration. `LocalSandboxConfig`, seccomp and POSIX resource-limit settings are not accepted substitutes. Automatic package installation, container options, interactive sessions and the artifact plotting wrapper are unsupported.
+
+### WSL2 Options
+
+The Windows client requires `distribution="..."` and optionally `guest_python="/absolute/linux/python"` (default `/usr/bin/python3`). `sandbox_config` is a `LocalSandboxConfig`; ordinary Linux execution options are forwarded to the trusted guest worker. The guest's installed package must match the Windows client, including its security-source fingerprint.
+
+The WSL adapter adds these restrictions:
+
+- `read_only_paths` must be a subset of the built-in Linux defaults. Additional mounts are rejected, including `/mnt/c`, host interop sockets, and Windows/shared filesystems beneath an otherwise allowed runtime directory.
+- `seccomp` must retain every syscall in the default denylist. It may add restrictions but cannot be `None`.
+- `WSL_INTEROP` and `WSLENV` cannot be supplied as payload environment variables.
+- `max_output_bytes` and `max_artifact_bytes` cannot exceed 8 MiB each. File transfers accept regular files only, bounded by the artifact limit.
+- Runtime and workspace paths are Linux paths. Host file-copy arguments are Windows paths. No caller-specified `wsl.exe` override or shell wrapper is accepted.
+
+`network="host"` is an explicit grant to the guest's full network, including reachable Windows and LAN services. It does not provide an outbound domain allowlist. Runtime mount validation remains active when networking is enabled; a distribution whose resolver or trust files resolve through a prohibited shared filesystem can be rejected. Package installation otherwise follows the Linux adapter's rules. Resource limits use guest Linux `prlimit`, not Windows Job Object quotas.
+
 ## Session Configuration
 
 ### Basic Parameters

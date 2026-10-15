@@ -49,6 +49,27 @@ def test_discovery_describes_builtins_without_importing_backends() -> None:
     assert not bubblewrap.capabilities.interactive
 
 
+@pytest.mark.parametrize(("name", "seccomp"), [("windows-mxc", False), ("wsl2-bubblewrap", True)])
+def test_windows_backend_capabilities(name: str, *, seccomp: bool) -> None:
+    """Windows client adapters distinguish native PSEC from Linux syscall filtering."""
+    capabilities = get_backend(name).capabilities
+    assert capabilities.platforms == ("win32",)
+    assert capabilities.filesystem_isolation
+    assert capabilities.network_isolation
+    assert capabilities.seccomp is seccomp
+    assert not capabilities.container_images
+    assert not capabilities.interactive
+    assert not capabilities.pooling
+    assert not capabilities.daemon_required
+
+
+@pytest.mark.parametrize("plotting", [True, False])
+def test_windows_mxc_rejects_posix_artifact_wrapper(*, plotting: bool) -> None:
+    """The native adapter cannot execute the plotting wrapper's POSIX scripts."""
+    with pytest.raises(ValidationError, match="does not support the artifact wrapper"):
+        ArtifactSandboxSession(backend="windows-mxc", enable_plotting=plotting)
+
+
 def test_custom_factory_receives_arguments_through_public_alias() -> None:
     """The existing SandboxSession alias can select an explicitly registered adapter."""
     factory = MagicMock()
@@ -79,7 +100,7 @@ def test_registration_and_capabilities_are_immutable_snapshots() -> None:
         definition.name = "renamed"  # type: ignore[misc]
 
 
-@pytest.mark.parametrize("name", ["docker", "DOCKER", "bubblewrap", "nsjail"])
+@pytest.mark.parametrize("name", ["docker", "DOCKER", "bubblewrap", "nsjail", "windows-mxc", "wsl2-bubblewrap"])
 def test_registration_cannot_replace_builtins(name: str) -> None:
     """Plugins cannot shadow built-in security boundaries."""
     original = get_backend(name)
@@ -122,7 +143,7 @@ def test_unknown_backend_never_falls_back(name: str) -> None:
         SandboxSession(backend=name)
 
 
-@pytest.mark.parametrize("name", ["bubblewrap", "nsjail", "BUBBLEWRAP"])
+@pytest.mark.parametrize("name", ["bubblewrap", "nsjail", "BUBBLEWRAP", "windows-mxc", "wsl2-bubblewrap"])
 @pytest.mark.parametrize("session_factory", [SandboxSession, ArtifactSandboxSession])
 def test_local_backends_reject_container_pools(name: str, session_factory: "Callable[..., object]") -> None:
     """A supplied container pool must not bypass an explicit local backend request."""
@@ -171,7 +192,10 @@ def test_unknown_backend_cannot_be_replaced_by_pool(session_factory: "Callable[.
         session_factory(backend="missing-backend", pool=pool)
 
 
-@pytest.mark.parametrize("backend", [SandboxBackend.BUBBLEWRAP, SandboxBackend.NSJAIL])
+@pytest.mark.parametrize(
+    "backend",
+    [SandboxBackend.BUBBLEWRAP, SandboxBackend.NSJAIL, SandboxBackend.WINDOWS_MXC, SandboxBackend.WSL2_BUBBLEWRAP],
+)
 def test_local_backends_reject_interactive_sessions(backend: SandboxBackend) -> None:
     """Process-per-command adapters cannot promise a persistent background kernel."""
     with pytest.raises(UnsupportedBackendError):
@@ -183,6 +207,8 @@ def test_local_backends_reject_interactive_sessions(backend: SandboxBackend) -> 
     [
         ("bubblewrap", "llm_sandbox.bubblewrap.BubblewrapSession"),
         ("nsjail", "llm_sandbox.nsjail.NsjailSession"),
+        ("windows-mxc", "llm_sandbox.windows_mxc.WindowsMxcSession"),
+        ("wsl2-bubblewrap", "llm_sandbox.wsl2_bubblewrap.Wsl2BubblewrapSession"),
     ],
 )
 def test_local_backend_factory_is_lazy(name: str, factory_path: str) -> None:
@@ -194,7 +220,7 @@ def test_local_backend_factory_is_lazy(name: str, factory_path: str) -> None:
     dependency_probe.assert_not_called()
 
 
-@pytest.mark.parametrize("backend", ["bubblewrap", "nsjail"])
+@pytest.mark.parametrize("backend", ["bubblewrap", "nsjail", "windows-mxc", "wsl2-bubblewrap"])
 def test_local_backend_imports_without_container_sdks(backend: str) -> None:
     """A clean Python process can load local adapters while container imports are blocked."""
     program = textwrap.dedent(
@@ -217,9 +243,14 @@ def test_local_backend_imports_without_container_sdks(backend: str) -> None:
         from llm_sandbox import SandboxSession, list_backends
 
         backend = sys.argv[1]
-        class_name = "BubblewrapSession" if backend == "bubblewrap" else "NsjailSession"
+        module_name, class_name = {
+            "bubblewrap": ("bubblewrap", "BubblewrapSession"),
+            "nsjail": ("nsjail", "NsjailSession"),
+            "windows-mxc": ("windows_mxc", "WindowsMxcSession"),
+            "wsl2-bubblewrap": ("wsl2_bubblewrap", "Wsl2BubblewrapSession"),
+        }[backend]
         list_backends()
-        with patch("llm_sandbox." + backend + "." + class_name) as factory:
+        with patch("llm_sandbox." + module_name + "." + class_name) as factory:
             result = SandboxSession(backend=backend, lang="python")
             assert result is factory.return_value
             factory.assert_called_once_with(lang="python")

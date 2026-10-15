@@ -99,6 +99,20 @@ def _nsjail_factory(*args: Any, **kwargs: Any) -> "BaseSession":
     return NsjailSession(*args, **kwargs)
 
 
+def _windows_mxc_factory(*args: Any, **kwargs: Any) -> "BaseSession":
+    """Load the native Windows adapter only when explicitly selected."""
+    from llm_sandbox.windows_mxc import WindowsMxcSession
+
+    return WindowsMxcSession(*args, **kwargs)
+
+
+def _wsl2_bubblewrap_factory(*args: Any, **kwargs: Any) -> "BaseSession":
+    """Load the Windows client for an explicitly selected WSL2 distribution."""
+    from llm_sandbox.wsl2_bubblewrap import Wsl2BubblewrapSession
+
+    return Wsl2BubblewrapSession(*args, **kwargs)
+
+
 _CONTAINER_CAPABILITIES = BackendCapabilities(
     container_images=True,
     interactive=True,
@@ -145,6 +159,18 @@ _BACKENDS = {
         ),
         BackendDefinition("bubblewrap", _bubblewrap_factory, _LOCAL_CAPABILITIES, builtin=True),
         BackendDefinition("nsjail", _nsjail_factory, _LOCAL_CAPABILITIES, builtin=True),
+        BackendDefinition(
+            "windows-mxc",
+            _windows_mxc_factory,
+            BackendCapabilities(platforms=("win32",), filesystem_isolation=True, network_isolation=True),
+            builtin=True,
+        ),
+        BackendDefinition(
+            "wsl2-bubblewrap",
+            _wsl2_bubblewrap_factory,
+            BackendCapabilities(platforms=("win32",), filesystem_isolation=True, network_isolation=True, seccomp=True),
+            builtin=True,
+        ),
     )
 }
 _REGISTRY_LOCK = RLock()

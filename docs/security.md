@@ -66,6 +66,32 @@ Disabling the filter with `seccomp=None` is an explicit reduction in protection.
 
 For managed hostile multi-tenant workloads, evaluate a stronger boundary such as a userspace kernel or VM alongside per-job storage and aggregate resource controls. Those backends are roadmap candidates, not currently implemented adapters.
 
+## Windows Isolation
+
+The experimental Windows backends use different OS boundaries. Both require an explicit backend selection and fail when the requested protection cannot be established. Capability metadata is not a live host probe.
+
+### Native MXC/PSEC
+
+`windows-mxc` invokes the pinned Microsoft MXC SDK's native PSEC runner directly. It does not use a generic dispatcher that could choose AppContainer, restricted tokens, or an unsandboxed fallback. An actual container-create probe checks availability, and explicit deny paths additionally require the native deny-path capability. The helper disables SDK DACL mutation; it does not provision users or change host directory ACLs to make execution succeed.
+
+The policy grants read access to Windows and selected runtime files, plus explicit read-only paths. One private session directory is writable. File-transfer code rejects reparse points, junctions, hardlinks, device/UNC paths and alternate data streams; file operations verify handles instead of trusting a path string alone. The session root has a private DACL. These controls protect transfers and cleanup as well as execution.
+
+`network="none"` denies egress, ingress and host loopback. `network="host"` enables all three and is a broad grant, not proxy enforcement. The helper permits registry reads needed by supported console runtimes; **this backend does not promise registry-read confidentiality**. Clipboard access, input injection and desktop/system control remain restricted. Native MXC is a process boundary sharing the Windows kernel, not a VM and not Linux seccomp.
+
+The native launcher creates the payload suspended, assigns a kill-on-close Job Object, then resumes it. Descendants are terminated on foreground completion or helper death. The Python supervisor separately owns the helper's process tree, timeouts and output bounds. Session files persist between commands; background processes do not. The initial backend has no aggregate resource quotas.
+
+The native helper, selected executables, runtime installations and explicit read grants are trusted inputs. They must not be writable by the sandbox. The helper receives a small bootstrap environment; only explicitly constructed payload variables reach the child. Runtime dependencies already present in read-only grants remain visible, and credentials intentionally passed in environment values are accessible to payload code.
+
+### WSL2 Bubblewrap
+
+`wsl2-bubblewrap` uses WSL2's Linux guest plus Bubblewrap namespaces, restricted mounts and seccomp inside that guest. Sessions share the existing distribution and guest kernel; the library does not start a separate VM per command. WSL1 is rejected. The native Windows client uses a trusted system `wsl.exe`, explicit arguments, and an isolated guest Python invocation. The worker handshake checks protocol, installed package version and the relevant security-source fingerprint.
+
+WSL interoperability is a separate escape surface: Windows mounts and interop sockets can otherwise let Linux processes act on Windows with the user's privileges. This adapter restricts runtime grants to built-in Linux paths, rejects Windows/shared mount exposure, removes interop environment variables, and keeps the default seccomp restrictions mandatory. It hides standard `/usr/lib/wsl` integration mounts behind an empty read-only mount. It does not mount `/mnt`, `/run`, or `/init` into the payload. Granting `network="host"` still permits connections to reachable Windows services; filesystem isolation does not imply network isolation under that setting.
+
+The worker owns each Bubblewrap process tree. Control messages are bounded and versioned; payload output is encoded as data and never interpreted as control instructions. Heartbeat expiry or transport EOF closes the guest session, because killing the Windows `wsl.exe` process alone is insufficient to prove Linux cleanup. The lease adds a bounded detection delay after an abrupt client failure. The trusted guest installation and distribution configuration remain part of the security boundary.
+
+Portable tests and compilation validate contracts and API compatibility. Kernel filesystem/network enforcement, WSL interoperability restrictions and cancellation must also pass native integration checks on suitable Windows hosts before a deployment relies on them. See [Windows validation](backends.md#windows-validation).
+
 ## Library names: accepted formats and limitations
 
 Whenever you pass `libraries=[...]` to `session.run()`, `session.install()`, or a pool's pre-install list, each entry is validated against a per-language allowlist before the install command is built. The install command is assembled by interpolating into a shell string (e.g. `pip install {lib}`), so a value like `foo; rm -rf /` would otherwise execute inside the container before any container limits could intervene. The validator rejects identifiers that fall outside the canonical naming spec for the target ecosystem and raises `llm_sandbox.exceptions.ValidationError`.
