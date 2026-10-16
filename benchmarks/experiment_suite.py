@@ -29,11 +29,12 @@ if TYPE_CHECKING:
 
 def sequential_schedule(names: list[str], rounds: int, seed: int) -> list[dict[str, Any]]:
     """Shuffle backend order independently within each complete round."""
-    generator = random.Random(seed)  # noqa: S311 - reproducible experiment ordering, not security.
+    generator = random.Random(seed)  # noqa: S311
     schedule = []
     for round_index in range(rounds):
         order = names.copy()
-        generator.shuffle(order)
+        # Seeded shuffling orders reproducible benchmark trials and creates no security secrets.
+        generator.shuffle(order)  # NOSONAR(S2245)
         schedule.extend({"round": round_index, "backend": name} for name in order)
     return schedule
 
@@ -51,7 +52,8 @@ def concurrency_schedule(
             for level in levels
             for workload in workloads
         ]
-        generator.shuffle(jobs)
+        # Seeded shuffling orders reproducible benchmark trials and creates no security secrets.
+        generator.shuffle(jobs)  # NOSONAR(S2245)
         schedule.extend(jobs)
     return schedule
 
