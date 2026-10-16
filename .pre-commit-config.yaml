@@ -4,20 +4,27 @@ repos:
     hooks:
       - id: check-case-conflict
       - id: check-merge-conflict
+      # Archived benchmark sources are evidence: validate syntax without rewriting.
+      - id: check-ast
+        files: ^benchmarks/results/.*\.py$
       - id: check-toml
       - id: check-yaml
         exclude: ^mkdocs\.yml$
       - id: check-json
         exclude: ^.devcontainer/devcontainer.json
       - id: pretty-format-json
-        exclude: ^.devcontainer/devcontainer.json
+        exclude: ^(?:\.devcontainer/devcontainer\.json$|benchmarks/results/)
         args: [--autofix, --no-sort-keys]
       - id: end-of-file-fixer
+        exclude: ^benchmarks/results/
       - id: trailing-whitespace
+        exclude: ^(?:benchmarks/results/|docs/assets/benchmarks/)
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "v0.11.11"
     hooks:
       - id: ruff-check
+        exclude: ^benchmarks/results/
         args: [--exit-non-zero-on-fix]
       - id: ruff-format
+        exclude: ^benchmarks/results/

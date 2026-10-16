@@ -1,0 +1,50 @@
+{
+  "docker": {
+    "image": "python:3.13.5-slim-bookworm",
+    "client_kwargs": {
+      "base_url": "unix:///var/run/docker.sock",
+      "timeout": 60
+    },
+    "runtime_configs": {
+      "network_mode": "none",
+      "environment": {
+        "PIP_NO_INDEX": "1",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+      }
+    },
+    "skip_environment_setup": false
+  },
+  "bubblewrap": {
+    "sandbox_config": {
+      "python_executable": "/workspace/scratch/benchmark-python-3135/local/bin/python3.13",
+      "read_only_paths": [
+        "/usr",
+        "/bin",
+        "/lib",
+        "/lib64",
+        "/etc/ld.so.cache",
+        "/etc/alternatives",
+        "/workspace/scratch/benchmark-python-3135/local"
+      ],
+      "max_artifact_bytes": 33554432
+    },
+    "skip_environment_setup": false
+  },
+  "nsjail": {
+    "nsjail_path": "/workspace/scratch/nsjail-build/source/nsjail",
+    "sandbox_config": {
+      "python_executable": "/workspace/scratch/benchmark-python-3135/local/bin/python3.13",
+      "read_only_paths": [
+        "/usr",
+        "/bin",
+        "/lib",
+        "/lib64",
+        "/etc/ld.so.cache",
+        "/etc/alternatives",
+        "/workspace/scratch/benchmark-python-3135/local"
+      ],
+      "max_artifact_bytes": 33554432
+    },
+    "skip_environment_setup": false
+  }
+}

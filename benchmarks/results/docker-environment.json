@@ -1,0 +1,74 @@
+{
+  "version": {
+    "Platform": {
+      "Name": "Docker Engine - Community"
+    },
+    "Components": [
+      {
+        "Name": "Engine",
+        "Version": "28.4.0",
+        "Details": {
+          "ApiVersion": "1.51",
+          "Arch": "amd64",
+          "BuildTime": "2025-09-03T20:58:50.000000000+00:00",
+          "Experimental": "false",
+          "GitCommit": "249d679",
+          "GoVersion": "go1.24.7",
+          "KernelVersion": "6.18.44",
+          "MinAPIVersion": "1.24",
+          "Os": "linux"
+        }
+      },
+      {
+        "Name": "containerd",
+        "Version": "v1.7.28",
+        "Details": {
+          "GitCommit": "b98a3aace656320842a23f4a392a33f46af97866"
+        }
+      },
+      {
+        "Name": "runc",
+        "Version": "1.3.0",
+        "Details": {
+          "GitCommit": "v1.3.0-0-g4ca628d"
+        }
+      },
+      {
+        "Name": "docker-init",
+        "Version": "0.19.0",
+        "Details": {
+          "GitCommit": "de40ad0"
+        }
+      }
+    ],
+    "Version": "28.4.0",
+    "ApiVersion": "1.51",
+    "MinAPIVersion": "1.24",
+    "GitCommit": "249d679",
+    "GoVersion": "go1.24.7",
+    "Os": "linux",
+    "Arch": "amd64",
+    "KernelVersion": "6.18.44",
+    "BuildTime": "2025-09-03T20:58:50.000000000+00:00"
+  },
+  "host": {
+    "Driver": "vfs",
+    "CgroupDriver": "cgroupfs",
+    "CgroupVersion": "2",
+    "KernelVersion": "6.18.44",
+    "NCPU": 5,
+    "MemTotal": 18882699264,
+    "OperatingSystem": "Debian GNU/Linux 13 (trixie) (containerized)"
+  },
+  "images": {
+    "python:3.13.5-slim-bookworm": {
+      "Id": "sha256:38e57556b63539e63344b97f802e7cbd85b70e2087ee703e360fcdfe337cbbb3",
+      "RepoDigests": [
+        "python@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419"
+      ],
+      "Architecture": "amd64",
+      "Os": "linux",
+      "Size": 120700748
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "algorithm": "SHA-256",
+  "created_at_utc": "2026-10-16T08:07:12.633148+00:00",
+  "excludes": [
+    "sha256-manifest.json",
+    "__pycache__"
+  ],
+  "files": {
+    "../../README.md": "3db0c9ced1d6388ee3b107edb0709e31fe25bffd42eed40835e142378be790a0",
+    "../../run_expanded.sh": "cdbe800e12a76b1acf556f1d18ed20276d69470a4109ce3dc6e0167ea5b9e5bc",
+    "PREPARATION.md": "4243f13eb714bf2418716993e377901c3bef5c09155a35de9570e5540a276575",
+    "REPORT.md": "8c26c14a09b4da237b8ef46ad5c9a556ee4c688e7076688f0db5d4fb7b445647",
+    "audit_raw.py": "c410f0cb185fa7335bce1aa0379b3f4b80d427e2bee0986ceb7f2c5c303d2d6b",
+    "audit_statistics.py": "434069eacbc4f9e1866ad454d58739a2732e90d3b0e6f07f323b0f1bbc11d58e",
+    "baseline.json": "ffcdb4c2c13c4ef6bc23e15c5ab9708ebb8abaf44e37088acf9fca7e37d4eef9",
+    "concurrency-throughput.png": "c872839e10fb99e261eb56962533c85cf46ec0a96506ddb8f535e004dcefed5a",
+    "concurrency-throughput.svg": "af6924f8009b11e29b949317cef75d407f4ca192b0ffddac68599668455e17dc",
+    "concurrency.json": "9078771b11c1a96e9793714fc53c60f02c35f191e962136ac9952af19f2f2e91",
+    "config-common.json": "d807328006df152e76e3e820a027faf4b1487583cb7b12fee9a69f4345882285",
+    "config-setup-offline.json": "61952aa8f581cfb73c27f8e11394ad8f594e2af22e7b48a1f5b8deaefe14f4b1",
+    "generate_report.py": "48d262825286446862d0460c4934c15e394a0005b1b29a1134bc21076c8bf4e1",
+    "host.json": "4588fcebeb39e34aff535bfc81f39a629a82f7a25e4baf6d9724f5f56921a569",
+    "latency-comparison.png": "d9e79ae0a5a79e6f24c768b82983e1c14cf3f1912896aff9cc9086644da4371e",
+    "latency-comparison.svg": "5a403765675a267a463d254831b5c672a1c05132757f5d1a55457b44dfa88d0c",
+    "plot_results.py": "4fcd3ed06944ec6e4f7e122655b5d94e8ae452e2169edb85ae435b629ce3aa01",
+    "plotting-environment.txt": "cd2f92ed7d125bf69e808c9d348c67eb5635580d222a23caaa777c12c8a7bbf2",
+    "raw-audit.json": "3bc32186d8ae3ce65e4220323e19477bd9c12dd1425b41cfc3c3b9a63204c835",
+    "runtime-identity.json": "81bc3f9695158788b8042240c8595d5c7193f470126b8ad0e4e9d6573703d2c1",
+    "setup.json": "a83905e123018fc280338576f754865ca773c20dec8e307c22b8e31208cbf574",
+    "source/backend_benchmark.py": "cb4802be572471a1d27da74d189525d04dfc198d6b345b11aef530a800772803",
+    "source/experiment_statistics.py": "6b3a5f042cbd38930e969eb1b6b044807852e9707b239eefb0344b2d2f417989",
+    "source/experiment_suite.py": "2c9f1c8afaa9ce8596e7ea52c9ab1589bbcaf2c6e016587778634056af88797c",
+    "source/experiment_workloads.py": "5b321ae9da2681439793232af7e9822d62114b4e16b508ede2abfba25dcfb48d",
+    "statistics-audit.json": "cb420257250ba58ade8a3dac0e38335d8dcf5e369063d7d000f1bc4c3e56eb8b",
+    "statistics-audit.md": "2e5af34ea198303f7e33dd8b1338c92a58dc0b43e499b8e8dcd2c91ea5e6b8ea",
+    "summary.csv": "b9b61611a45b085008b4cc16b6b375991ab461bed59e16765e7b8ac3b4d41d89",
+    "summary.json": "8a482ac266d7b2c3aaea9bb67dc404ee5767e8458713d3baab808bc6ee170191",
+    "workload.json": "c24bfb6448426268f9e891b9ca77c87fed36f5adaa177b961eef82ce205d1b2c"
+  },
+  "paths_relative_to": "this directory"
+}

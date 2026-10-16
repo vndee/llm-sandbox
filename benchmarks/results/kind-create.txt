@@ -1,0 +1,7 @@
+Creating cluster "llm-backend-benchmark" ...
+ • Ensuring node image (kindest/node:v1.34.0) 🖼  ...
+ERROR: failed to create cluster: failed to ensure docker network: command "docker network create -d=bridge -o com.docker.network.bridge.enable_ip_masquerade=true -o com.docker.network.driver.mtu=1500 --ipv6 --subnet fc00:f853:ccd:e793::/64 kind" failed with error: exit status 1
+
+Command Output: Error response from daemon: setting default policy to DROP in FORWARD chain failed:  (iptables failed: ip6tables --wait -t filter -P FORWARD DROP: ip6tables v1.8.11 (legacy): can't initialize ip6tables table `filter': Table does not exist (do you need to insmod?)
+Perhaps ip6tables or your kernel needs to be upgraded.
+ (exit status 3))

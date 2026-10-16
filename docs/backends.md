@@ -19,6 +19,8 @@ Supported backends:
 
 Capabilities describe adapter features, not proof that a host can run the backend or that a particular session enables every protection. Docker remains the default; choose local backends explicitly.
 
+See the [backend benchmarks](benchmarks.md) for measured startup, execution, file-transfer and concurrency results for Docker, Bubblewrap and NsJail, with configurations, uncertainty intervals and reproducible evidence.
+
 ## Local Linux Backends
 
 Bubblewrap and NsJail avoid container images and a container daemon. They start each command in an isolated process tree, mount a private session workspace, and expose selected host runtime files read-only. Both share the host Linux kernel.

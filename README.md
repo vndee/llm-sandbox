@@ -10,13 +10,15 @@
 [![Release](https://img.shields.io/github/v/release/vndee/llm-sandbox)](https://img.shields.io/github/v/release/vndee/llm-sandbox)
 [![Build status](https://img.shields.io/github/actions/workflow/status/vndee/llm-sandbox/main.yml?branch=main)](https://github.com/vndee/llm-sandbox/actions/workflows/main.yml?query=branch%3Amain)
 [![CodeFactor](https://www.codefactor.io/repository/github/vndee/llm-sandbox/badge)](https://www.codefactor.io/repository/github/vndee/llm-sandbox)
-[![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg?token=EULWCESZAY)](https://codecov.io/gh/vndee/llm-sandbox)
+[![codecov](https://codecov.io/gh/vndee/llm-sandbox/branch/main/graph/badge.svg)](https://codecov.io/gh/vndee/llm-sandbox)
 ![](https://badge.mcpx.dev?status=on 'MCP Enabled')
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21760525.svg)](https://doi.org/10.5281/zenodo.21760525)
 
 **LLM Sandbox** runs Large Language Model (LLM) generated code through a common API for container and local Linux and Windows sandbox backends. Choose an isolation backend for your deployment, configure its security controls, and reuse the same code execution and file APIs.
 
 Documentation: https://vndee.github.io/llm-sandbox/
+
+[Backend benchmarks](docs/benchmarks.md) compare Docker, Bubblewrap and NsJail across startup, execution, file transfers and concurrency, with confidence intervals and [reproducible evidence](benchmarks/results/expanded-20261016/REPORT.md).
 
 ![](https://blog.duy.dev/content/images/size/w2000/2024/07/llm-sandbox--6--1.png)
 
