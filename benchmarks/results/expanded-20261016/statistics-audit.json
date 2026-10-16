@@ -1,0 +1,110 @@
+{
+  "status": "passed",
+  "checked_at_utc": "2026-10-16T08:06:49.369816+00:00",
+  "checks": 7410,
+  "errors": [],
+  "scalar_metrics_checked": 276,
+  "paired_comparisons_checked": 69,
+  "csv_rows_checked": 276,
+  "selected_bootstrap_reproductions": [
+    {
+      "profile": "baseline",
+      "backend": "bubblewrap",
+      "kind": "session",
+      "workers": "",
+      "workload": "",
+      "metric": "warm_run",
+      "units": "seconds",
+      "n_independent_units": 30,
+      "estimate": 0.021652504249914273,
+      "ci95": [
+        0.02154815275002875,
+        0.02183025425017604
+      ]
+    },
+    {
+      "profile": "baseline",
+      "backend": "docker",
+      "kind": "session",
+      "workers": "",
+      "workload": "",
+      "metric": "warm_run",
+      "units": "seconds",
+      "n_independent_units": 30,
+      "estimate": 0.1147344470000462,
+      "ci95": [
+        0.11381791799999519,
+        0.1164600369999107
+      ]
+    },
+    {
+      "profile": "workload",
+      "backend": "nsjail",
+      "kind": "session",
+      "workers": "",
+      "workload": "",
+      "metric": "json_run",
+      "units": "seconds",
+      "n_independent_units": 10,
+      "estimate": 0.06928143900017858,
+      "ci95": [
+        0.06850499749998562,
+        0.07155307925006582
+      ]
+    },
+    {
+      "profile": "concurrency",
+      "backend": "docker",
+      "kind": "throughput",
+      "workers": "16",
+      "workload": "json",
+      "metric": "throughput",
+      "units": "calls/second",
+      "n_independent_units": 5,
+      "estimate": 21.4719438060763,
+      "ci95": [
+        21.292798627214175,
+        21.861260215460767
+      ]
+    },
+    {
+      "profile": "concurrency",
+      "backend": "bubblewrap",
+      "kind": "concurrency",
+      "workers": "4",
+      "workload": "json",
+      "metric": "json_run",
+      "units": "seconds",
+      "n_independent_units": 5,
+      "estimate": 0.08512399450000885,
+      "ci95": [
+        0.08352930099999867,
+        0.09244949349999843
+      ]
+    },
+    {
+      "profile": "baseline",
+      "backend": "bubblewrap/nsjail",
+      "kind": "matched round ratio",
+      "workers": "",
+      "workload": "",
+      "metric": "warm_run",
+      "units": "ratio",
+      "n_independent_units": 30,
+      "estimate": 1.0240396845326405,
+      "ci95": [
+        1.0145593030167694,
+        1.0464220034133604
+      ]
+    }
+  ],
+  "sha256": {
+    "baseline.json": "ffcdb4c2c13c4ef6bc23e15c5ab9708ebb8abaf44e37088acf9fca7e37d4eef9",
+    "setup.json": "a83905e123018fc280338576f754865ca773c20dec8e307c22b8e31208cbf574",
+    "workload.json": "c24bfb6448426268f9e891b9ca77c87fed36f5adaa177b961eef82ce205d1b2c",
+    "concurrency.json": "9078771b11c1a96e9793714fc53c60f02c35f191e962136ac9952af19f2f2e91",
+    "summary.json": "8a482ac266d7b2c3aaea9bb67dc404ee5767e8458713d3baab808bc6ee170191",
+    "summary.csv": "b9b61611a45b085008b4cc16b6b375991ab461bed59e16765e7b8ac3b4d41d89"
+  },
+  "method": "Independent direct raw arithmetic and separately implemented median/percentile/resampling; no import or call of experiment_statistics.py. Five scalar CIs and the native paired CI reproduced using 10,000 whole-unit draws each and seed 20261016."
+}

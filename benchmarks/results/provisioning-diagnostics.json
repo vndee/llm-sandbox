@@ -1,0 +1,35 @@
+{
+  "scope": "Provisioning feasibility only; no performance samples",
+  "podman": {
+    "status": "unavailable",
+    "version": "5.4.2",
+    "oci_runtime": "crun 1.21",
+    "image": "localhost/python:3.13.5-slim-bookworm",
+    "storage_driver": "vfs",
+    "initial_error": "command required for rootless mode with multiple IDs: exec: \"newuidmap\": executable file not found in $PATH",
+    "attempt": "Started private single-UID/GID user and mount namespace API service; VFS storage with ignore_chown_errors=true, cgroups disabled, network none; packaged seccomp enabled. Imported the same Python image exported from Docker.",
+    "probe_command": "/workspace/scratch/extra-runtimes/bin/podman --remote --url unix:///workspace/scratch/extra-runtimes/podman.sock run --rm --pull never --network none --cgroups disabled localhost/python:3.13.5-slim-bookworm python --version",
+    "container_error": "crun: mount `devpts` to `dev/pts`: Invalid argument: OCI runtime error",
+    "diagnosis": "Container creation fails in the fallback single-ID namespace; standard rootless setup requires privileged UID/GID mapping helpers not present in this environment. Further changes to isolation were not attempted.",
+    "service_stopped": true
+  },
+  "kubernetes": {
+    "status": "unavailable",
+    "kind_version": "0.30.0",
+    "node_image": "kindest/node:v1.34.0",
+    "probe_command": "kind create cluster --name llm-backend-benchmark --image kindest/node:v1.34.0 --kubeconfig /workspace/scratch/extra-runtimes/kubeconfig --wait 180s --retain",
+    "initial_error": "ip6tables v1.8.11 (legacy): can't initialize ip6tables table `filter': Table does not exist",
+    "attempt": "Retried using an isolated IPv4 Docker bridge through KIND_EXPERIMENTAL_DOCKER_NETWORK; node container started, but kubelet repeatedly exited.",
+    "kubelet_error": "failed to run Kubelet: failed to create kubelet: open /dev/kmsg: no such file or directory",
+    "node_deleted": true,
+    "network_deleted": true,
+    "cleanup_note": "kind reported inability to lock /home/agent/.kube while deleting, but explicitly reported Deleted nodes; Docker inspection verified node absence and network deletion."
+  },
+  "preserved_artifacts": [
+    "kind-create.txt",
+    "kind-create-ipv4.txt",
+    "kubernetes-kubelet-failure.txt",
+    "podman-failure.txt"
+  ],
+  "host_changes": "No host packages, UID/GID mappings, sysctls, privileged mapping helpers, or security policy changed."
+}

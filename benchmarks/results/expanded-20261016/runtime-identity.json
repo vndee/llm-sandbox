@@ -1,0 +1,12 @@
+{
+  "source_image": "python:3.13.5-slim-bookworm",
+  "source_image_digest": "python@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419",
+  "local_prefix": "/workspace/scratch/benchmark-python-3135/local",
+  "python_binary_sha256": "73b68fc2dac176af16098180a2c98a03ee9f1f1b02db25d42d44d782e79e2330",
+  "libpython_sha256": "03d9df640f68c95030cd043d3845296ca0463d8f4fe0fc1cf006eba43af065fc",
+  "rationale": "Use the same CPython 3.13.5 binary/build and stdlib for all three backends; native OS shared libraries still come from host.",
+  "image_id": "sha256:38e57556b63539e63344b97f802e7cbd85b70e2087ee703e360fcdfe337cbbb3",
+  "repo_digests": [
+    "python@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419"
+  ]
+}

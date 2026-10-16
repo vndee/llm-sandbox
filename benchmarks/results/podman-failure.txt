@@ -1,0 +1,7 @@
+Podman 5.4.2 (Debian 13), crun 1.21, VFS storage. Unprivileged host UID 1000.
+Normal rootless startup failed:
+Error: command required for rootless mode with multiple IDs: exec: "newuidmap": executable file not found in $PATH
+User namespace creation itself works when the command sandbox is bypassed with approved execution.
+A workspace-local API service started in a single-UID/GID user namespace with VFS storage, cgroups disabled, network none, and packaged seccomp profile. Docker-exported Python 3.13.5 image loaded successfully, but actual container creation failed:
+Error: preparing container for attach: crun: mount `devpts` to `dev/pts`: Invalid argument: OCI runtime error
+The standard devpts mount failed in the fallback single-ID namespace. No host UID/GID mappings or privileged helpers were installed, and host security policy was not changed.

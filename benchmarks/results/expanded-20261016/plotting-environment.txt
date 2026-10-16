@@ -1,0 +1,14 @@
+Plotting used the existing system Python environment; no dependencies were installed or changed.
+Python executable: /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python
+Python version: 3.12.14
+matplotlib: 3.10.8
+numpy: 2.3.5
+pillow: 12.3.0
+Matplotlib backend: Agg
+Font: DejaVu Sans; SVG retains text.
+Exports: PNG at 180 DPI and SVG.
+MPLCONFIGDIR=/workspace/scratch/benchmark-plotting-cache
+XDG_CACHE_HOME=/workspace/scratch/benchmark-plotting-cache
+summary.json SHA-256: 8a482ac266d7b2c3aaea9bb67dc404ee5767e8458713d3baab808bc6ee170191
+plot_results.py SHA-256: 4fcd3ed06944ec6e4f7e122655b5d94e8ae452e2169edb85ae435b629ce3aa01
+Rendered after all timed experiments completed. Both PNGs visually inspected.

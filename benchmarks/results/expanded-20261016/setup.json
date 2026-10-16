@@ -1,0 +1,2884 @@
+{
+  "schema_version": 2,
+  "profile": "setup",
+  "metadata": {
+    "started_at_utc": "2026-10-16T07:41:30.458705+00:00",
+    "revision": "d79a0e2038ba90f267a3f5109beea9810dde292a",
+    "harness_sha256": "cb4802be572471a1d27da74d189525d04dfc198d6b345b11aef530a800772803",
+    "branch": "main",
+    "git_status": "?? benchmarks/README.md\n?? benchmarks/__init__.py\n?? benchmarks/backend_benchmark.py\n?? benchmarks/experiment_statistics.py\n?? benchmarks/experiment_suite.py\n?? benchmarks/experiment_workloads.py\n?? benchmarks/results/\n?? benchmarks/run_expanded.sh\n?? tests/test_backend_benchmark.py\n?? tests/test_experiment_statistics.py\n?? tests/test_experiment_suite.py\n?? tests/test_experiment_workloads.py",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "executable": "/workspace/llm-sandbox/.venv/bin/python",
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "processor": "",
+    "cpu_count": 5,
+    "cpu_affinity": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "packages": {
+      "llm-sandbox": "0.3.13",
+      "pydantic": "2.11.5",
+      "docker": "7.1.0",
+      "podman": "5.4.0.1",
+      "kubernetes": "32.0.1"
+    },
+    "settings": {
+      "trials": 10,
+      "iterations": 1,
+      "warmups": 2,
+      "cpu_iterations": 200000,
+      "timeout": 60.0
+    },
+    "payload_bytes": 1048576,
+    "payload_sha256": "fbbab289f7f94b25736c58be46a994c441fd02552cc6022352e3d86d2fab7c83",
+    "clock": "time.perf_counter wall-clock seconds; validation excluded",
+    "aggregation": "Only complete successful measured trials; median; p95 nearest-rank ceil(0.95*n).",
+    "profile": "setup",
+    "ordering": "All preflights, then seeded shuffle within each round; planned and executed orders recorded.",
+    "command": [
+      "/workspace/llm-sandbox/benchmarks/experiment_suite.py",
+      "--profile",
+      "setup",
+      "--backends",
+      "docker",
+      "bubblewrap",
+      "nsjail",
+      "--config",
+      "benchmarks/results/expanded-20261016/config-setup-offline.json",
+      "--output",
+      "benchmarks/results/expanded-20261016/setup.json",
+      "--warmups",
+      "2",
+      "--seed",
+      "20261017",
+      "--rounds",
+      "10",
+      "--iterations",
+      "1"
+    ],
+    "seed": 20261017,
+    "excluded_backends": [
+      "micromamba"
+    ],
+    "levels": [
+      1,
+      4,
+      16
+    ],
+    "batches": 5,
+    "workloads": [
+      "marker",
+      "json"
+    ],
+    "transfer_iterations": 3,
+    "suite_sha256": "2c9f1c8afaa9ce8596e7ea52c9ab1589bbcaf2c6e016587778634056af88797c",
+    "concurrency_clock": "Closed-loop workers. Shared window starts after all opens/warmups and includes validation; ends at last worker execution completion. Per-call API durations exclude validation. Init/teardown separate; no overlapping backend batches. Payload resources exclude runtime/host overhead.",
+    "workload_definitions": {
+      "json_records": 10000,
+      "large_transfer_bytes": 16777216,
+      "resource_scope": "payload Python process only; peak RSS includes interpreter; excludes backend/daemon/host",
+      "marker_instrumentation": "baseline/setup plain marker; concurrency instrumented marker"
+    },
+    "workloads_sha256": "5b321ae9da2681439793232af7e9822d62114b4e16b508ede2abfba25dcfb48d",
+    "finished_at_utc": "2026-10-16T07:45:46.123575+00:00"
+  },
+  "backends": {
+    "docker": {
+      "status": "passed",
+      "capabilities": {
+        "platforms": [],
+        "container_images": true,
+        "interactive": true,
+        "pooling": true,
+        "filesystem_isolation": true,
+        "network_isolation": true,
+        "seccomp": true,
+        "daemon_required": true
+      },
+      "requested_config": {
+        "image": "python:3.13.5-slim-bookworm",
+        "client_kwargs": {
+          "base_url": "unix:///var/run/docker.sock",
+          "timeout": 60
+        },
+        "runtime_configs": {
+          "network_mode": "none",
+          "environment": {
+            "PIP_NO_INDEX": "1",
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+          }
+        },
+        "skip_environment_setup": false
+      },
+      "trials": [
+        {
+          "round": 0,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.007524793999891699
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 5.662406361000194
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.11826589599968429
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.11364633599987428
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.16024249100019006
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.05926257999999507
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.005005348999929993
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.186983811000118
+            }
+          ],
+          "measured": true,
+          "index": 0,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.06179224900006375
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.00595352600021215
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 1,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.007375087000127678
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 5.8721443340000405
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.11269218999996156
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.11320894299979045
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.14888946000019132
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.05288449799991213
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.006279064000409562
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.184752785
+            }
+          ],
+          "measured": true,
+          "index": 1,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.04969764800034682
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0060948410000492
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 2,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0070538800000576884
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 5.892806245999964
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.10218130300017947
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.11009155900001133
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.1590913489999366
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.06880628099997921
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0065541869998924085
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.201998844000173
+            }
+          ],
+          "measured": true,
+          "index": 2,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.04633969199994681
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.006041270999958215
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 3,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.007480344999748922
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 6.04663487300013
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.11227371899985883
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.1228300070001751
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.14966291600012482
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.06345359400029338
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0056119910000234086
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.193497483000101
+            }
+          ],
+          "measured": true,
+          "index": 3,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.05295146400021622
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.005457653999656031
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 4,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.011592900000323425
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 6.13048212700005
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.11464942600014183
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.11109554099994057
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.1596151829999144
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.050286142000004475
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.006093599999985599
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.189005105000433
+            }
+          ],
+          "measured": true,
+          "index": 4,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.06133121900029437
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0068223869998291775
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 5,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.007347020999986853
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 5.82405973799996
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.120129437000287
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.10788341899979059
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.17152702500015948
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0575138069998502
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.005244300999947882
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.184363972000028
+            }
+          ],
+          "measured": true,
+          "index": 5,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.04976181199981511
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.005761359000189259
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 6,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0077015749998281535
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 6.0736115950003295
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.10575648600024579
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.10584593600015069
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.1458178709999629
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.047294864999912534
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.00672619900024074
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.187797879999835
+            }
+          ],
+          "measured": true,
+          "index": 6,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.04904248799994093
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.006569015999957628
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 7,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.007783778999964852
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 5.835844593999809
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.12236972100026833
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.11237079100010305
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.15589140599968232
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.04920316700008698
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.005313644999660028
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.18601227399995
+            }
+          ],
+          "measured": true,
+          "index": 7,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.04824628300002587
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0053447129998858145
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 8,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.007318593000036344
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 5.971011280000312
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.1273701219997747
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.11653538700011268
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.1507839129999411
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.05240406899974914
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.004900195000118401
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.18247890099974
+            }
+          ],
+          "measured": true,
+          "index": 8,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.06188148399996862
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.005835329000092315
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        },
+        {
+          "round": 9,
+          "backend": "docker",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.008476542000153131
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 5.034557939000024
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.10526201999982732
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.10762067599989678
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.14996711000003415
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.05553552999981548
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0049215849999200145
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 10.180593095999939
+            }
+          ],
+          "measured": true,
+          "index": 9,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.05268369300029008
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0055587130000276375
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0,
+          "cleanup_verified": true
+        }
+      ],
+      "batches": [],
+      "summary": {
+        "construct": {
+          "n": 10,
+          "median_seconds": 0.007502569499820311,
+          "p95_seconds": 0.011592900000323425,
+          "min_seconds": 0.0070538800000576884,
+          "max_seconds": 0.011592900000323425
+        },
+        "open": {
+          "n": 10,
+          "median_seconds": 5.882475290000002,
+          "p95_seconds": 6.13048212700005,
+          "min_seconds": 5.034557939000024,
+          "max_seconds": 6.13048212700005
+        },
+        "first_run": {
+          "n": 10,
+          "median_seconds": 0.11367080800005169,
+          "p95_seconds": 0.1273701219997747,
+          "min_seconds": 0.10218130300017947,
+          "max_seconds": 0.1273701219997747
+        },
+        "warm_run": {
+          "n": 10,
+          "median_seconds": 0.11173316600002181,
+          "p95_seconds": 0.1228300070001751,
+          "min_seconds": 0.10584593600015069,
+          "max_seconds": 0.1228300070001751
+        },
+        "cpu_run": {
+          "n": 10,
+          "median_seconds": 0.1533376594998117,
+          "p95_seconds": 0.17152702500015948,
+          "min_seconds": 0.1458178709999629,
+          "max_seconds": 0.17152702500015948
+        },
+        "copy_to_1mib": {
+          "n": 10,
+          "median_seconds": 0.054210013999863804,
+          "p95_seconds": 0.06880628099997921,
+          "min_seconds": 0.047294864999912534,
+          "max_seconds": 0.06880628099997921
+        },
+        "copy_from_1mib": {
+          "n": 10,
+          "median_seconds": 0.005462817999841718,
+          "p95_seconds": 0.00672619900024074,
+          "min_seconds": 0.004900195000118401,
+          "max_seconds": 0.00672619900024074
+        },
+        "close": {
+          "n": 10,
+          "median_seconds": 10.186498042500034,
+          "p95_seconds": 10.201998844000173,
+          "min_seconds": 10.180593095999939,
+          "max_seconds": 10.201998844000173
+        }
+      },
+      "effective_config": {
+        "lang": "python",
+        "verbose": false,
+        "skip_environment_setup": false,
+        "stream": false,
+        "image": "python:3.13.5-slim-bookworm",
+        "keep_template": true,
+        "client_kwargs": {
+          "base_url": "unix:///var/run/docker.sock",
+          "timeout": 60
+        },
+        "runtime_configs": {
+          "network_mode": "none",
+          "environment": {
+            "PIP_NO_INDEX": "1",
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+          }
+        }
+      },
+      "preflight": {
+        "status": "passed",
+        "samples": [
+          {
+            "metric": "construct",
+            "valid": true,
+            "seconds": 0.06389214599994375
+          },
+          {
+            "metric": "open",
+            "valid": true,
+            "seconds": 6.056515852999837
+          },
+          {
+            "metric": "first_run",
+            "valid": true,
+            "seconds": 0.15271811499997057
+          },
+          {
+            "metric": "warm_run",
+            "valid": true,
+            "seconds": 0.1283828870000434
+          },
+          {
+            "metric": "cpu_run",
+            "valid": true,
+            "seconds": 0.14677221200008717
+          },
+          {
+            "metric": "copy_to_1mib",
+            "valid": true,
+            "seconds": 0.04937051099977907
+          },
+          {
+            "metric": "copy_from_1mib",
+            "valid": true,
+            "seconds": 0.004632093000054738
+          },
+          {
+            "metric": "close",
+            "valid": true,
+            "seconds": 10.196868742999868
+          }
+        ],
+        "measured": false,
+        "stage": "workloads",
+        "runtime_environment": {
+          "python": "3.13.5 (main, Jul 22 2025, 01:46:07) [GCC 12.2.0]",
+          "executable": "/sandbox/.sandbox-venv/bin/python",
+          "platform": "Linux-6.18.44-x86_64-with-glibc2.36",
+          "machine": "x86_64",
+          "cpu_count": 5,
+          "cwd": "/sandbox"
+        },
+        "image_id": "sha256:38e57556b63539e63344b97f802e7cbd85b70e2087ee703e360fcdfe337cbbb3",
+        "transfer_warmup": {
+          "samples": [
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.06397321999975247
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.006565184999999474
+            }
+          ],
+          "measured": false
+        },
+        "iteration": 0,
+        "cleanup_verified": true
+      },
+      "successful_trials": 10,
+      "failed_trials": 0
+    },
+    "bubblewrap": {
+      "status": "passed",
+      "capabilities": {
+        "platforms": [
+          "linux"
+        ],
+        "container_images": false,
+        "interactive": false,
+        "pooling": false,
+        "filesystem_isolation": true,
+        "network_isolation": true,
+        "seccomp": true,
+        "daemon_required": false
+      },
+      "requested_config": {
+        "sandbox_config": {
+          "python_executable": "/workspace/scratch/benchmark-python-3135/local/bin/python3.13",
+          "read_only_paths": [
+            "/usr",
+            "/bin",
+            "/lib",
+            "/lib64",
+            "/etc/ld.so.cache",
+            "/etc/alternatives",
+            "/workspace/scratch/benchmark-python-3135/local"
+          ],
+          "max_artifact_bytes": 33554432
+        },
+        "skip_environment_setup": false
+      },
+      "trials": [
+        {
+          "round": 0,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0009565730001668271
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5717544579997593
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.021322905000033643
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.021548336000250856
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.05908878599984746
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.000786235999839846
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0011949680001634988
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.011672526999973343
+            }
+          ],
+          "measured": true,
+          "index": 0,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0007341979999182513
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0009504620002189768
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 1,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0009748769998623175
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5439232969997647
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.022759266999855754
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.021788037000078475
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06179022600008466
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0012594079998962115
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.001000445000045147
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009748843000124907
+            }
+          ],
+          "measured": true,
+          "index": 1,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008708039999874018
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.001078080000297632
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 2,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.001488184000209003
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5719204199999695
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.02257320999979129
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.02076656200006255
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06176988600009281
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0008406679999097832
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0008707629999662458
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009365950000301382
+            }
+          ],
+          "measured": true,
+          "index": 2,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008955289999903471
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0009622130000934703
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 3,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0009476059999542485
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.6392273189999287
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.021475722000104724
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.0209679560002769
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.0630870039999536
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0009059489998435311
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0010658370001692674
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009362842999962595
+            }
+          ],
+          "measured": true,
+          "index": 3,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0007157240002015897
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0009931519998644944
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 4,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0011919109997506894
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5523024740000437
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.023200418999749672
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.02377802499995596
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.07856904499976736
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0009684149999884539
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0011005319997821061
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009385424999891256
+            }
+          ],
+          "measured": true,
+          "index": 4,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0009259359999305161
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0011420490000091377
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 5,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.001029890999689087
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.561905139999908
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.022750375000214262
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.020962292999683996
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06121044300016365
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.000743746000352985
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0009914279999065911
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.00947204599970064
+            }
+          ],
+          "measured": true,
+          "index": 5,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0007255119999172166
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.000873898999998346
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 6,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0012089530000594095
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5536481709996224
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.022665547000087827
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.021611341999687284
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06324420500004635
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0007751550001557916
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0008639909997327777
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009374493999985134
+            }
+          ],
+          "measured": true,
+          "index": 6,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008336639998560713
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0009827209996728925
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 7,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0009992830000555841
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.552511672000037
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.022990267000295717
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.020487875000071654
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.061326794999786216
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0008811719999357592
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0010075879999931203
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.00969725599998128
+            }
+          ],
+          "measured": true,
+          "index": 7,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0007372139998551575
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0010855219998120447
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 8,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0010036199996648065
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5653487429999586
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.02239835399996082
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.021137243999874045
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.061408345000018016
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0008889979999366915
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.001077960000202438
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009593453999968915
+            }
+          ],
+          "measured": true,
+          "index": 8,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008344660000147996
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.001001486999939516
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 9,
+          "backend": "bubblewrap",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0009319279997725971
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5465415089997805
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.0216075749999618
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.021101331999943795
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.0594790519999151
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0006977610000831191
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0009353939999527938
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.01009080299991183
+            }
+          ],
+          "measured": true,
+          "index": 9,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008039990002544073
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0009343219999209396
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        }
+      ],
+      "batches": [],
+      "summary": {
+        "construct": {
+          "n": 10,
+          "median_seconds": 0.0010014514998601953,
+          "p95_seconds": 0.001488184000209003,
+          "min_seconds": 0.0009319279997725971,
+          "max_seconds": 0.001488184000209003
+        },
+        "open": {
+          "n": 10,
+          "median_seconds": 2.557776655499765,
+          "p95_seconds": 2.6392273189999287,
+          "min_seconds": 2.5439232969997647,
+          "max_seconds": 2.6392273189999287
+        },
+        "first_run": {
+          "n": 10,
+          "median_seconds": 0.022619378499939558,
+          "p95_seconds": 0.023200418999749672,
+          "min_seconds": 0.021322905000033643,
+          "max_seconds": 0.023200418999749672
+        },
+        "warm_run": {
+          "n": 10,
+          "median_seconds": 0.02111928799990892,
+          "p95_seconds": 0.02377802499995596,
+          "min_seconds": 0.020487875000071654,
+          "max_seconds": 0.02377802499995596
+        },
+        "cpu_run": {
+          "n": 10,
+          "median_seconds": 0.061589115500055414,
+          "p95_seconds": 0.07856904499976736,
+          "min_seconds": 0.05908878599984746,
+          "max_seconds": 0.07856904499976736
+        },
+        "copy_to_1mib": {
+          "n": 10,
+          "median_seconds": 0.0008609199999227712,
+          "p95_seconds": 0.0012594079998962115,
+          "min_seconds": 0.0006977610000831191,
+          "max_seconds": 0.0012594079998962115
+        },
+        "copy_from_1mib": {
+          "n": 10,
+          "median_seconds": 0.0010040165000191337,
+          "p95_seconds": 0.0011949680001634988,
+          "min_seconds": 0.0008639909997327777,
+          "max_seconds": 0.0011949680001634988
+        },
+        "close": {
+          "n": 10,
+          "median_seconds": 0.009532749999834778,
+          "p95_seconds": 0.011672526999973343,
+          "min_seconds": 0.009362842999962595,
+          "max_seconds": 0.011672526999973343
+        }
+      },
+      "effective_config": {
+        "lang": "python",
+        "verbose": false,
+        "skip_environment_setup": false,
+        "stream": false,
+        "sandbox_config": {
+          "python_executable": "/workspace/scratch/benchmark-python-3135/local/bin/python3.13",
+          "read_only_paths": [
+            "/usr",
+            "/bin",
+            "/lib",
+            "/lib64",
+            "/etc/ld.so.cache",
+            "/etc/alternatives",
+            "/workspace/scratch/benchmark-python-3135/local"
+          ],
+          "max_artifact_bytes": 33554432
+        }
+      },
+      "preflight": {
+        "status": "passed",
+        "samples": [
+          {
+            "metric": "construct",
+            "valid": true,
+            "seconds": 0.0024099709999063634
+          },
+          {
+            "metric": "open",
+            "valid": true,
+            "seconds": 2.5842494890002854
+          },
+          {
+            "metric": "first_run",
+            "valid": true,
+            "seconds": 0.021891845000027388
+          },
+          {
+            "metric": "warm_run",
+            "valid": true,
+            "seconds": 0.023009770000044227
+          },
+          {
+            "metric": "cpu_run",
+            "valid": true,
+            "seconds": 0.06132819999993444
+          },
+          {
+            "metric": "copy_to_1mib",
+            "valid": true,
+            "seconds": 0.0008964209996520367
+          },
+          {
+            "metric": "copy_from_1mib",
+            "valid": true,
+            "seconds": 0.00117427899976974
+          },
+          {
+            "metric": "close",
+            "valid": true,
+            "seconds": 0.009481305999997858
+          }
+        ],
+        "measured": false,
+        "stage": "workloads",
+        "runtime_environment": {
+          "python": "3.13.5 (main, Jul 22 2025, 01:46:07) [GCC 12.2.0]",
+          "executable": "/sandbox/.sandbox-venv/bin/python",
+          "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+          "machine": "x86_64",
+          "cpu_count": 5,
+          "cwd": "/sandbox"
+        },
+        "transfer_warmup": {
+          "samples": [
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0009405639998476545
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.001079273000414105
+            }
+          ],
+          "measured": false
+        },
+        "iteration": 0
+      },
+      "successful_trials": 10,
+      "failed_trials": 0
+    },
+    "nsjail": {
+      "status": "passed",
+      "capabilities": {
+        "platforms": [
+          "linux"
+        ],
+        "container_images": false,
+        "interactive": false,
+        "pooling": false,
+        "filesystem_isolation": true,
+        "network_isolation": true,
+        "seccomp": true,
+        "daemon_required": false
+      },
+      "requested_config": {
+        "nsjail_path": "/workspace/scratch/nsjail-build/source/nsjail",
+        "sandbox_config": {
+          "python_executable": "/workspace/scratch/benchmark-python-3135/local/bin/python3.13",
+          "read_only_paths": [
+            "/usr",
+            "/bin",
+            "/lib",
+            "/lib64",
+            "/etc/ld.so.cache",
+            "/etc/alternatives",
+            "/workspace/scratch/benchmark-python-3135/local"
+          ],
+          "max_artifact_bytes": 33554432
+        },
+        "skip_environment_setup": false
+      },
+      "trials": [
+        {
+          "round": 0,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.000514608999765187
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.572075004999988
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.02757285799998499
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.021583095000096364
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06135519400004341
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0009257050000996969
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0010945100002572872
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.01076642600037303
+            }
+          ],
+          "measured": true,
+          "index": 0,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.001263305000065884
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0011201780002920714
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 1,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0004928280000058294
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.549691619999976
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.020158986000296863
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.019652430999940407
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.0592302230002133
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0009300440001425159
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0013146699998287659
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009034059999976307
+            }
+          ],
+          "measured": true,
+          "index": 1,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0007203629998002725
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0010173860000577406
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 2,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0005265310001050238
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.564783712999997
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.02300139799990575
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.02117051499999434
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.0617923489999157
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0008653429999867512
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0011204789998373599
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.010259786000005988
+            }
+          ],
+          "measured": true,
+          "index": 2,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0012473849997149955
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0012001469999631809
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 3,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.000501434999932826
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.549229055000069
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.020137978999628103
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.02155556199977582
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.05993408299991643
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0007951419997880294
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0009863979998954164
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009071580000181712
+            }
+          ],
+          "measured": true,
+          "index": 3,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008798799999567564
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0011762330000237853
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 4,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0005386439997892012
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.7025225970000974
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.02164314999981798
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.021362448000218137
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.058223064999765484
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0007880289999775414
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0011238759998377645
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009978507999676367
+            }
+          ],
+          "measured": true,
+          "index": 4,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0009153470000455854
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0010137510003005445
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 5,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0004758780000884144
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5958155559997067
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.02138923699976658
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.022652783000012278
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06242511500022374
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0008259700002781756
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0011010730004272773
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009336216000065178
+            }
+          ],
+          "measured": true,
+          "index": 5,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008883259997674031
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0009893950000332552
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 6,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0004935000001751177
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.4992459149998467
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.020205935999911162
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.01996526700031609
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06153256300012799
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0007997509997039742
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0010685009997359884
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009865109999736887
+            }
+          ],
+          "measured": true,
+          "index": 6,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008262300002570555
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0008187869998437236
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 7,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0007980979999047122
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.5160806790004244
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.021490178000021842
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.02013055399993391
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06022165500007759
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0007092119999470015
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0009678040000835608
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009557936999954109
+            }
+          ],
+          "measured": true,
+          "index": 7,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008072649998212
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.001063291999798821
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 8,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0005026169997108809
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.580303699000069
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.020477552999636828
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.019948527999986254
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06344183600003817
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0009343219999209396
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0012251739999555866
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.010004320000007283
+            }
+          ],
+          "measured": true,
+          "index": 8,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008328720000463363
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.001044186999934027
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        },
+        {
+          "round": 9,
+          "backend": "nsjail",
+          "status": "passed",
+          "samples": [
+            {
+              "metric": "construct",
+              "valid": true,
+              "seconds": 0.0004769790002683294
+            },
+            {
+              "metric": "open",
+              "valid": true,
+              "seconds": 2.569124960999943
+            },
+            {
+              "metric": "first_run",
+              "valid": true,
+              "seconds": 0.02064670900017518
+            },
+            {
+              "metric": "warm_run",
+              "valid": true,
+              "seconds": 0.01976609599978474
+            },
+            {
+              "metric": "cpu_run",
+              "valid": true,
+              "seconds": 0.06060594800010222
+            },
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0007895819999248488
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0010015679999924032
+            },
+            {
+              "metric": "close",
+              "valid": true,
+              "seconds": 0.009429296000234899
+            }
+          ],
+          "measured": true,
+          "index": 9,
+          "stage": "workloads",
+          "transfer_warmup": {
+            "samples": [
+              {
+                "metric": "copy_to_1mib",
+                "valid": true,
+                "seconds": 0.0008012240000425663
+              },
+              {
+                "metric": "copy_from_1mib",
+                "valid": true,
+                "seconds": 0.0009571850000611448
+              }
+            ],
+            "measured": false
+          },
+          "iteration": 0
+        }
+      ],
+      "batches": [],
+      "summary": {
+        "construct": {
+          "n": 10,
+          "median_seconds": 0.0005020259998218535,
+          "p95_seconds": 0.0007980979999047122,
+          "min_seconds": 0.0004758780000884144,
+          "max_seconds": 0.0007980979999047122
+        },
+        "open": {
+          "n": 10,
+          "median_seconds": 2.56695433699997,
+          "p95_seconds": 2.7025225970000974,
+          "min_seconds": 2.4992459149998467,
+          "max_seconds": 2.7025225970000974
+        },
+        "first_run": {
+          "n": 10,
+          "median_seconds": 0.02101797299997088,
+          "p95_seconds": 0.02757285799998499,
+          "min_seconds": 0.020137978999628103,
+          "max_seconds": 0.02757285799998499
+        },
+        "warm_run": {
+          "n": 10,
+          "median_seconds": 0.020650534499964124,
+          "p95_seconds": 0.022652783000012278,
+          "min_seconds": 0.019652430999940407,
+          "max_seconds": 0.022652783000012278
+        },
+        "cpu_run": {
+          "n": 10,
+          "median_seconds": 0.060980571000072814,
+          "p95_seconds": 0.06344183600003817,
+          "min_seconds": 0.058223064999765484,
+          "max_seconds": 0.06344183600003817
+        },
+        "copy_to_1mib": {
+          "n": 10,
+          "median_seconds": 0.0008128604999910749,
+          "p95_seconds": 0.0009343219999209396,
+          "min_seconds": 0.0007092119999470015,
+          "max_seconds": 0.0009343219999209396
+        },
+        "copy_from_1mib": {
+          "n": 10,
+          "median_seconds": 0.0010977915003422822,
+          "p95_seconds": 0.0013146699998287659,
+          "min_seconds": 0.0009678040000835608,
+          "max_seconds": 0.0013146699998287659
+        },
+        "close": {
+          "n": 10,
+          "median_seconds": 0.009711523499845498,
+          "p95_seconds": 0.01076642600037303,
+          "min_seconds": 0.009034059999976307,
+          "max_seconds": 0.01076642600037303
+        }
+      },
+      "effective_config": {
+        "lang": "python",
+        "verbose": false,
+        "skip_environment_setup": false,
+        "stream": false,
+        "nsjail_path": "/workspace/scratch/nsjail-build/source/nsjail",
+        "sandbox_config": {
+          "python_executable": "/workspace/scratch/benchmark-python-3135/local/bin/python3.13",
+          "read_only_paths": [
+            "/usr",
+            "/bin",
+            "/lib",
+            "/lib64",
+            "/etc/ld.so.cache",
+            "/etc/alternatives",
+            "/workspace/scratch/benchmark-python-3135/local"
+          ],
+          "max_artifact_bytes": 33554432
+        }
+      },
+      "preflight": {
+        "status": "passed",
+        "samples": [
+          {
+            "metric": "construct",
+            "valid": true,
+            "seconds": 0.0009766909997779294
+          },
+          {
+            "metric": "open",
+            "valid": true,
+            "seconds": 2.49968082300029
+          },
+          {
+            "metric": "first_run",
+            "valid": true,
+            "seconds": 0.02054521999980352
+          },
+          {
+            "metric": "warm_run",
+            "valid": true,
+            "seconds": 0.019287525999970967
+          },
+          {
+            "metric": "cpu_run",
+            "valid": true,
+            "seconds": 0.05778092699983972
+          },
+          {
+            "metric": "copy_to_1mib",
+            "valid": true,
+            "seconds": 0.0007799240001986618
+          },
+          {
+            "metric": "copy_from_1mib",
+            "valid": true,
+            "seconds": 0.0010496559998500743
+          },
+          {
+            "metric": "close",
+            "valid": true,
+            "seconds": 0.00933807399997022
+          }
+        ],
+        "measured": false,
+        "stage": "workloads",
+        "runtime_environment": {
+          "python": "3.13.5 (main, Jul 22 2025, 01:46:07) [GCC 12.2.0]",
+          "executable": "/sandbox/.sandbox-venv/bin/python",
+          "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+          "machine": "x86_64",
+          "cpu_count": 5,
+          "cwd": "/sandbox"
+        },
+        "transfer_warmup": {
+          "samples": [
+            {
+              "metric": "copy_to_1mib",
+              "valid": true,
+              "seconds": 0.0008073140002125001
+            },
+            {
+              "metric": "copy_from_1mib",
+              "valid": true,
+              "seconds": 0.0009630149997974513
+            }
+          ],
+          "measured": false
+        },
+        "iteration": 0
+      },
+      "successful_trials": 10,
+      "failed_trials": 0
+    }
+  },
+  "planned_order": [
+    {
+      "round": 0,
+      "backend": "nsjail"
+    },
+    {
+      "round": 0,
+      "backend": "docker"
+    },
+    {
+      "round": 0,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 1,
+      "backend": "nsjail"
+    },
+    {
+      "round": 1,
+      "backend": "docker"
+    },
+    {
+      "round": 1,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 2,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 2,
+      "backend": "docker"
+    },
+    {
+      "round": 2,
+      "backend": "nsjail"
+    },
+    {
+      "round": 3,
+      "backend": "docker"
+    },
+    {
+      "round": 3,
+      "backend": "nsjail"
+    },
+    {
+      "round": 3,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 4,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 4,
+      "backend": "docker"
+    },
+    {
+      "round": 4,
+      "backend": "nsjail"
+    },
+    {
+      "round": 5,
+      "backend": "docker"
+    },
+    {
+      "round": 5,
+      "backend": "nsjail"
+    },
+    {
+      "round": 5,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 6,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 6,
+      "backend": "docker"
+    },
+    {
+      "round": 6,
+      "backend": "nsjail"
+    },
+    {
+      "round": 7,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 7,
+      "backend": "nsjail"
+    },
+    {
+      "round": 7,
+      "backend": "docker"
+    },
+    {
+      "round": 8,
+      "backend": "nsjail"
+    },
+    {
+      "round": 8,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 8,
+      "backend": "docker"
+    },
+    {
+      "round": 9,
+      "backend": "docker"
+    },
+    {
+      "round": 9,
+      "backend": "nsjail"
+    },
+    {
+      "round": 9,
+      "backend": "bubblewrap"
+    }
+  ],
+  "executed_order": [
+    {
+      "round": 0,
+      "backend": "nsjail"
+    },
+    {
+      "round": 0,
+      "backend": "docker"
+    },
+    {
+      "round": 0,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 1,
+      "backend": "nsjail"
+    },
+    {
+      "round": 1,
+      "backend": "docker"
+    },
+    {
+      "round": 1,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 2,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 2,
+      "backend": "docker"
+    },
+    {
+      "round": 2,
+      "backend": "nsjail"
+    },
+    {
+      "round": 3,
+      "backend": "docker"
+    },
+    {
+      "round": 3,
+      "backend": "nsjail"
+    },
+    {
+      "round": 3,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 4,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 4,
+      "backend": "docker"
+    },
+    {
+      "round": 4,
+      "backend": "nsjail"
+    },
+    {
+      "round": 5,
+      "backend": "docker"
+    },
+    {
+      "round": 5,
+      "backend": "nsjail"
+    },
+    {
+      "round": 5,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 6,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 6,
+      "backend": "docker"
+    },
+    {
+      "round": 6,
+      "backend": "nsjail"
+    },
+    {
+      "round": 7,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 7,
+      "backend": "nsjail"
+    },
+    {
+      "round": 7,
+      "backend": "docker"
+    },
+    {
+      "round": 8,
+      "backend": "nsjail"
+    },
+    {
+      "round": 8,
+      "backend": "bubblewrap"
+    },
+    {
+      "round": 8,
+      "backend": "docker"
+    },
+    {
+      "round": 9,
+      "backend": "docker"
+    },
+    {
+      "round": 9,
+      "backend": "nsjail"
+    },
+    {
+      "round": 9,
+      "backend": "bubblewrap"
+    }
+  ],
+  "preflight_order": [
+    "docker",
+    "bubblewrap",
+    "nsjail"
+  ]
+}

@@ -95,6 +95,10 @@ markers = [
 target-version = "py311"
 line-length = 120
 fix = true
+# Results include byte-for-byte source snapshots with recorded SHA-256 hashes.
+# Keep direct Ruff invocations from rewriting those archived evidence files too.
+extend-exclude = ["benchmarks/results"]
+force-exclude = true
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -151,4 +155,5 @@ ignore = ["DEP004"]
 # would also be unresolvable, since several pin conflicting langchain versions.
 # extend_exclude, not exclude: the latter replaces deptry's defaults, which
 # already skip tests/ and .venv.
-extend_exclude = ["examples/agent_sdks"]
+# Archived analysis/plot scripts document an experiment, not package dependencies.
+extend_exclude = ["examples/agent_sdks", "benchmarks/results"]

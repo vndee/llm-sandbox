@@ -1,0 +1,175 @@
+NsJail prepared for llm-sandbox backend benchmark
+
+Source: https://github.com/google/nsjail
+NsJail revision: 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce
+Kafel revision: 76d0f41bf3eb5c4008713d64b9767b461a9129a3
+These match .github/workflows/native-backends.yml pinned-current.
+
+Executable: /workspace/scratch/nsjail-build/source/nsjail
+Host system: Debian 13, GCC 14.2.0.
+Build log: /workspace/scratch/nsjail-build/build.log
+Build dependencies were downloaded and extracted in this scratch directory.
+No system package installation or security-policy change was performed.
+The executable resolves all runtime libraries from the host; no extra loader
+environment is required.
+
+Preflight script: /workspace/scratch/nsjail-build/preflight.py
+Run outside the tool's namespace-restricting sandbox using a narrow approved
+require_escalated invocation. The adapter itself uses its default namespace,
+filesystem, network=none and seccomp protections.
+
+Default setup result:
+  Adapter isolation proof succeeded. Offline venv setup failed because system
+  Python 3.13.5 lacks ensurepip (python3.13-venv is not installed).
+
+skip_environment_setup=True result:
+  status=ok, exit_code=0, stderr=""
+  stdout={"python": "3.13.5", "venv": false, "seccomp": true}
+  Workload also wrote a regular file in the private workspace.
+
+Use SandboxSession(backend="nsjail", lang="python",
+    nsjail_path="/workspace/scratch/nsjail-build/source/nsjail",
+    skip_environment_setup=True)
+for the preprovisioned-interpreter benchmark profile.
+
+No performance samples were run during provisioning.
+
+Reproduction recipe (Debian 13 amd64, fresh scratch directory)
+------------------------------------------------------------
+The following is the successful build recipe, with dependency versions made
+explicit. It uses the environment's inherited HTTPS proxy and CA trust. Network
+commands require the execution tool's network permission. It does not require
+root or install packages into the host. The base host must already provide Git,
+GCC/G++, make, pkg-config, dpkg-deb, and the runtime packages listed below.
+
+Run under bash:
+
+  nsjail_build_root=/workspace/scratch/nsjail-build
+  mkdir -p "$nsjail_build_root"
+  git clone --no-checkout https://github.com/google/nsjail.git "$nsjail_build_root/source"
+  git -C "$nsjail_build_root/source" checkout 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce
+  git -C "$nsjail_build_root/source" submodule update --init --recursive
+  test "$(git -C "$nsjail_build_root/source/kafel" rev-parse HEAD)" = 76d0f41bf3eb5c4008713d64b9767b461a9129a3
+
+  mkdir -p "$nsjail_build_root/apt/lists/partial" \
+    "$nsjail_build_root/apt/cache/archives/partial" \
+    "$nsjail_build_root/apt/empty" "$nsjail_build_root/debs" "$nsjail_build_root/root"
+  printf '%s\n' 'deb https://deb.debian.org/debian trixie main' > "$nsjail_build_root/apt/sources.list"
+  apt-get \
+    -o Dir::Etc::main=/dev/null \
+    -o Dir::Etc::parts="$nsjail_build_root/apt/empty" \
+    -o Dir::Etc::sourcelist="$nsjail_build_root/apt/sources.list" \
+    -o Dir::Etc::sourceparts="$nsjail_build_root/apt/empty" \
+    -o Dir::State::lists="$nsjail_build_root/apt/lists" \
+    -o Dir::Cache="$nsjail_build_root/apt/cache" update
+  cd "$nsjail_build_root/debs"
+  apt-get \
+    -o Dir::State::lists="$nsjail_build_root/apt/lists" \
+    -o Dir::Etc::sourcelist="$nsjail_build_root/apt/sources.list" \
+    -o Dir::Etc::sourceparts="$nsjail_build_root/apt/empty" \
+    download \
+    'bison=2:3.8.2+dfsg-1+b2' 'flex=2.6.4-8.2+b4' 'm4=1.4.19-8' \
+    'protobuf-compiler=3.21.12-11+deb13u1' 'libprotobuf-dev=3.21.12-11+deb13u1' \
+    'libprotoc32t64=3.21.12-11+deb13u1' 'libprotobuf32t64=3.21.12-11+deb13u1' \
+    'libprotobuf-lite32t64=3.21.12-11+deb13u1' \
+    'libnl-3-dev=3.7.0-2' 'libnl-route-3-dev=3.7.0-2'
+
+  # Verify downloaded package hashes against the manifest below before extraction.
+  for nsjail_deb in "$nsjail_build_root"/debs/*.deb; do
+    dpkg-deb -x "$nsjail_deb" "$nsjail_build_root/root"
+  done
+  # Development packages contain relative .so symlinks. Supply their matching
+  # runtime targets from the already installed host package versions listed below.
+  cp /usr/lib/x86_64-linux-gnu/libnl-3.so.200.26.0 \
+    /usr/lib/x86_64-linux-gnu/libnl-route-3.so.200.26.0 \
+    "$nsjail_build_root/root/usr/lib/x86_64-linux-gnu/"
+  cd "$nsjail_build_root/source"
+  PATH="$nsjail_build_root/root/usr/bin:$PATH" \
+    LD_LIBRARY_PATH="$nsjail_build_root/root/usr/lib/x86_64-linux-gnu" \
+    PKG_CONFIG_PATH="$nsjail_build_root/root/usr/lib/x86_64-linux-gnu/pkgconfig" \
+    PKG_CONFIG_SYSROOT_DIR="$nsjail_build_root/root" \
+    BISON_PKGDATADIR="$nsjail_build_root/root/usr/share/bison" \
+    M4="$nsjail_build_root/root/usr/bin/m4" \
+    make -j2 USER_DEFINES=-DPR_SCHED_CORE_SCOPE_THREAD_GROUP=1 \
+    > "$nsjail_build_root/build.log" 2>&1
+  ldd "$nsjail_build_root/source/nsjail"
+  sha256sum "$nsjail_build_root/source/nsjail"
+
+The package mirror may eventually retire these exact versions. The package files
+are retained in the local debs directory for reruns; do not silently substitute
+different versions when reproducing these results. The SHA below identifies the
+binary produced in this environment, rather than promising bit-for-bit output
+across different toolchains or hosts.
+
+The apt commands on this managed host emitted warnings about unreadable
+/etc/apt/apt.conf.d/80-applied-apt-retries and an inherited cache-cleanup hook.
+Both package-index update and download returned exit status 0; downloaded package
+metadata and checksums were inspected. No host package state was changed.
+
+Downloaded dependency manifest (amd64; SHA-256)
+---------------------------------------------
+bison 2:3.8.2+dfsg-1+b2
+  bison_2%3a3.8.2+dfsg-1+b2_amd64.deb
+  ce6eb1f7aad18850e32d223a68f54bcbe756d74f138c8ec5460ad9d220f4d335
+flex 2.6.4-8.2+b4
+  flex_2.6.4-8.2+b4_amd64.deb
+  75f963765232c356d0a2fb70e780dfa9de2425aca036ec60eefb7fc98a2c905b
+libnl-3-dev 3.7.0-2
+  libnl-3-dev_3.7.0-2_amd64.deb
+  a33e1f6c8f04f621c3604b98880e84d2a7d50da57fe15107ed3006c8ed9085ef
+libnl-route-3-dev 3.7.0-2
+  libnl-route-3-dev_3.7.0-2_amd64.deb
+  799c207391bea2602985475ac10d59815387fb7907e84e5544f628dc70b49574
+libprotobuf-dev 3.21.12-11+deb13u1
+  libprotobuf-dev_3.21.12-11+deb13u1_amd64.deb
+  c0328550b6ccd7b09d4e50bc2b325a43638bf8fa5f74148ab6e63d49af7543f3
+libprotobuf-lite32t64 3.21.12-11+deb13u1
+  libprotobuf-lite32t64_3.21.12-11+deb13u1_amd64.deb
+  74ed82b17475a1411ac79b27bd8b0223b3727d55660f77b8a5f6d5598e2dd7c2
+libprotobuf32t64 3.21.12-11+deb13u1
+  libprotobuf32t64_3.21.12-11+deb13u1_amd64.deb
+  38c43ec79a043d2b2659fed321725049a7e457096a66691cf6eb0d3a1a8f0e85
+libprotoc32t64 3.21.12-11+deb13u1
+  libprotoc32t64_3.21.12-11+deb13u1_amd64.deb
+  8a96715498f10f8e166411248164448c9a892fa1d5b25f1e02a93ea668fa72aa
+m4 1.4.19-8
+  m4_1.4.19-8_amd64.deb
+  221b3e224708c1da2a1a88b6824380593579b2254ae7d914afa14cbd5d343334
+protobuf-compiler 3.21.12-11+deb13u1
+  protobuf-compiler_3.21.12-11+deb13u1_amd64.deb
+  62c6085aeeb8cbcb16747fcf7170aaddcff344874a3aa60a272e423cbeb89b3a
+
+Pre-existing host build/runtime packages
+---------------------------------------
+g++ meta package: 4:14.2.0-1
+gcc meta package: 4:14.2.0-1
+Compiler reported version: g++ (Debian 14.2.0-19) 14.2.0
+g++-14 and gcc-14: 14.2.0-19
+make: 4.4.1-2
+pkgconf and pkgconf-bin (providing pkg-config): 1.8.1-4
+libc6: 2.41-12+deb13u4
+libgcc-s1: 14.2.0-19
+libstdc++6: 14.2.0-19
+libprotobuf32t64: 3.21.12-11+deb13u1
+libnl-3-200: 3.7.0-2
+libnl-route-3-200: 3.7.0-2
+zlib1g: 1:1.3.dfsg+really1.3.1-1+b1
+
+Copied host runtime files:
+  /usr/lib/x86_64-linux-gnu/libnl-3.so.200.26.0
+  SHA-256 11639cedd19a9072df31c3e6a7ad6ad674af8543f12202624a883244e79f99ba
+  /usr/lib/x86_64-linux-gnu/libnl-route-3.so.200.26.0
+  SHA-256 5079e4a0efdb25d1ad281f1d5cb11888c9188b2bcc4df79c876a97684609d62b
+
+Built executable:
+  /workspace/scratch/nsjail-build/source/nsjail
+  SHA-256 663b6567a884f7f4679a69bc854bde407e57a89e5a1e94ec3ab233d060ed5134
+
+Preflight commands (one real correctness probe per profile; not timed):
+  /workspace/llm-sandbox/.venv/bin/python /workspace/scratch/nsjail-build/preflight.py
+  /workspace/llm-sandbox/.venv/bin/python /workspace/scratch/nsjail-build/preflight.py --skip-setup
+The first command failed for missing ensurepip; the second passed. Each command
+used narrowly scoped require_escalated execution so the outer tool sandbox would
+not make the required UID namespace mapping read-only. NsJail adapter protections
+were retained. No privileged container, host policy relaxation, or fallback
+execution was used.

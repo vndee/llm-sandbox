@@ -1,0 +1,15 @@
+{
+  "os": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "cpu_affinity": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "cpu_model": "AMD EPYC 7763 64-Core Processor",
+  "cpu.max": "400000 100000",
+  "memory.max": "17179869184",
+  "memory.current": "3576811520"
+}
