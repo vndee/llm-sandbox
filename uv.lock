@@ -11,9 +11,6 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 
-[manifest]
-constraints = [{ name = "filelock", specifier = ">=4.2.1" }]
-
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -1031,6 +1028,7 @@ podman = [
 dev = [
     { name = "deptry" },
     { name = "docker" },
+    { name = "filelock", marker = "python_full_version >= '3.11'" },
     { name = "hatchling" },
     { name = "kubernetes" },
     { name = "langchain" },
@@ -1078,6 +1076,7 @@ provides-extras = ["docker", "k8s", "podman", "mcp-docker", "mcp-podman", "mcp-k
 dev = [
     { name = "deptry", specifier = ">=0.23.0" },
     { name = "docker", specifier = ">=7.1.0" },
+    { name = "filelock", marker = "python_full_version >= '3.11'", specifier = ">=4.2.1" },
     { name = "hatchling", specifier = ">=1.27,<2" },
     { name = "kubernetes", specifier = ">=32.0.1" },
     { name = "langchain", specifier = ">=0.3.25" },

@@ -39,6 +39,8 @@ native-tests = ["pytest>=7.2.0", "pytest-cov>=4.0.0", "hatchling>=1.27,<2"]
 dev = [
     "hatchling>=1.27,<2",
     "pytest>=7.2.0",
+    # CVE-2026-112940: security floor for the pre-commit/tox transitive dependency.
+    "filelock>=4.2.1; python_version >= '3.11'",
     # Patched filelock requires Python 3.11; these tools are not needed by the 3.10 test job.
     "pre-commit>=2.20.0; python_version >= '3.11'",
     "tox-uv>=1.11.3; python_version >= '3.11'",
@@ -64,10 +66,6 @@ dev = [
 [build-system]
 requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
-
-[tool.uv]
-# CVE-2026-112940: exclude vulnerable SQLite-backed reader/writer locks.
-constraint-dependencies = ["filelock>=4.2.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["llm_sandbox"]
