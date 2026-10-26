@@ -1,7 +1,7 @@
 .PHONY: install
 install: ## Install the virtual environment and install the pre-commit hooks
 	@echo "🚀 Creating virtual environment using uv"
-	@uv sync
+	@uv sync --python '>=3.11'
 	@uv run pre-commit install
 
 .PHONY: check

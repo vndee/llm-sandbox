@@ -16,10 +16,14 @@ By participating in this project, you agree to abide by our Code of Conduct:
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.11 or higher for development
 - [uv](https://github.com/astral-sh/uv) for dependency management
 - Docker (for testing Docker backend)
 - Git
+
+The library and its tests support Python 3.10 or higher. Pre-commit and tox tooling
+require Python 3.11 or higher so they can use Filelock 4.2.1 or later, which fixes
+the SQLite-backed reader/writer lock vulnerability.
 
 ### Setting Up Development Environment
 
@@ -38,7 +42,7 @@ make install
 
 This will:
 
-- Create a virtual environment
+- Create a virtual environment using Python 3.11 or higher
 - Install all dependencies
 - Install pre-commit hooks
 
@@ -113,6 +117,12 @@ Run tests:
 
 ```bash
 make test
+```
+
+To test Python 3.10 in a separate environment:
+
+```bash
+UV_PROJECT_ENVIRONMENT=venv/py310 uv run --python 3.10 --all-extras python -m pytest tests
 ```
 
 ### 5. Update Documentation
