@@ -49,7 +49,6 @@ dev = [
     "mkdocs-material>=8.5.10",
     "mkdocstrings[python]>=0.26.1",
     "langchain>=0.3.25",
-    "llama-index>=0.12.37",
     "podman>=5.4.0.1",
     "kubernetes>=32.0.1",
     "docker>=7.1.0",
