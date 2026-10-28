@@ -175,6 +175,7 @@ def _get_kube_volume_configs() -> dict[str, Any]:
             }
         ],
         "volume_mounts": [{"name": pvc_name, "mountPath": mount_path, "readOnly": read_only}],
+        "env_vars": {name: value for name, value in os.environ.items() if name.startswith("KUBERNETES_")},
     }
 
 
