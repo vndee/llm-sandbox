@@ -488,6 +488,7 @@ class BaseSession(
             try:
                 with tempfile.NamedTemporaryFile(
                     delete=False,  # Set delete=False so we can access it after the 'with' block
+                    dir=Path(tempfile.gettempdir()).resolve(),  # Canonicalize trusted host temp ancestors.
                     suffix=f".{self.language_handler.file_extension}",
                     mode="w",  # Open in text mode for writing strings directly
                     encoding="utf-8",

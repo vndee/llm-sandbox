@@ -1,0 +1,149 @@
+name: Native Linux backends
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-integration:
+    name: Native integration (${{ matrix.nsjail-version }})
+    # Use a host with unprivileged user namespaces, without relaxing its policy.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        nsjail-version: ["3.6", "pinned-current"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check out Bubblewrap 0.13.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: containers/bubblewrap
+          ref: 362936aea0d5c6e70f7af75d2d44b5a914cb4ba2
+          path: .native-build/bubblewrap
+          persist-credentials: false
+
+      - name: Check out NsJail 3.6 and its pinned Kafel submodule
+        if: matrix.nsjail-version == '3.6'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: google/nsjail
+          ref: f78475530b46d0186111a9096b30725f816b55fe
+          path: .native-build/nsjail
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Check out current NsJail and its pinned Kafel submodule
+        if: matrix.nsjail-version == 'pinned-current'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: google/nsjail
+          ref: 4ff54a6e0d5b65a0e1633d6e2fd1425ba6c882ce
+          path: .native-build/nsjail
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install system build and runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential g++-12 pkg-config meson ninja-build libcap-dev \
+            libseccomp2 libselinux1-dev python3-venv util-linux \
+            bison flex libprotobuf-dev protobuf-compiler libnl-route-3-dev
+
+      - name: Build pinned launchers
+        run: |
+          meson setup .native-build/bubblewrap/build .native-build/bubblewrap \
+            -Dman=disabled -Dtests=false \
+            -Dbash_completion=disabled -Dzsh_completion=disabled
+          ninja -C .native-build/bubblewrap/build
+          sudo install -m 0755 .native-build/bubblewrap/build/bwrap /usr/local/bin/bwrap
+          test "$(git -C .native-build/nsjail/kafel rev-parse HEAD)" = \
+            "76d0f41bf3eb5c4008713d64b9767b461a9129a3"
+          # Linux 5.15 headers lack this newer name for the existing scope value.
+          make -C .native-build/nsjail -j2 CXX=g++-12 \
+            USER_DEFINES=-DPR_SCHED_CORE_SCOPE_THREAD_GROUP=1
+          sudo install -m 0755 .native-build/nsjail/nsjail /usr/local/bin/nsjail
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv without shared caches
+        uses: astral-sh/setup-uv@6dfebec6ddbcd197e02256fbdf54deb334fb7f06 # v2.1.2
+        with:
+          version: "0.6.14"
+          enable-cache: "false"
+
+      - name: Install Python dependencies
+        # Exercise the checked-out source; dependency installation accepts wheels only.
+        run: uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
+
+      - name: Prepare a writable submount under a read-only runtime grant
+        run: |
+          fixture_root="$GITHUB_WORKSPACE/.native-fixtures"
+          mkdir -p "$fixture_root/readonly-runtime/nested" "$fixture_root/writable-source"
+          printf '%s' 'host data' > "$fixture_root/writable-source/marker"
+          sudo mount --bind "$fixture_root/writable-source" "$fixture_root/readonly-runtime/nested"
+          printf 'LLM_SANDBOX_TEST_READONLY_TREE=%s\n' "$fixture_root/readonly-runtime" >> "$GITHUB_ENV"
+          printf 'LLM_SANDBOX_TEST_WRITABLE_SOURCE=%s\n' "$fixture_root/writable-source" >> "$GITHUB_ENV"
+
+      - name: Require default offline setup and seccomp for both backends
+        run: |
+          .venv/bin/python - <<'PY'
+          import subprocess
+          import textwrap
+
+          from llm_sandbox import SandboxSession
+
+          help_text = subprocess.run(
+              ["bwrap", "--help"], check=True, capture_output=True, text=True
+          ).stdout
+          if "--disable-userns" not in help_text:
+              raise RuntimeError("Bubblewrap lacks the required --disable-userns option")
+
+          code = """
+          import sys
+          from pathlib import Path
+          assert sys.prefix != sys.base_prefix, "Default offline venv was not created"
+          status = Path('/proc/self/status').read_text().splitlines()
+          assert any(line.split() == ['Seccomp:', '2'] for line in status), status
+          print('offline venv and seccomp active')
+          """
+          for backend in ("bubblewrap", "nsjail"):
+              with SandboxSession(backend=backend, lang="python") as session:
+                  result = session.run(textwrap.dedent(code))
+                  if result.exit_code or result.stdout != "offline venv and seccomp active\n":
+                      raise RuntimeError(f"{backend} preflight failed: {result}")
+                  print(f"{backend}: {result.stdout.strip()}")
+          PY
+
+      - name: Run real integration tests and reject all skips
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          .venv/bin/python .github/scripts/require_native_integration.py \
+            tests/test_bubblewrap.py tests/test_nsjail.py -m integration -ra
+
+      - name: Remove the test bind mount
+        if: always()
+        run: |
+          fixture_mount="$GITHUB_WORKSPACE/.native-fixtures/readonly-runtime/nested"
+          if mountpoint -q "$fixture_mount"; then
+            sudo umount "$fixture_mount"
+          fi

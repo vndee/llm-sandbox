@@ -1,0 +1,103 @@
+{
+  "results_directory": "/workspace/llm-sandbox/benchmarks/results/expanded-20261016",
+  "profiles": {
+    "baseline": {
+      "raw_sha256": "ffcdb4c2c13c4ef6bc23e15c5ab9708ebb8abaf44e37088acf9fca7e37d4eef9",
+      "sessions": 90,
+      "validated_samples_including_lifecycle": 3960,
+      "batches": 0,
+      "validated_concurrent_calls": 0,
+      "backends": {
+        "docker": {
+          "sessions": 30
+        },
+        "bubblewrap": {
+          "sessions": 30
+        },
+        "nsjail": {
+          "sessions": 30
+        }
+      }
+    },
+    "setup": {
+      "raw_sha256": "a83905e123018fc280338576f754865ca773c20dec8e307c22b8e31208cbf574",
+      "sessions": 30,
+      "validated_samples_including_lifecycle": 240,
+      "batches": 0,
+      "validated_concurrent_calls": 0,
+      "backends": {
+        "docker": {
+          "sessions": 10
+        },
+        "bubblewrap": {
+          "sessions": 10
+        },
+        "nsjail": {
+          "sessions": 10
+        }
+      }
+    },
+    "workload": {
+      "raw_sha256": "c24bfb6448426268f9e891b9ca77c87fed36f5adaa177b961eef82ce205d1b2c",
+      "sessions": 30,
+      "validated_samples_including_lifecycle": 600,
+      "batches": 0,
+      "validated_concurrent_calls": 0,
+      "backends": {
+        "docker": {
+          "sessions": 10
+        },
+        "bubblewrap": {
+          "sessions": 10
+        },
+        "nsjail": {
+          "sessions": 10
+        }
+      }
+    },
+    "concurrency": {
+      "raw_sha256": "9078771b11c1a96e9793714fc53c60f02c35f191e962136ac9952af19f2f2e91",
+      "sessions": 630,
+      "validated_samples_including_lifecycle": 8190,
+      "batches": 90,
+      "validated_concurrent_calls": 6300,
+      "backends": {
+        "docker": {
+          "batches": 30,
+          "worker_sessions": 210,
+          "validated_calls": 2100
+        },
+        "bubblewrap": {
+          "batches": 30,
+          "worker_sessions": 210,
+          "validated_calls": 2100
+        },
+        "nsjail": {
+          "batches": 30,
+          "worker_sessions": 210,
+          "validated_calls": 2100
+        }
+      }
+    }
+  },
+  "source_sha256": {
+    "backend_benchmark.py": "cb4802be572471a1d27da74d189525d04dfc198d6b345b11aef530a800772803",
+    "experiment_suite.py": "2c9f1c8afaa9ce8596e7ea52c9ab1589bbcaf2c6e016587778634056af88797c",
+    "experiment_workloads.py": "5b321ae9da2681439793232af7e9822d62114b4e16b508ede2abfba25dcfb48d",
+    "experiment_statistics.py": "6b3a5f042cbd38930e969eb1b6b044807852e9707b239eefb0344b2d2f417989"
+  },
+  "limitations": [
+    "Raw timestamps do not record individual teardown-start instants; exclusion is supported by frozen completion-barrier control flow plus shared-window arithmetic.",
+    "Docker deletion has explicit cleanup_verified records. Native cleanup has successful close samples, with no separate directory-deletion assertion in this schema.",
+    "This audits retained validation evidence; payload outputs/files were validated at measurement time and are not re-executed here."
+  ],
+  "status": "passed",
+  "checks": 68768,
+  "errors": [],
+  "total_measured_sessions": 780,
+  "total_validated_samples_including_lifecycle": 12990,
+  "cleanup": {
+    "docker_positive_removal_confirmations_including_preflights": 264,
+    "native_successful_closes_including_preflights": 528
+  }
+}

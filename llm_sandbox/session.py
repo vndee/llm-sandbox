@@ -6,10 +6,11 @@ from typing import Any
 
 from llm_sandbox.security import SecurityPolicy
 
+from .backends import get_backend
 from .const import SandboxBackend, SupportedLanguage
 from .core.session_base import BaseSession
 from .data import ExecutionResult, StreamCallback
-from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, UnsupportedBackendError
+from .exceptions import LanguageNotSupportPlotError, MissingDependencyError, ValidationError
 from .interactive import InteractiveSandboxSession
 from .pool.base import ContainerPoolManager
 from .pool.session import ArtifactPooledSandboxSession, PooledSandboxSession
@@ -24,7 +25,7 @@ __all__ = [
 ]
 
 
-def _check_dependency(backend: SandboxBackend) -> None:
+def _check_dependency(backend: SandboxBackend | str) -> None:
     """Check if required dependency is installed for the given backend."""
     if backend in {SandboxBackend.DOCKER, SandboxBackend.MICROMAMBA} and not find_spec("docker"):
         msg = "Docker backend requires 'docker' package. Install it with: pip install llm-sandbox[docker]"
@@ -37,8 +38,16 @@ def _check_dependency(backend: SandboxBackend) -> None:
         raise MissingDependencyError(msg)
 
 
+def _check_pool_backend(backend: SandboxBackend | str) -> None:
+    """Require every backend to declare support for supplied-pool semantics."""
+    definition = get_backend(backend)
+    if not definition.capabilities.pooling:
+        msg = f"Backend '{backend}' does not support container pooling"
+        raise ValidationError(msg)
+
+
 def create_session(
-    backend: SandboxBackend = SandboxBackend.DOCKER,
+    backend: SandboxBackend | str = SandboxBackend.DOCKER,
     pool: ContainerPoolManager | None = None,
     *args: Any,
     **kwargs: Any,
@@ -50,11 +59,15 @@ def create_session(
     For backward compatibility, we also keep a `SandboxSession` alias for this function.
 
     Args:
-        backend (SandboxBackend): Container backend to use. Options:
+        backend (SandboxBackend | str): Built-in backend or registered custom name. Options:
             - SandboxBackend.DOCKER (default)
             - SandboxBackend.KUBERNETES
             - SandboxBackend.PODMAN
             - SandboxBackend.MICROMAMBA
+            - SandboxBackend.BUBBLEWRAP (Linux, no container daemon)
+            - SandboxBackend.NSJAIL (Linux, no container daemon)
+            - SandboxBackend.WINDOWS_MXC (native Windows PSEC)
+            - SandboxBackend.WSL2_BUBBLEWRAP (Windows client, Linux sandbox in WSL2)
         pool (ContainerPoolManager | None): Pool manager to use for container pooling.
             If provided, containers are acquired from the pool instead of being created new.
             Create a pool manager using `create_pool_manager()` from llm_sandbox.pool.
@@ -234,6 +247,7 @@ def create_session(
     """
     # Use pooled session if pool manager is provided
     if pool is not None:
+        _check_pool_backend(backend)
         from llm_sandbox.pool.session import PooledSandboxSession
 
         return PooledSandboxSession(
@@ -241,29 +255,10 @@ def create_session(
             **kwargs,
         )
 
-    # Check if required dependency is installed for non-pooled sessions
-    _check_dependency(backend)
-
-    # Create the appropriate session based on backend
-    match backend:
-        case SandboxBackend.DOCKER:
-            from .docker import SandboxDockerSession
-
-            return SandboxDockerSession(*args, **kwargs)
-        case SandboxBackend.KUBERNETES:
-            from .kubernetes import SandboxKubernetesSession
-
-            return SandboxKubernetesSession(*args, **kwargs)
-        case SandboxBackend.PODMAN:
-            from .podman import SandboxPodmanSession
-
-            return SandboxPodmanSession(*args, **kwargs)
-        case SandboxBackend.MICROMAMBA:
-            from .micromamba import MicromambaSession
-
-            return MicromambaSession(*args, **kwargs)
-        case _:
-            raise UnsupportedBackendError(backend=backend)
+    definition = get_backend(backend)
+    # Keep built-in dependency diagnostics before importing optional SDKs.
+    _check_dependency(definition.name)
+    return definition.factory(*args, **kwargs)
 
 
 class ArtifactSandboxSession:
@@ -271,7 +266,7 @@ class ArtifactSandboxSession:
 
     def __init__(
         self,
-        backend: SandboxBackend = SandboxBackend.DOCKER,
+        backend: SandboxBackend | str = SandboxBackend.DOCKER,
         image: str | None = None,
         dockerfile: str | None = None,
         lang: str = SupportedLanguage.PYTHON,
@@ -466,6 +461,7 @@ class ArtifactSandboxSession:
 
         # If pool is provided, delegate to ArtifactPooledSandboxSession
         if pool is not None:
+            _check_pool_backend(backend)
             self._pooled_impl = ArtifactPooledSandboxSession(
                 pool_manager=pool,
                 verbose=verbose,
@@ -478,6 +474,9 @@ class ArtifactSandboxSession:
             # Don't create _session when using pooled implementation
             self._session = None
         else:
+            if get_backend(backend).name == SandboxBackend.WINDOWS_MXC.value:
+                msg = "windows-mxc does not support the artifact wrapper; use SandboxSession and copy_from_runtime()"
+                raise ValidationError(msg)
             # Create the base session (non-pooled)
             self._pooled_impl = None
             self._session = create_session(

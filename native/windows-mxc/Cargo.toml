@@ -1,0 +1,22 @@
+[package]
+name = "llm-sandbox-mxc"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+license = "MIT"
+publish = false
+description = "Native PSEC launcher for the llm-sandbox Windows MXC backend"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wxc_common = { git = "https://github.com/microsoft/mxc", rev = "6cd3d58f05d3447e67109cfb75e042803b843ca4" }
+
+[target.'cfg(windows)'.dependencies]
+appcontainer_common = { git = "https://github.com/microsoft/mxc", rev = "6cd3d58f05d3447e67109cfb75e042803b843ca4" }
+learning_mode_windows = { git = "https://github.com/microsoft/mxc", rev = "6cd3d58f05d3447e67109cfb75e042803b843ca4" }
+# 1.2.4 requires OneCore_apiset, absent from Windows GNU toolchains.
+tracelogging = "=1.2.3"
+
+[profile.release]
+strip = "debuginfo"

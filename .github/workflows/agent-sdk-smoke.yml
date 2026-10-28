@@ -67,11 +67,11 @@ jobs:
         env:
           PACKAGE: ${{ matrix.package }}
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --only-binary :all: --upgrade pip
           # Unpinned on purpose: the job exists to detect new releases breaking
           # these examples. A pin here would defeat it.
           # shellcheck disable=SC2086
-          pip install "llm-sandbox[docker]" $PACKAGE
+          python -m pip install --only-binary :all: "llm-sandbox[docker]" $PACKAGE
 
       - name: Smoke-check the example
         env:
@@ -93,8 +93,8 @@ jobs:
 
       - name: Install
         run: |
-          python -m pip install --upgrade pip
-          pip install "llm-sandbox[docker]" openai-agents
+          python -m pip install --only-binary :all: --upgrade pip
+          python -m pip install --only-binary :all: "llm-sandbox[docker]" openai-agents
 
       - name: Execute code in a real container
         run: python scripts/smoke_agent_sdks.py openai_agents_tool --docker

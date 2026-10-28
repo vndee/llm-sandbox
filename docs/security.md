@@ -1,28 +1,96 @@
 # Security Guide
 
-LLM Sandbox provides comprehensive security features to safely execute untrusted code. This guide covers the security policy system for pre-execution code analysis and best practices.
+LLM Sandbox combines runtime isolation with optional pre-execution code analysis. This guide explains which controls are enforced by the selected backend and which checks the caller must apply.
 
 ## Overview
 
 Security in LLM Sandbox is implemented through multiple layers:
 
-1. **Container Isolation** - Code runs in isolated containers (configured via `runtime_config` or pod manifests)
+1. **Runtime Isolation** - Container isolation or local Linux namespaces and mounts
 2. **Security Policies** - Pre-execution regex-based code analysis (this module's focus)
-3. **Resource Limits** - Prevent resource exhaustion (configured via container runtime)
-4. **Network Controls** - Limit network access (configured via container runtime)
-5. **File System Restrictions** - Control file access (configured via container runtime)
+3. **Resource Limits** - Configure timeouts and backend-specific resource limits
+4. **Network Controls** - Limit network access through the selected backend
+5. **File System Restrictions** - Control which host files the sandbox can read or write
+6. **Syscall Filtering** - Apply seccomp with supported Linux backends
 
-> **Note**: Container-level security (resource limits, network controls, file system restrictions) is configured through `runtime_config` for Docker/Podman or pod manifests for Kubernetes as described in the [Configuration Guide](configuration.md). This module focuses on the **Security Policy** system for code analysis.
+> **Note**: Configure Docker/Podman controls through `runtime_configs`, Kubernetes controls through pod manifests and cluster policy, and local Linux controls through `LocalSandboxConfig`. See the [Configuration Guide](configuration.md).
 
 ### Security Model
 
 LLM Sandbox follows an **advisory security model** for code analysis:
 
-- **Container isolation is the primary security boundary.** Code runs inside isolated containers, which limits the blast radius of any malicious code.
+- **Runtime isolation is the primary security boundary.** Its strength and scope depend on the backend, host, exposed data, and configuration. Local namespaces and ordinary Linux containers share the host kernel.
 - **Security policies are advisory.** The `SecurityPolicy` system provides pre-execution code analysis via `is_safe()`, but it is **not** automatically enforced by `run()`. You must explicitly check `is_safe()` and decide whether to proceed. This gives you full control over how violations are handled (logging, custom errors, partial execution, etc.).
-- **Container-level controls are enforced by the runtime.** Resource limits, network isolation, and filesystem restrictions configured through `runtime_configs` (Docker/Podman) or pod manifests (Kubernetes) are enforced by the container runtime itself.
+- **OS and runtime controls are enforced during execution.** These are separate from source-code screening and apply to subprocesses and dynamically generated code as well.
 
-For production deployments handling untrusted code, always combine all layers: use security policies to screen code, apply strict container resource limits, and restrict network access.
+For deployments handling untrusted code, choose the isolation boundary for the threat model, restrict data and network access, and apply appropriate resource controls. Code screening alone is not a sandbox.
+
+## Local Linux Isolation and Seccomp
+
+Bubblewrap and NsJail compose namespaces, restricted mounts, a clean environment, and a seccomp filter. Their default configuration disables network access and makes only the private session workspace and temporary directory writable on the host. Selected runtime paths are readable, including `/usr`; read-only access still allows the sandbox to read and copy any data in those paths. Do not add directories containing secrets to `read_only_paths`.
+
+Each command starts in a separate PID namespace. Its background processes do not survive into the next command. Workspace files, installed packages, and private `/tmp` files do persist for the lifetime of the session. File-transfer APIs are limited to the workspace and private `/tmp` and reject unsafe paths and unsupported file types. Artifact extraction can read bounded regular files from the session's artifact directories.
+
+`SeccompPolicy` is an OS-enforced syscall denylist. The default rejects operations such as `ptrace`, cross-process memory access, mount changes, `bpf`, kernel module management, keyring access, and `io_uring`. Ordinary file and socket operations are still allowed by the filter; namespace and mount policy control their reachable resources. This is additional hardening, not a complete syscall allowlist or a standalone security boundary.
+
+Bubblewrap receives compiled BPF from system libseccomp. The compiler supports native x86-64 and AArch64 and rejects foreign syscall ABIs. NsJail uses its native Kafel compiler for the same denied operations, translating syscall aliases such as `umount2` to Kafel's spelling. Both filters also reject the legacy x32 syscall-number range 512–547 on x86-64, preventing the unmarked x32 encodings accepted by kernels older than 5.4. This architecture guard remains active with a custom denylist. Unknown or unsupported policy elements fail rather than being silently removed.
+
+NsJail always selects `--experimental_mnt new` so read-only grants cover nested mounts as well as their parents. The required binary and kernel support must be present; the adapter never retries with the legacy mount implementation. Its `/dev/shm` is private to each command and supports shared memory between that command's child processes.
+
+```python
+from llm_sandbox import LocalSandboxConfig, SandboxSession, SeccompPolicy
+from llm_sandbox.security.seccomp import DEFAULT_BLOCKED_SYSCALLS
+
+# Extend the default denylist; a custom list replaces it.
+config = LocalSandboxConfig(
+    network="none",
+    seccomp=SeccompPolicy(
+        blocked_syscalls=(*DEFAULT_BLOCKED_SYSCALLS, "getppid"),
+    ),
+)
+
+with SandboxSession(backend="bubblewrap", lang="python", sandbox_config=config) as session:
+    print(session.run("print('Sandboxed with a custom syscall policy')").stdout)
+```
+
+Disabling the filter with `seccomp=None` is an explicit reduction in protection. Missing dependencies or policy failures never trigger an automatic retry without seccomp or outside the sandbox. `network="host"` is also an explicit grant: it enables unrestricted host networking, including reachable local services, and exposes resolver and certificate files read-only for DNS/TLS. There is no built-in domain allowlist or filtering proxy.
+
+### Resource and Deployment Limits
+
+- Timeouts and output caps bound command execution and captured output. Optional `prlimit` settings enforce per-process POSIX resource limits inherited by child processes.
+- `memory_limit_bytes` limits virtual address space, not resident memory or total session memory. `cpu_time_limit` is CPU time per process. `file_size_limit` limits an individual file, not total disk use. These settings are not aggregate cgroup quotas and do not provide a process-count limit.
+- NsJail timeout cleanup first asks its supervisor to kill the jailed process tree. If the supervisor is unresponsive and must itself be force-killed, descendant cleanup cannot be guaranteed without an external aggregate process manager such as cgroups.
+- Both local adapters share the host kernel. A syscall denylist reduces exposed operations but does not turn a local sandbox into a VM or establish a strong multi-tenant hosting guarantee.
+- The clean child environment excludes inherited host credentials; explicitly supplied environment values and read-only mounts remain intentional grants to sandboxed code.
+- Python environments are created offline with system site packages visible from the mounted runtime. Dependencies and package install scripts execute inside the same sandbox. Host runtime installation and updates remain the operator's responsibility.
+
+For managed hostile multi-tenant workloads, evaluate a stronger boundary such as a userspace kernel or VM alongside per-job storage and aggregate resource controls. Those backends are roadmap candidates, not currently implemented adapters.
+
+## Windows Isolation
+
+The experimental Windows backends use different OS boundaries. Both require an explicit backend selection and fail when the requested protection cannot be established. Capability metadata is not a live host probe.
+
+### Native MXC/PSEC
+
+`windows-mxc` invokes the pinned Microsoft MXC SDK's native PSEC runner directly. It does not use a generic dispatcher that could choose AppContainer, restricted tokens, or an unsandboxed fallback. An actual container-create probe checks availability, and explicit deny paths additionally require the native deny-path capability. The helper disables SDK DACL mutation; it does not provision users or change host directory ACLs to make execution succeed.
+
+The policy grants read access to Windows and selected runtime files, plus explicit read-only paths. One private session directory is writable. File-transfer code rejects reparse points, junctions, hardlinks, device/UNC paths and alternate data streams; file operations verify handles instead of trusting a path string alone. The session root has a private DACL. These controls protect transfers and cleanup as well as execution.
+
+`network="none"` denies egress, ingress and host loopback. `network="host"` enables all three and is a broad grant, not proxy enforcement. The helper permits registry reads needed by supported console runtimes; **this backend does not promise registry-read confidentiality**. Clipboard access, input injection and desktop/system control remain restricted. Native MXC is a process boundary sharing the Windows kernel, not a VM and not Linux seccomp.
+
+The native launcher creates the payload suspended, assigns a kill-on-close Job Object, then resumes it. Descendants are terminated on foreground completion or helper death. The Python supervisor separately owns the helper's process tree, timeouts and output bounds. Session files persist between commands; background processes do not. The initial backend has no aggregate resource quotas.
+
+The native helper, selected executables, runtime installations and explicit read grants are trusted inputs. They must not be writable by the sandbox. The helper receives a small bootstrap environment; only explicitly constructed payload variables reach the child. Runtime dependencies already present in read-only grants remain visible, and credentials intentionally passed in environment values are accessible to payload code.
+
+### WSL2 Bubblewrap
+
+`wsl2-bubblewrap` uses WSL2's Linux guest plus Bubblewrap namespaces, restricted mounts and seccomp inside that guest. Sessions share the existing distribution and guest kernel; the library does not start a separate VM per command. WSL1 is rejected. The native Windows client uses a trusted system `wsl.exe`, explicit arguments, and an isolated guest Python invocation. The worker handshake checks protocol, installed package version and the relevant security-source fingerprint.
+
+WSL interoperability is a separate escape surface: Windows mounts and interop sockets can otherwise let Linux processes act on Windows with the user's privileges. This adapter restricts runtime grants to built-in Linux paths, rejects Windows/shared mount exposure, removes interop environment variables, and keeps the default seccomp restrictions mandatory. It hides standard `/usr/lib/wsl` integration mounts behind an empty read-only mount. It does not mount `/mnt`, `/run`, or `/init` into the payload. Granting `network="host"` still permits connections to reachable Windows services; filesystem isolation does not imply network isolation under that setting.
+
+The worker owns each Bubblewrap process tree. Control messages are bounded and versioned; payload output is encoded as data and never interpreted as control instructions. Heartbeat expiry or transport EOF closes the guest session, because killing the Windows `wsl.exe` process alone is insufficient to prove Linux cleanup. The lease adds a bounded detection delay after an abrupt client failure. The trusted guest installation and distribution configuration remain part of the security boundary.
+
+Portable tests and compilation validate contracts and API compatibility. Kernel filesystem/network enforcement, WSL interoperability restrictions and cancellation must also pass native integration checks on suitable Windows hosts before a deployment relies on them. See [Windows validation](backends.md#windows-validation).
 
 ## Library names: accepted formats and limitations
 

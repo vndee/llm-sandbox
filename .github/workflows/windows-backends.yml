@@ -1,0 +1,205 @@
+name: Windows backend builds and portable tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapters:
+    name: Adapter contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-2025]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Set up uv without shared caches
+        uses: astral-sh/setup-uv@6dfebec6ddbcd197e02256fbdf54deb334fb7f06 # v2.1.2
+        with:
+          version: "0.6.14"
+          enable-cache: "false"
+      - name: Install only core and test dependencies
+        run: uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
+      - name: Install the current pure wheel for version metadata
+        id: install-package
+        # External dependencies are locked above; install only this checkout's wheel offline.
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            build_python=.venv/Scripts/python.exe
+          else
+            build_python=.venv/bin/python
+          fi
+          "$build_python" -m hatchling build -t wheel
+          "$build_python" .github/scripts/windows_helper_artifacts.py install-requirements
+          uv pip install --offline --no-deps --no-build --no-index --find-links dist --require-hashes -r dist/wheel-requirements.txt
+      - name: Run portable API, protocol, policy and wheel tests
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            test_python=.venv/Scripts/python.exe
+          else
+            test_python=.venv/bin/python
+          fi
+          "$test_python" -m pytest -q -m 'not integration' \
+            --cov=llm_sandbox --cov-config=pyproject.toml --cov-report=xml:coverage-adapters.xml \
+            tests/test_backend_registry.py tests/test_const.py \
+            tests/test_windows_mxc.py tests/test_wsl2_bubblewrap.py tests/test_wsl2_transport.py \
+            tests/test_windows_process.py tests/test_windows_files.py tests/test_windows_wheel.py \
+            tests/test_windows_helper_artifacts.py
+      - name: Require real Windows process and filesystem tests without skips
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.install-package.outcome == 'success' }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          .venv/Scripts/python.exe .github/scripts/require_native_integration.py \
+            tests/test_windows_process.py tests/test_windows_files.py -m integration -ra \
+            --cov=llm_sandbox --cov-append --cov-config=pyproject.toml --cov-report=xml:coverage-adapters.xml
+      - name: Retain adapter and native Win32 coverage
+        if: ${{ !cancelled() && hashFiles('coverage-adapters.xml') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-adapters-${{ matrix.os }}
+          path: coverage-adapters.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload adapter and native Win32 coverage to Codecov
+        if: ${{ !cancelled() && hashFiles('coverage-adapters.xml') != '' }}
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          files: coverage-adapters.xml
+          disable_search: true
+          name: adapters-${{ matrix.os }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  helper-wheel:
+    name: Windows helper and wheel (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      # The wheel must not require users to install a separate MSVC runtime.
+      RUSTFLAGS: "-C target-feature=+crt-static"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            platform: win_amd64
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            platform: win_arm64
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Set up uv without shared caches
+        uses: astral-sh/setup-uv@6dfebec6ddbcd197e02256fbdf54deb334fb7f06 # v2.1.2
+        with:
+          version: "0.6.14"
+          enable-cache: "false"
+      - name: Install frozen wheel build dependencies
+        run: uv sync --frozen --no-dev --group native-tests --no-build --no-install-project
+      - name: Set up the pinned Rust toolchain
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+        run: rustup toolchain install 1.93.0 --profile minimal --target $env:RUST_TARGET
+      - name: Build and test the pinned native helper
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+        run: |
+          cargo +1.93.0 test --locked --manifest-path native/windows-mxc/Cargo.toml --target $env:RUST_TARGET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo +1.93.0 build --locked --release --manifest-path native/windows-mxc/Cargo.toml --target $env:RUST_TARGET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record actual host support without claiming native enforcement
+        id: host-probe
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+        run: |
+          $helper = Resolve-Path "native/windows-mxc/target/$env:RUST_TARGET/release/llm-sandbox-mxc.exe"
+          $output = & $helper --probe
+          if ($LASTEXITCODE -ne 0) { throw "Helper probe failed: $output" }
+          $probe = $output | ConvertFrom-Json
+          if ($probe.protocol -ne 1 -or $probe.available -isnot [bool] -or $probe.deny_paths -isnot [bool]) {
+            throw "Invalid helper probe contract: $output"
+          }
+          Write-Output "Host capability probe (not an enforcement test): $output"
+          "psec_available=$($probe.available.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "LLM_SANDBOX_MXC_HELPER=$helper" >> $env:GITHUB_ENV
+      - name: Collect dependency licenses and build the platform wheel
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+          WHEEL_PLATFORM: ${{ matrix.platform }}
+        run: |
+          .venv/Scripts/python.exe .github/scripts/windows_helper_artifacts.py notices $env:WHEEL_PLATFORM
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:LLM_SANDBOX_MXC_BINARY = (Resolve-Path "native/windows-mxc/target/$env:RUST_TARGET/release/llm-sandbox-mxc.exe").Path
+          $env:LLM_SANDBOX_MXC_NOTICES = (Resolve-Path THIRD_PARTY_NOTICES.txt).Path
+          .venv/Scripts/python.exe -m hatchling build -t wheel
+      - name: Verify shipped bytes and write checksums and build receipt
+        env:
+          WHEEL_PLATFORM: ${{ matrix.platform }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          .venv/Scripts/python.exe .github/scripts/windows_helper_artifacts.py verify $env:WHEEL_PLATFORM $env:SOURCE_COMMIT
+      - name: Install the wheel and resolve its bundled helper without a source checkout import
+        run: |
+          uv pip install --offline --no-deps --no-build --no-index --find-links dist --require-hashes -r dist/wheel-requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .venv/Scripts/python.exe -I -c "from llm_sandbox import SandboxSession; SandboxSession(backend='windows-mxc', skip_environment_setup=True); print('Installed wheel resolves its bundled helper')"
+      - name: Require native PSEC tests if this ephemeral host supports it
+        if: steps.host-probe.outputs.psec_available == 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          LLM_SANDBOX_RUN_MXC_INTEGRATION: "1"
+        run: .venv/Scripts/python.exe .github/scripts/require_native_integration.py tests/test_windows_mxc.py -m integration -ra --cov=llm_sandbox --cov-config=pyproject.toml --cov-report=xml:coverage-mxc.xml
+      - name: Retain actual PSEC enforcement coverage
+        if: ${{ !cancelled() && hashFiles('coverage-mxc.xml') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-mxc-${{ matrix.platform }}
+          path: coverage-mxc.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload actual PSEC enforcement coverage to Codecov
+        if: ${{ !cancelled() && hashFiles('coverage-mxc.xml') != '' }}
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        with:
+          files: coverage-mxc.xml
+          disable_search: true
+          name: native-mxc-${{ matrix.platform }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload reviewable wheel, licenses and checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-wheel-${{ matrix.platform }}-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14

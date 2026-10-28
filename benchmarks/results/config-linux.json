@@ -1,0 +1,26 @@
+{
+  "docker": {
+    "image": "python:3.13.5-slim-bookworm",
+    "client_kwargs": {
+      "base_url": "unix:///var/run/docker.sock",
+      "timeout": 60
+    },
+    "runtime_configs": {
+      "network_mode": "none"
+    }
+  },
+  "bubblewrap": {},
+  "nsjail": {
+    "nsjail_path": "/workspace/scratch/nsjail-build/source/nsjail"
+  },
+  "podman": {
+    "image": "python:3.13.5-slim-bookworm",
+    "client_kwargs": {
+      "base_url": "unix:///workspace/scratch/extra-runtimes/podman.sock",
+      "timeout": 10
+    }
+  },
+  "kubernetes": {
+    "image": "python:3.13.5-slim-bookworm"
+  }
+}

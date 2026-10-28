@@ -1,0 +1,126 @@
+Creating cluster "llm-backend-benchmark" ...
+ • Ensuring node image (kindest/node:v1.34.0) 🖼  ...
+WARNING: Overriding docker network due to KIND_EXPERIMENTAL_DOCKER_NETWORK
+WARNING: Here be dragons! This is not supported currently.
+ ✓ Ensuring node image (kindest/node:v1.34.0) 🖼
+ • Preparing nodes 📦   ...
+ ✓ Preparing nodes 📦 
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✗ Starting control-plane 🕹️
+ERROR: failed to create cluster: failed to init node with kubeadm: command "docker exec --privileged llm-backend-benchmark-control-plane kubeadm init --config=/kind/kubeadm.conf --skip-token-print --v=6" failed with error: exit status 1
+
+Command Output: I1016 07:02:35.260445     169 initconfiguration.go:260] loading configuration from "/kind/kubeadm.conf"
+W1016 07:02:35.261134     169 common.go:100] your configuration file uses a deprecated API spec: "kubeadm.k8s.io/v1beta3" (kind: "ClusterConfiguration"). Please use 'kubeadm config migrate --old-config old-config-file --new-config new-config-file', which will write the new, similar spec using a newer API version.
+W1016 07:02:35.261702     169 common.go:100] your configuration file uses a deprecated API spec: "kubeadm.k8s.io/v1beta3" (kind: "InitConfiguration"). Please use 'kubeadm config migrate --old-config old-config-file --new-config new-config-file', which will write the new, similar spec using a newer API version.
+W1016 07:02:35.262278     169 common.go:100] your configuration file uses a deprecated API spec: "kubeadm.k8s.io/v1beta3" (kind: "JoinConfiguration"). Please use 'kubeadm config migrate --old-config old-config-file --new-config new-config-file', which will write the new, similar spec using a newer API version.
+W1016 07:02:35.262581     169 initconfiguration.go:361] [config] WARNING: Ignored configuration document with GroupVersionKind kubeadm.k8s.io/v1beta3, Kind=JoinConfiguration
+[init] Using Kubernetes version: v1.34.0
+[certs] Using certificateDir folder "/etc/kubernetes/pki"
+I1016 07:02:35.264497     169 certs.go:111] creating a new certificate authority for ca
+[certs] Generating "ca" certificate and key
+I1016 07:02:35.373189     169 certs.go:472] validating certificate period for ca certificate
+[certs] Generating "apiserver" certificate and key
+[certs] apiserver serving cert is signed for DNS names [kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local llm-backend-benchmark-control-plane localhost] and IPs [10.96.0.1 172.18.0.2 127.0.0.1]
+[certs] Generating "apiserver-kubelet-client" certificate and key
+I1016 07:02:35.702150     169 certs.go:111] creating a new certificate authority for front-proxy-ca
+[certs] Generating "front-proxy-ca" certificate and key
+I1016 07:02:35.821187     169 certs.go:472] validating certificate period for front-proxy-ca certificate
+[certs] Generating "front-proxy-client" certificate and key
+I1016 07:02:35.971327     169 certs.go:111] creating a new certificate authority for etcd-ca
+[certs] Generating "etcd/ca" certificate and key
+I1016 07:02:36.113628     169 certs.go:472] validating certificate period for etcd/ca certificate
+[certs] Generating "etcd/server" certificate and key
+[certs] etcd/server serving cert is signed for DNS names [llm-backend-benchmark-control-plane localhost] and IPs [172.18.0.2 127.0.0.1 ::1]
+[certs] Generating "etcd/peer" certificate and key
+[certs] etcd/peer serving cert is signed for DNS names [llm-backend-benchmark-control-plane localhost] and IPs [172.18.0.2 127.0.0.1 ::1]
+[certs] Generating "etcd/healthcheck-client" certificate and key
+[certs] Generating "apiserver-etcd-client" certificate and key
+I1016 07:02:36.657954     169 certs.go:77] creating new public/private key files for signing service account users
+[certs] Generating "sa" key and public key
+I1016 07:02:36.709986     169 kubeconfig.go:111] creating kubeconfig file for admin.conf
+[kubeconfig] Using kubeconfig folder "/etc/kubernetes"
+[kubeconfig] Writing "admin.conf" kubeconfig file
+I1016 07:02:36.787050     169 kubeconfig.go:111] creating kubeconfig file for super-admin.conf
+[kubeconfig] Writing "super-admin.conf" kubeconfig file
+I1016 07:02:36.907549     169 kubeconfig.go:111] creating kubeconfig file for kubelet.conf
+[kubeconfig] Writing "kubelet.conf" kubeconfig file
+I1016 07:02:37.218357     169 kubeconfig.go:111] creating kubeconfig file for controller-manager.conf
+[kubeconfig] Writing "controller-manager.conf" kubeconfig file
+I1016 07:02:37.616914     169 kubeconfig.go:111] creating kubeconfig file for scheduler.conf
+[kubeconfig] Writing "scheduler.conf" kubeconfig file
+[etcd] Creating static Pod manifest for local etcd in "/etc/kubernetes/manifests"
+I1016 07:02:37.766254     169 local.go:67] [etcd] wrote Static Pod manifest for a local etcd member to "/etc/kubernetes/manifests/etcd.yaml"
+I1016 07:02:37.766297     169 manifests.go:125] [control-plane] getting StaticPodSpecs
+I1016 07:02:37.766508     169 certs.go:472] validating certificate period for CA certificate
+[control-plane] Using manifest folder "/etc/kubernetes/manifests"
+[control-plane] Creating static Pod manifest for "kube-apiserver"
+I1016 07:02:37.766712     169 manifests.go:151] [control-plane] adding volume "ca-certs" for component "kube-apiserver"
+I1016 07:02:37.766737     169 manifests.go:151] [control-plane] adding volume "etc-ca-certificates" for component "kube-apiserver"
+I1016 07:02:37.766740     169 manifests.go:151] [control-plane] adding volume "k8s-certs" for component "kube-apiserver"
+I1016 07:02:37.766743     169 manifests.go:151] [control-plane] adding volume "usr-local-share-ca-certificates" for component "kube-apiserver"
+I1016 07:02:37.766745     169 manifests.go:151] [control-plane] adding volume "usr-share-ca-certificates" for component "kube-apiserver"
+I1016 07:02:37.767545     169 manifests.go:180] [control-plane] wrote static Pod manifest for component "kube-apiserver" to "/etc/kubernetes/manifests/kube-apiserver.yaml"
+I1016 07:02:37.767575     169 manifests.go:125] [control-plane] getting StaticPodSpecs
+[control-plane] Creating static Pod manifest for "kube-controller-manager"
+I1016 07:02:37.767844     169 manifests.go:151] [control-plane] adding volume "ca-certs" for component "kube-controller-manager"
+I1016 07:02:37.767868     169 manifests.go:151] [control-plane] adding volume "etc-ca-certificates" for component "kube-controller-manager"
+I1016 07:02:37.767872     169 manifests.go:151] [control-plane] adding volume "flexvolume-dir" for component "kube-controller-manager"
+I1016 07:02:37.767874     169 manifests.go:151] [control-plane] adding volume "k8s-certs" for component "kube-controller-manager"
+I1016 07:02:37.767877     169 manifests.go:151] [control-plane] adding volume "kubeconfig" for component "kube-controller-manager"
+I1016 07:02:37.767880     169 manifests.go:151] [control-plane] adding volume "usr-local-share-ca-certificates" for component "kube-controller-manager"
+I1016 07:02:37.767882     169 manifests.go:151] [control-plane] adding volume "usr-share-ca-certificates" for component "kube-controller-manager"
+I1016 07:02:37.768546     169 manifests.go:180] [control-plane] wrote static Pod manifest for component "kube-controller-manager" to "/etc/kubernetes/manifests/kube-controller-manager.yaml"
+I1016 07:02:37.768579     169 manifests.go:125] [control-plane] getting StaticPodSpecs
+[control-plane] Creating static Pod manifest for "kube-scheduler"
+I1016 07:02:37.768825     169 manifests.go:151] [control-plane] adding volume "kubeconfig" for component "kube-scheduler"
+I1016 07:02:37.769326     169 manifests.go:180] [control-plane] wrote static Pod manifest for component "kube-scheduler" to "/etc/kubernetes/manifests/kube-scheduler.yaml"
+I1016 07:02:37.769357     169 kubelet.go:69] Stopping the kubelet
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/instance-config.yaml"
+[patches] Applied patch of type "application/strategic-merge-patch+json" to target "kubeletconfiguration"
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Starting the kubelet
+I1016 07:02:37.896292     169 loader.go:402] Config loaded from file:  /etc/kubernetes/admin.conf
+I1016 07:02:37.896611     169 envvar.go:172] "Feature gate default state" feature="WatchListClient" enabled=false
+I1016 07:02:37.896638     169 envvar.go:172] "Feature gate default state" feature="ClientsAllowCBOR" enabled=false
+I1016 07:02:37.896642     169 envvar.go:172] "Feature gate default state" feature="ClientsPreferCBOR" enabled=false
+I1016 07:02:37.896646     169 envvar.go:172] "Feature gate default state" feature="InOrderInformers" enabled=true
+I1016 07:02:37.896648     169 envvar.go:172] "Feature gate default state" feature="InformerResourceVersion" enabled=false
+[wait-control-plane] Waiting for the kubelet to boot up the control plane as static Pods from directory "/etc/kubernetes/manifests"
+[kubelet-check] Waiting for a healthy kubelet at http://127.0.0.1:10248/healthz. This can take up to 4m0s
+[kubelet-check] The kubelet is not healthy after 4m0.001326115s
+
+Unfortunately, an error has occurred, likely caused by:
+	- The kubelet is not running
+	- The kubelet is unhealthy due to a misconfiguration of the node in some way (required cgroups disabled)
+
+If you are on a systemd-powered system, you can try to troubleshoot the error with the following commands:
+	- 'systemctl status kubelet'
+	- 'journalctl -xeu kubelet'
+
+error: error execution phase wait-control-plane: failed while waiting for the kubelet to start: The HTTP call equal to 'curl -sSL http://127.0.0.1:10248/healthz' returned error: Get "http://127.0.0.1:10248/healthz": context deadline exceeded
+
+k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow.(*Runner).Run.func1
+	k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow/runner.go:262
+k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow.(*Runner).visitAll
+	k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow/runner.go:450
+k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow.(*Runner).Run
+	k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow/runner.go:234
+k8s.io/kubernetes/cmd/kubeadm/app/cmd.newCmdInit.func1
+	k8s.io/kubernetes/cmd/kubeadm/app/cmd/init.go:133
+github.com/spf13/cobra.(*Command).execute
+	github.com/spf13/cobra@v1.9.1/command.go:1015
+github.com/spf13/cobra.(*Command).ExecuteC
+	github.com/spf13/cobra@v1.9.1/command.go:1148
+github.com/spf13/cobra.(*Command).Execute
+	github.com/spf13/cobra@v1.9.1/command.go:1071
+k8s.io/kubernetes/cmd/kubeadm/app.Run
+	k8s.io/kubernetes/cmd/kubeadm/app/kubeadm.go:48
+main.main
+	k8s.io/kubernetes/cmd/kubeadm/kubeadm.go:25
+runtime.main
+	runtime/proc.go:283
+runtime.goexit
+	runtime/asm_amd64.s:1700

@@ -42,7 +42,7 @@ pip install 'llm-sandbox[docker,k8s,podman]'
 
 ### Development Installation
 
-For contributing or development, dev dependencies are managed as a [uv dependency group](https://docs.astral.sh/uv/concepts/projects/dependencies/#dependency-groups). Use `uv` (or the `make install` shortcut) instead of `pip install -e '.[dev]'`:
+For contributing or development, dev dependencies live in a [uv dependency group](https://docs.astral.sh/uv/concepts/projects/dependencies/#dependency-groups). Install everything (dev deps + pre-commit hooks) with:
 
 ```bash
 git clone https://github.com/vndee/llm-sandbox.git
@@ -420,6 +420,19 @@ df.to_csv('/sandbox/processed.csv', index=False)
     # Copy file back from sandbox
     session.copy_from_runtime("/sandbox/processed.csv", "processed_data.csv")
 ```
+
+`copy_from_runtime()` imports regular files and directories only. Archive links
+and unsafe paths are skipped; special files such as FIFOs and devices cause a
+`SecurityError`. Archive ownership is ignored, and dangerous permission bits
+(including setuid, setgid, and group/other write permissions on regular files)
+are removed. Directory permissions follow the host's defaults.
+
+Extraction requires a Python build providing `tarfile.data_filter` (available
+in Python 3.12+ and backported to maintained Python 3.10/3.11 releases). If it is
+unavailable, update Python; copying fails with `SecurityError` instead of using
+unsafe extraction. Use a fresh destination directory that untrusted processes
+cannot modify. An extraction failure can leave partial output; discard that
+output before retrying.
 
 ### Real-Time Output Streaming
 

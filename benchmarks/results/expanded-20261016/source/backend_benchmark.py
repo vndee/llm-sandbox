@@ -1,0 +1,660 @@
+"""Sequential, correctness-checked Python backend benchmark.
+
+Run from the checkout with ``python -m benchmarks.backend_benchmark --help``.
+The library is imported lazily so aggregation and fake-backend tests need no SDKs.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import importlib.metadata
+import json
+import math
+import os
+import platform
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+import traceback
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from http import HTTPStatus
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+MARKER = "llm-sandbox-benchmark-ok"
+PAYLOAD = bytes(range(256)) * 4096
+PAYLOAD_SHA256 = hashlib.sha256(PAYLOAD).hexdigest()
+CONTAINER_BACKENDS = {"docker", "podman", "micromamba"}
+POD_OWNER_LABEL = "llm-sandbox-benchmark-owner"
+POD_CLEANUP_TIMEOUT = 60.0
+STREAM_BACKENDS = CONTAINER_BACKENDS | {"bubblewrap", "nsjail", "windows-mxc", "wsl2-bubblewrap"}
+DEFAULT_IMAGES = {
+    "docker": "python:3.11-slim",
+    "podman": "python:3.11-slim",
+    "kubernetes": "python:3.11-slim",
+    "micromamba": "mambaorg/micromamba:2.3.2",
+}
+ENVIRONMENT_CODE = (
+    "import json, os, platform, sys\n"
+    "print(json.dumps({'python': sys.version, 'executable': sys.executable, "
+    "'platform': platform.platform(), 'machine': platform.machine(), "
+    "'cpu_count': os.cpu_count(), 'cwd': os.getcwd()}))"
+)
+
+
+@dataclass(frozen=True)
+class Settings:
+    """One identical workload profile for every selected backend."""
+
+    trials: int = 5
+    iterations: int = 5
+    warmups: int = 1
+    cpu_iterations: int = 200_000
+    timeout: float = 60.0
+
+
+def error_record(exc: Exception) -> dict[str, str]:
+    """Keep actionable error context instead of substituting zero latency."""
+    return {
+        "type": type(exc).__name__,
+        "message": str(exc),
+        "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+    }
+
+
+def validate_output(output: Any, expected: str) -> None:
+    """Reject nonzero exits and wrong output even if the adapter did not raise."""
+    if output.exit_code != 0 or output.stdout.strip() != expected:
+        msg = (
+            f"Execution validation failed: exit_code={output.exit_code}, "
+            f"expected={expected!r}, stdout={output.stdout[:2048]!r}, stderr={output.stderr[:2048]!r}"
+        )
+        raise ValueError(msg)
+
+
+def cpu_workload(iterations: int) -> tuple[str, str]:
+    """Use a closed-form oracle independent of the loop being timed."""
+    modulus = 1_000_000_007
+    expected = (iterations - 1) * iterations * (2 * iterations - 1) // 6 % modulus
+    code = f"total = 0\nfor i in range({iterations}):\n    total = (total + i * i) % {modulus}\nprint(total)"
+    return code, str(expected)
+
+
+def timed(
+    trial: dict[str, Any],
+    metric: str,
+    operation: Callable[[], Any],
+    validate: Callable[[Any], None] | None = None,
+    checkpoint: Callable[[], None] = lambda: None,
+) -> Any:
+    """Time the API call only, then validate; failed durations remain raw only."""
+    sample: dict[str, Any] = {"metric": metric, "valid": False}
+    trial["samples"].append(sample)
+    started = time.perf_counter()
+    try:
+        result = operation()
+        sample["seconds"] = time.perf_counter() - started
+        if validate is not None:
+            validate(result)
+        sample["valid"] = True
+    except Exception as exc:
+        sample.setdefault("seconds", time.perf_counter() - started)
+        sample["error"] = error_record(exc)
+        raise
+    else:
+        return result
+    finally:
+        checkpoint()
+
+
+def summarize(trials: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize complete successful trials; p95 uses nearest-rank ceil(.95*n)."""
+    metrics: dict[str, list[float]] = {}
+    for trial in trials:
+        if trial["status"] != "passed":
+            continue
+        for sample in trial["samples"]:
+            seconds = sample.get("seconds")
+            if sample["valid"] and isinstance(seconds, (int, float)) and math.isfinite(seconds) and seconds >= 0:
+                metrics.setdefault(sample["metric"], []).append(seconds)
+    result = {}
+    for metric, values in metrics.items():
+        ordered = sorted(values)
+        result[metric] = {
+            "n": len(values),
+            "median_seconds": statistics.median(values),
+            "p95_seconds": ordered[math.ceil(0.95 * len(ordered)) - 1],
+            "min_seconds": ordered[0],
+            "max_seconds": ordered[-1],
+        }
+    return result
+
+
+def effective_kwargs(name: str, overrides: dict[str, Any]) -> dict[str, Any]:
+    """Apply explicit stable benchmark defaults and reject incompatible profiles."""
+    kwargs: dict[str, Any] = {"lang": "python", "verbose": False, "skip_environment_setup": True}
+    if name in STREAM_BACKENDS:
+        kwargs["stream"] = False
+    if name in DEFAULT_IMAGES:
+        kwargs["image"] = DEFAULT_IMAGES[name]
+    if name in CONTAINER_BACKENDS:
+        kwargs["keep_template"] = True
+    kwargs.update(copy.deepcopy(overrides))
+    if str(kwargs.get("lang", "python")).lower() != "python":
+        msg = "This benchmark supports only the Python workload"
+        raise ValueError(msg)
+    if kwargs.get("container_id") or kwargs.get("pool"):
+        msg = "Existing containers and supplied pools do not measure fresh-session startup"
+        raise ValueError(msg)
+    if kwargs.get("dockerfile") or kwargs.get("commit_container"):
+        msg = "Build images before benchmarking; image builds/commits are outside this profile"
+        raise ValueError(msg)
+    if name in CONTAINER_BACKENDS and not kwargs.get("keep_template"):
+        msg = "keep_template must be true so preflight images survive into measured trials"
+        raise ValueError(msg)
+    return kwargs
+
+
+def make_session(name: str, serialized_kwargs: dict[str, Any]) -> Any:
+    """Turn JSON configuration into native policy/client objects, then construct."""
+    from llm_sandbox import SandboxSession
+
+    kwargs = copy.deepcopy(serialized_kwargs)
+    client_kwargs = kwargs.pop("client_kwargs", None)
+    if client_kwargs is not None:
+        if name in {"docker", "micromamba"}:
+            import docker
+
+            kwargs["client"] = docker.DockerClient(**client_kwargs)
+        elif name == "podman":
+            import podman
+
+            kwargs["client"] = podman.PodmanClient(**client_kwargs)
+        else:
+            msg = "client_kwargs is supported only for Docker, Podman and Micromamba"
+            raise ValueError(msg)
+    if isinstance(kwargs.get("sandbox_config"), dict):
+        if name == "windows-mxc":
+            from llm_sandbox.windows.config import WindowsMxcConfig
+
+            kwargs["sandbox_config"] = WindowsMxcConfig(**kwargs["sandbox_config"])
+        else:
+            from llm_sandbox.local.config import LocalSandboxConfig
+
+            kwargs["sandbox_config"] = LocalSandboxConfig(**kwargs["sandbox_config"])
+    if isinstance(kwargs.get("security_policy"), dict):
+        from llm_sandbox.security import SecurityPolicy
+
+        kwargs["security_policy"] = SecurityPolicy(**kwargs["security_policy"])
+    return SandboxSession(backend=name, **kwargs)
+
+
+def image_policy(session: Any, name: str, *, preflight: bool) -> None:
+    """Keep Kubernetes pulls outside measured trials, including custom manifests."""
+    if name == "kubernetes":
+        session.benchmark_pod_owner = uuid.uuid4().hex
+        session.pod_manifest.setdefault("metadata", {}).setdefault("labels", {})[POD_OWNER_LABEL] = (
+            session.benchmark_pod_owner
+        )
+        spec = session.pod_manifest["spec"]
+        for container in spec.get("containers", []) + spec.get("initContainers", []):
+            container["imagePullPolicy"] = "IfNotPresent" if preflight else "Never"
+
+
+def validate_no_image_preparation(session: Any, name: str) -> None:
+    """Exclude a measured trial if an image vanished and the adapter pulled it."""
+    if name in CONTAINER_BACKENDS and getattr(session, "is_create_template", False):
+        msg = "Image was pulled/built during measured open; trial excluded. Preload and retain the image."
+        raise ValueError(msg)
+
+
+def transfer_workload(
+    session: Any,
+    trial: dict[str, Any],
+    temporary: Path,
+    sequence: int,
+    settings: Settings,
+    checkpoint: Callable[[], None],
+) -> None:
+    """Check upload inside the runtime and download on the host, outside timing."""
+    basename = f"benchmark-payload-{sequence}.bin"
+    source = temporary / "source.bin"
+    source.write_bytes(PAYLOAD)
+    output_directory = temporary / f"download-{sequence}"
+    output_directory.mkdir()
+    destination = output_directory / basename
+    remote = f"{session.config.workdir.rstrip('/')}/{basename}"
+    digest_code = f"import hashlib\nprint(hashlib.sha256(open({basename!r}, 'rb').read()).hexdigest())"
+
+    def validate_upload(_: Any) -> None:
+        validate_output(session.run(digest_code, timeout=settings.timeout), PAYLOAD_SHA256)
+
+    def validate_download(_: Any) -> None:
+        digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+        if digest != PAYLOAD_SHA256:
+            msg = f"Downloaded payload SHA-256 mismatch: {digest}"
+            raise ValueError(msg)
+
+    timed(trial, "copy_to_1mib", lambda: session.copy_to_runtime(str(source), remote), validate_upload, checkpoint)
+    # Container archives extract a single member to dest.parent; native adapters
+    # use the exact path. Matching the basename makes both contracts identical.
+    timed(
+        trial,
+        "copy_from_1mib",
+        lambda: session.copy_from_runtime(remote, str(destination)),
+        validate_download,
+        checkpoint,
+    )
+
+
+def runtime_environment(session: Any, timeout: float) -> dict[str, Any]:
+    """Read runtime identity outside timing and fail on an invalid probe."""
+    output = session.run(ENVIRONMENT_CODE, timeout=timeout)
+    if output.exit_code != 0:
+        msg = f"Runtime environment probe failed: {output.stderr}"
+        raise ValueError(msg)
+    return json.loads(output.stdout)
+
+
+def confirm_container_removed(client: Any, container_id: str) -> None:
+    """Require an explicit HTTP 404 rather than treating connectivity failures as deletion."""
+    try:
+        client.containers.get(container_id)
+    except Exception as exc:
+        status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+        if status == HTTPStatus.NOT_FOUND:
+            return
+        raise
+    msg = f"Owned container {container_id} still exists after session.close()"
+    raise RuntimeError(msg)
+
+
+def read_owned_pod(client: Any, name: str, namespace: str, owner: str, timeout: float = 5.0) -> Any:
+    """Return an owned pod or None for 404; never select another pod for recovery."""
+    try:
+        pod = client.read_namespaced_pod(name=name, namespace=namespace, _request_timeout=timeout)
+    except Exception as exc:
+        if getattr(exc, "status", None) == HTTPStatus.NOT_FOUND:
+            return None
+        raise
+    if not owner or (pod.metadata.labels or {}).get(POD_OWNER_LABEL) != owner:
+        msg = f"Refusing recovery for pod {namespace}/{name}: benchmark ownership label differs"
+        raise RuntimeError(msg)
+    return pod
+
+
+def wait_for_pod_removal(client: Any, name: str, namespace: str, owner: str) -> None:
+    """Wait at most 60 seconds for confirmed deletion, with bounded API reads."""
+    deadline = time.monotonic() + POD_CLEANUP_TIMEOUT
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            msg = f"Pod {namespace}/{name} still exists after {POD_CLEANUP_TIMEOUT:g}s cleanup wait"
+            raise TimeoutError(msg)
+        if read_owned_pod(client, name, namespace, owner, timeout=min(5.0, remaining / 2)) is None:
+            return
+        time.sleep(min(0.25, max(0.0, deadline - time.monotonic())))
+
+
+def force_delete_owned_pod(client: Any, name: str, namespace: str, owner: str) -> None:
+    """Delete only the labeled pod UID, including after open failed before assignment."""
+    pod = read_owned_pod(client, name, namespace, owner)
+    if pod is None:
+        return
+    try:
+        client.delete_namespaced_pod(
+            name=name,
+            namespace=namespace,
+            body={"gracePeriodSeconds": 0, "preconditions": {"uid": pod.metadata.uid}},
+            _request_timeout=5.0,
+        )
+    except Exception as exc:
+        if getattr(exc, "status", None) != HTTPStatus.NOT_FOUND:
+            raise
+
+
+def finish_kubernetes(
+    session: Any, pod_name: str, namespace: str, owner: str, trial: dict[str, Any], *, open_incomplete: bool
+) -> None:
+    """Verify asynchronous removal, recovering owned leftovers and recording wait time."""
+    started = time.monotonic()
+    trial["cleanup_verified"] = False
+    try:
+        if trial.get("close_error") or open_incomplete:
+            force_delete_owned_pod(session.client, pod_name, namespace, owner)
+            trial["forced_cleanup"] = True
+        wait_for_pod_removal(session.client, pod_name, namespace, owner)
+        trial["cleanup_verified"] = True
+    except Exception as exc:  # noqa: BLE001 - retain polling/API failures and attempt bounded recovery.
+        trial["status"] = "failed"
+        trial["cleanup_verification_error"] = error_record(exc)
+        try:
+            force_delete_owned_pod(session.client, pod_name, namespace, owner)
+            wait_for_pod_removal(session.client, pod_name, namespace, owner)
+            trial["cleanup_verified"] = True
+            trial["forced_cleanup"] = True
+        except Exception as cleanup_exc:  # noqa: BLE001 - failed recovery must stop subsequent trials.
+            trial["forced_cleanup_error"] = error_record(cleanup_exc)
+    finally:
+        trial["cleanup_wait_seconds"] = time.monotonic() - started
+
+
+def finish_session(session: Any, name: str, trial: dict[str, Any], checkpoint: Callable[[], None]) -> None:
+    """Time public close, then verify removal and clean up the SDK transport."""
+    container = getattr(session, "container", None)
+    container_id = getattr(container, "id", None)
+    pod_name = getattr(session, "pod_name", None)
+    namespace = getattr(session, "kube_namespace", None)
+    pod_owner = getattr(session, "benchmark_pod_owner", None)
+    try:
+        timed(trial, "close", session.close, checkpoint=checkpoint)
+    except Exception as exc:  # noqa: BLE001 - cleanup failures must invalidate the complete trial.
+        trial["status"] = "failed"
+        trial["close_error"] = error_record(exc)
+    client = getattr(session, "client", None)
+    if name == "kubernetes" and client is not None and pod_name and namespace:
+        finish_kubernetes(session, pod_name, namespace, pod_owner, trial, open_incomplete=container is None)
+        return
+    if name not in CONTAINER_BACKENDS or client is None:
+        return
+    if container_id:
+        try:
+            confirm_container_removed(client, container_id)
+            trial["cleanup_verified"] = True
+        except Exception as exc:  # noqa: BLE001 - retain even failures swallowed by session.close.
+            trial["status"] = "failed"
+            trial["cleanup_verification_error"] = error_record(exc)
+            trial["cleanup_verified"] = False
+            try:
+                container.remove(force=True)
+                confirm_container_removed(client, container_id)
+                trial["cleanup_verified"] = True
+                trial["forced_cleanup"] = True
+            except Exception as cleanup_exc:  # noqa: BLE001 - retain best-effort recovery diagnostics.
+                trial["forced_cleanup_error"] = error_record(cleanup_exc)
+    try:
+        client.close()
+    except Exception as exc:  # noqa: BLE001 - transport cleanup must also remain visible.
+        trial["client_cleanup_error"] = error_record(exc)
+        trial["status"] = "failed"
+
+
+def run_trial(
+    name: str,
+    kwargs: dict[str, Any],
+    settings: Settings,
+    trial: dict[str, Any],
+    *,
+    preflight: bool,
+    factory: Callable[[str, dict[str, Any]], Any],
+    checkpoint: Callable[[], None],
+) -> None:
+    """Run a full lifecycle, always attempting close even after an open failure."""
+    session = None
+    cpu_code, cpu_expected = cpu_workload(settings.cpu_iterations)
+    marker_code = f"print({MARKER!r})"
+    try:
+        trial["stage"] = "construct"
+        session = timed(trial, "construct", lambda: factory(name, kwargs), checkpoint=checkpoint)
+        image_policy(session, name, preflight=preflight)
+        trial["stage"] = "open"
+        timed(
+            trial,
+            "open",
+            session.open,
+            None if preflight else lambda _: validate_no_image_preparation(session, name),
+            checkpoint,
+        )
+        trial["stage"] = "first_run"
+        timed(
+            trial,
+            "first_run",
+            lambda: session.run(marker_code, timeout=settings.timeout),
+            lambda output: validate_output(output, MARKER),
+            checkpoint,
+        )
+        if preflight:
+            trial["stage"] = "environment"
+            trial["runtime_environment"] = runtime_environment(session, settings.timeout)
+            if name in CONTAINER_BACKENDS:
+                trial["image_id"] = getattr(getattr(session, "docker_image", None), "id", None)
+        trial["stage"] = "warmup"
+        for _ in range(settings.warmups):
+            validate_output(session.run(marker_code, timeout=settings.timeout), MARKER)
+            validate_output(session.run(cpu_code, timeout=settings.timeout), cpu_expected)
+        with tempfile.TemporaryDirectory(prefix="llm-sandbox-benchmark-") as directory:
+            temporary = Path(directory).resolve()
+            # An unmeasured full transfer pair warms file-operation paths too.
+            warmup_record: dict[str, Any] = {"samples": [], "measured": False}
+            trial["transfer_warmup"] = warmup_record
+            transfer_workload(session, warmup_record, temporary, -1, settings, lambda: None)
+            trial["stage"] = "workloads"
+            for iteration in range(1 if preflight else settings.iterations):
+                trial["iteration"] = iteration
+                timed(
+                    trial,
+                    "warm_run",
+                    lambda: session.run(marker_code, timeout=settings.timeout),
+                    lambda output: validate_output(output, MARKER),
+                    checkpoint,
+                )
+                timed(
+                    trial,
+                    "cpu_run",
+                    lambda: session.run(cpu_code, timeout=settings.timeout),
+                    lambda output: validate_output(output, cpu_expected),
+                    checkpoint,
+                )
+                transfer_workload(session, trial, temporary, iteration, settings, checkpoint)
+        trial["status"] = "passed"
+    except Exception as exc:  # noqa: BLE001 - each unavailable or broken adapter must remain an independent result.
+        trial["status"] = "failed"
+        trial["error"] = error_record(exc)
+    finally:
+        if session is not None:
+            finish_session(session, name, trial, checkpoint)
+        checkpoint()
+
+
+def benchmark_backend(
+    definition: Any,
+    overrides: dict[str, Any],
+    settings: Settings,
+    record: dict[str, Any],
+    *,
+    factory: Callable[[str, dict[str, Any]], Any] = make_session,
+    checkpoint: Callable[[], None] = lambda: None,
+    progress: Callable[[str], None] = print,
+) -> None:
+    """Keep platform skips, preflight failures and measured failures distinct."""
+    name = definition.name
+    record.update({"status": "running", "trials": [], "summary": {}})
+    allowed = definition.capabilities.platforms
+    if allowed and sys.platform not in allowed:
+        record.update({"status": "skipped", "reason": f"Requires {list(allowed)}; host is {sys.platform}"})
+        checkpoint()
+        return
+    try:
+        kwargs = effective_kwargs(name, overrides)
+    except Exception as exc:  # noqa: BLE001 - invalid per-backend configuration must not prevent other backends.
+        record.update({"status": "configuration_failed", "error": error_record(exc)})
+        checkpoint()
+        return
+    record["effective_config"] = kwargs
+    preflight: dict[str, Any] = {"status": "running", "samples": [], "measured": False}
+    record["preflight"] = preflight
+    progress(f"{name}: preflight (image/setup preparation excluded from measurements)")
+    run_trial(name, kwargs, settings, preflight, preflight=True, factory=factory, checkpoint=checkpoint)
+    if preflight["status"] != "passed":
+        record["status"] = "preflight_failed"
+        progress(
+            f"{name}: preflight failed: {preflight.get('error', preflight.get('close_error', {})).get('message', '')}"
+        )
+        checkpoint()
+        return
+    for index in range(settings.trials):
+        progress(f"{name}: measured trial {index + 1}/{settings.trials}")
+        trial: dict[str, Any] = {"index": index, "status": "running", "samples": [], "measured": True}
+        record["trials"].append(trial)
+        run_trial(name, kwargs, settings, trial, preflight=False, factory=factory, checkpoint=checkpoint)
+        record["summary"] = summarize(record["trials"])
+        checkpoint()
+        if trial.get("cleanup_verified") is False:
+            record["stopped_early"] = "Runtime removal could not be confirmed; further trials would risk contention"
+            break
+    passed = sum(trial["status"] == "passed" for trial in record["trials"])
+    record["successful_trials"] = passed
+    record["status"] = "passed" if passed == settings.trials else "partial" if passed else "failed"
+    progress(f"{name}: {record['status']} ({passed}/{settings.trials} complete valid trials)")
+    checkpoint()
+
+
+def git_output(*args: str) -> str | None:
+    """Attach source provenance, including a dirty checkout marker."""
+    try:
+        git = shutil.which("git")
+        if git is None:
+            return None
+        return subprocess.check_output(  # noqa: S603 - only fixed read-only git commands defined below are passed.
+            [git, *args], cwd=Path(__file__).resolve().parents[1], text=True
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def metadata(settings: Settings) -> dict[str, Any]:
+    """Record comparable host, dependency, revision and workload information."""
+    packages = {}
+    for package in ("llm-sandbox", "pydantic", "docker", "podman", "kubernetes"):
+        try:
+            packages[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            packages[package] = None
+    return {
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),  # noqa: UP017 - Python 3.10 compatibility.
+        "revision": git_output("rev-parse", "HEAD"),
+        "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "branch": git_output("branch", "--show-current"),
+        "git_status": git_output("status", "--short"),
+        "python": sys.version,
+        "executable": sys.executable,
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "cpu_count": os.cpu_count(),
+        "cpu_affinity": sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
+        "packages": packages,
+        "settings": asdict(settings),
+        "payload_bytes": len(PAYLOAD),
+        "payload_sha256": PAYLOAD_SHA256,
+        "clock": "time.perf_counter wall-clock seconds; validation excluded",
+        "aggregation": "Only complete successful measured trials; median; p95 nearest-rank ceil(0.95*n).",
+        "profile": "Sequential fresh sessions; cached images; Python API latency; setup skipped by default.",
+        "ordering": "CLI order (registry order for all); first run, warmups, then marker/CPU/upload/download.",
+        "command": sys.argv,
+    }
+
+
+def save_json(path: Path, document: dict[str, Any]) -> None:
+    """Replace the result atomically after each measured operation and trial."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_suffix(path.suffix + ".tmp")
+    pending.write_text(json.dumps(document, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    pending.replace(path)
+
+
+def positive_int(value: str) -> int:
+    """Parse strictly positive workload and repetition counts."""
+    result = int(value)
+    if result <= 0:
+        msg = "must be positive"
+        raise argparse.ArgumentTypeError(msg)
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Discover every registered adapter and run selected ones sequentially."""
+    from llm_sandbox.backends import list_backends
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--backends", nargs="+", default=["all"], help="Registry names (space or comma separated); default all"
+    )
+    parser.add_argument("--list", action="store_true", help="List registry names and platform restrictions, then exit")
+    parser.add_argument("--config", type=Path, help="JSON mapping backend name to constructor kwargs")
+    parser.add_argument("--output", type=Path, default=Path("benchmarks/results/backend-benchmark.json"))
+    parser.add_argument("--trials", type=positive_int, default=5)
+    parser.add_argument(
+        "--iterations", type=positive_int, default=5, help="Measured repetitions per workload per fresh session"
+    )
+    parser.add_argument("--warmups", type=int, default=1, help="Unmeasured marker/CPU repetitions in each session")
+    parser.add_argument("--cpu-iterations", type=positive_int, default=200_000)
+    parser.add_argument(
+        "--timeout", type=float, default=60.0, help="Execution timeout in seconds (not lifecycle/transfer timeout)"
+    )
+    args = parser.parse_args(argv)
+    definitions = {definition.name: definition for definition in list_backends()}
+    if args.list:
+        for definition in definitions.values():
+            print(f"{definition.name}: platforms={definition.capabilities.platforms or 'unspecified'}")  # noqa: T201
+        return 0
+    if args.warmups < 0 or not math.isfinite(args.timeout) or args.timeout <= 0:
+        parser.error("warmups must be nonnegative; timeout must be finite and positive")
+    selected = list(dict.fromkeys(name for group in args.backends for name in group.split(",")))
+    if selected == ["all"]:
+        selected = list(definitions)
+    elif set(selected) - definitions.keys():
+        parser.error(f"Unknown backends: {sorted(set(selected) - definitions.keys())}")
+    configs = {}
+    if args.config:
+        configs = json.loads(args.config.read_text(encoding="utf-8"))
+        if not isinstance(configs, dict) or any(not isinstance(value, dict) for value in configs.values()):
+            parser.error("config must be an object mapping backend names to objects")
+        if set(configs) - definitions.keys():
+            parser.error(f"Unknown backends in config: {sorted(set(configs) - definitions.keys())}")
+    settings = Settings(args.trials, args.iterations, args.warmups, args.cpu_iterations, args.timeout)
+    document: dict[str, Any] = {"schema_version": 1, "metadata": metadata(settings), "backends": {}}
+
+    def checkpoint() -> None:
+        save_json(args.output, document)
+
+    checkpoint()
+    try:
+        for name in selected:
+            record: dict[str, Any] = {
+                "capabilities": asdict(definitions[name].capabilities),
+                "requested_config": configs.get(name, {}),
+            }
+            document["backends"][name] = record
+            benchmark_backend(
+                definitions[name],
+                configs.get(name, {}),
+                settings,
+                record,
+                checkpoint=checkpoint,
+                progress=lambda message: print(message, flush=True),  # noqa: T201 - CLI progress is intentional.
+            )
+    except KeyboardInterrupt:
+        document["interrupted"] = True
+        checkpoint()
+        return 130
+    document["metadata"]["finished_at_utc"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017
+    checkpoint()
+    print(f"Results: {args.output.resolve()}")  # noqa: T201
+    # Availability failures remain in JSON; zero means the benchmark finished,
+    # not that all runtimes are available. No-data runs return 1.
+    return 0 if any(record.get("summary") for record in document["backends"].values()) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

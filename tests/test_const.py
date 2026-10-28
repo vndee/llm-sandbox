@@ -83,11 +83,15 @@ class TestSandboxBackend:
     def test_backend_iteration(self) -> None:
         """Test iterating over backends."""
         backends = list(SandboxBackend)
-        assert len(backends) == 4
+        assert len(backends) == 8
         assert SandboxBackend.DOCKER in backends
         assert SandboxBackend.KUBERNETES in backends
         assert SandboxBackend.PODMAN in backends
         assert SandboxBackend.MICROMAMBA in backends
+        assert SandboxBackend.BUBBLEWRAP in backends
+        assert SandboxBackend.NSJAIL in backends
+        assert SandboxBackend.WINDOWS_MXC in backends
+        assert SandboxBackend.WSL2_BUBBLEWRAP in backends
 
     def test_backend_case_insensitive(self) -> None:
         """Test case-insensitive backend lookup."""

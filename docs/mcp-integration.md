@@ -365,11 +365,11 @@ The assistant will execute the code in a secure sandbox and automatically captur
 For development and testing of the MCP server:
 
 ```bash
-# Install in development mode
-pip install -e '.[mcp-docker]'
+# Install in development mode (dev deps live in a uv dependency group)
+uv sync --extra mcp-docker
 
 # Run the MCP server directly
-python -m llm_sandbox.mcp_server.server
+uv run python -m llm_sandbox.mcp_server.server
 
 # Test with MCP client tools
 # Follow MCP client documentation for testing
