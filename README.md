@@ -493,6 +493,47 @@ with SandboxSession(
     print(result)
 ```
 
+#### Share a Kubernetes PVC with a sandbox
+
+Create the PVC in the namespace where sandbox pods run. With the generated pod
+manifest, pass the PVC and mount to `SandboxSession`:
+
+```python
+from llm_sandbox import SandboxSession
+
+with SandboxSession(
+    backend="kubernetes",
+    lang="python",
+    volumes=[{
+        "name": "shared-data",
+        "persistentVolumeClaim": {"claimName": "shared-data", "readOnly": True},
+    }],
+    volume_mounts=[{
+        "name": "shared-data",
+        "mountPath": "/mnt/shared",
+        "readOnly": True,
+    }],
+) as session:
+    print(session.run("from pathlib import Path; print(list(Path('/mnt/shared').iterdir()))").stdout)
+```
+
+For the MCP server, add these values to your MCP client's `env` configuration:
+
+```json
+{
+  "BACKEND": "kubernetes",
+  "KUBERNETES_PVC_NAME": "shared-data",
+  "KUBERNETES_VOLUME_MOUNT_PATH": "/mnt/shared",
+  "KUBERNETES_VOLUME_READ_ONLY": "true"
+}
+```
+Notes:
+
+- The PVC name and mount path must be set together; the path must be absolute.
+- THE PVC ``spec.accessModes`` have to be set to ``ReadWriteMany``
+- Read-only defaults to `false`.
+- All environment variables start with 'KUBERNETES_' will be visibled to sandbox, this way environment variables can be passed to isolated sandbox. Noted that it will include PVC_NAME, VOLUME_MOUNT_PATH, and VOLUME_READ_ONLY like declared above.
+
 **⚠️ Important for Custom Pod Manifests:**
 
 When using custom pod manifests, ensure your container configuration includes:

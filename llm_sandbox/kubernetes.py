@@ -350,6 +350,9 @@ class SandboxKubernetesSession(BaseSession):
         container_id: str | None = None,  # This will be pod_id for Kubernetes
         skip_environment_setup: bool = False,
         encoding_errors: EncodingErrorsType = "strict",
+        *,
+        volumes: list[dict[str, Any]] | None = None,
+        volume_mounts: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> None:
         r"""Initialize Kubernetes session.
@@ -370,6 +373,8 @@ class SandboxKubernetesSession(BaseSession):
             container_id (str | None): ID of existing pod to connect to.
             skip_environment_setup (bool): Skip language-specific environment setup.
             encoding_errors (EncodingErrorsType): Error handling for decoding command output.
+            volumes (list[dict] | None): Volumes for the generated default pod manifest.
+            volume_mounts (list[dict] | None): Container mounts for the generated default pod manifest.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -409,7 +414,7 @@ class SandboxKubernetesSession(BaseSession):
             short_uuid = uuid.uuid4().hex[:8]
             self.pod_name = f"sandbox-{lang.lower()}-{short_uuid}"
             self.env_vars = env_vars
-            self.pod_manifest = pod_manifest or self._default_pod_manifest()
+            self.pod_manifest = pod_manifest or self._default_pod_manifest(volumes=volumes, volume_mounts=volume_mounts)
             self._reconfigure_with_pod_manifest()
 
             # Extract container name from pod manifest for command execution
@@ -426,7 +431,11 @@ class SandboxKubernetesSession(BaseSession):
         # For compatibility with base class
         self.stream = False
 
-    def _default_pod_manifest(self) -> dict:
+    def _default_pod_manifest(
+        self,
+        volumes: list[dict[str, Any]] | None = None,
+        volume_mounts: list[dict[str, Any]] | None = None,
+    ) -> dict:
         """Generate a default Kubernetes Pod manifest."""
         image = self.config.image or DefaultImage.__dict__[self.config.lang.upper()]
 
@@ -465,6 +474,10 @@ class SandboxKubernetesSession(BaseSession):
         if not any(e["name"] == "PYTHONUNBUFFERED" for e in env_list):
             env_list.insert(0, {"name": "PYTHONUNBUFFERED", "value": "1"})
         containers[0]["env"] = env_list
+        if volumes:
+            pod_manifest["spec"]["volumes"] = volumes  # type: ignore[index]
+        if volume_mounts:
+            containers[0]["volumeMounts"] = volume_mounts
         return pod_manifest
 
     def _reconfigure_with_pod_manifest(self) -> None:
