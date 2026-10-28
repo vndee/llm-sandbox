@@ -517,7 +517,7 @@ with SandboxSession(
     print(session.run("from pathlib import Path; print(list(Path('/mnt/shared').iterdir()))").stdout)
 ```
 
-For the MCP server, add these values to your client's `env` configuration:
+For the MCP server, add these values to your MCP client's `env` configuration:
 
 ```json
 {
@@ -527,10 +527,12 @@ For the MCP server, add these values to your client's `env` configuration:
   "KUBERNETES_VOLUME_READ_ONLY": "true"
 }
 ```
+Notes:
 
-The PVC name and mount path must be set together; the path must be absolute.
-Read-only defaults to `false`. These options use the generated pod manifest.
-All env start with 'KUBERNETES_' will be visibled to sandbox, this way env can be passed to isolated sandbox. Noted that it will include PVC_NAME, VOLUME_MOUNT_PATH, and VOLUME_READ_ONLY like declared above.
+- The PVC name and mount path must be set together; the path must be absolute.
+- THE PVC ``spec.accessModes`` have to be set to ``ReadWriteMany``
+- Read-only defaults to `false`.
+- All environment variables start with 'KUBERNETES_' will be visibled to sandbox, this way environment variables can be passed to isolated sandbox. Noted that it will include PVC_NAME, VOLUME_MOUNT_PATH, and VOLUME_READ_ONLY like declared above.
 
 **⚠️ Important for Custom Pod Manifests:**
 
