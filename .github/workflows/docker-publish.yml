@@ -38,6 +38,8 @@ jobs:
             image: sandbox-go-123-bullseye
           - dockerfile: dockers/ruby302.Dockerfile
             image: sandbox-ruby-302-bullseye
+          - dockerfile: dockers/r451.Dockerfile
+            image: sandbox-r-451-bullseye
 
     steps:
       - uses: actions/checkout@v4
