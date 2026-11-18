@@ -8,6 +8,7 @@ import logging
 import os
 import uuid
 from decimal import Decimal, InvalidOperation
+from pathlib import PurePosixPath
 from typing import Any
 
 from mcp.types import ImageContent, TextContent
@@ -139,6 +140,43 @@ def _get_optional_str_env(var_name: str) -> str | None:
 
     normalized = value.strip()
     return normalized or None
+
+
+def _get_kube_volume_configs() -> dict[str, Any]:
+    """Configure an optional shared PVC from the MCP server environment."""
+    env_names = (
+        "KUBERNETES_PVC_NAME",
+        "KUBERNETES_VOLUME_MOUNT_PATH",
+        "KUBERNETES_VOLUME_READ_ONLY",
+    )
+    if not any(name in os.environ for name in env_names):
+        return {}
+
+    pvc_name = _get_optional_str_env("KUBERNETES_PVC_NAME")
+    mount_path = _get_optional_str_env("KUBERNETES_VOLUME_MOUNT_PATH")
+    if not pvc_name or not mount_path:
+        msg = "KUBERNETES_PVC_NAME and KUBERNETES_VOLUME_MOUNT_PATH must both be set and non-empty"
+        raise ValidationError(msg)
+
+    path = PurePosixPath(mount_path)
+    if not path.is_absolute() or ".." in path.parts or "\x00" in mount_path:
+        msg = "KUBERNETES_VOLUME_MOUNT_PATH must be an absolute path without '..' or null bytes"
+        raise ValidationError(msg)
+
+    read_only = _get_optional_bool_env("KUBERNETES_VOLUME_READ_ONLY")
+    if read_only is None:
+        read_only = False
+
+    return {
+        "volumes": [
+            {
+                "name": pvc_name,
+                "persistentVolumeClaim": {"claimName": pvc_name, "readOnly": read_only},
+            }
+        ],
+        "volume_mounts": [{"name": pvc_name, "mountPath": mount_path, "readOnly": read_only}],
+        "env_vars": {name: value for name, value in os.environ.items() if name.startswith("KUBERNETES_")},
+    }
 
 
 def _build_cpu_runtime_configs(cpu_units: Decimal, var_name: str) -> dict[str, int]:
@@ -299,6 +337,8 @@ def execute_code(
             session_kwargs["commit_image_tag"] = _build_commit_image_tag(language)
         if runtime_configs:
             session_kwargs["runtime_configs"] = runtime_configs
+        if backend == SandboxBackend.KUBERNETES:
+            session_kwargs.update(_get_kube_volume_configs())
 
         with session_cls(**session_kwargs) as session:
             if use_artifact_session:
